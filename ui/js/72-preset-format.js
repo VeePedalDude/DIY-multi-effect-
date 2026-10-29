@@ -6,28 +6,36 @@
 //     "chain":  [ { "id": "holo", "bypass": false, "params": { "feedback": 42.75, "halo": 60 },
 //                   "asset": { "kind": "ir", "name": "V30.wav", "size": 8236, "hash": "1a2b3c4d" } } ],
 //     "mods":   [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 } ],
+//     "sources": [ { "id": "lfo", "params": { "rate": 8, "shape": 0 } } ],          (version 2)
 //     "tempo": 120, "master": -12,
-//     "scenes": { "A": { "chain": [...without assets], "mods": [...], "tempo": 120 } } }
-const PRESET_FORMAT = 'rig-preset', PRESET_VERSION = 1;
+//     "scenes": { "A": { "chain": [...without assets], "mods": [...], "sources": [...], "tempo": 120 } } }
+const PRESET_FORMAT = 'rig-preset', PRESET_VERSION = 2;
 // When a module or knob is renamed, add the old name here so older files still load:
 //   modules: { oldId: 'newId' },  params: { 'oldId.oldSymbol': 'newId.newSymbol' }
 const PRESET_RENAMES = { modules: {}, params: {} };
 // When the file layout itself changes, bump PRESET_VERSION and add PRESET_MIGRATIONS[old] = (json) => upgraded json.
-const PRESET_MIGRATIONS = {};
+const PRESET_MIGRATIONS = {
+  // 1 -> 2: modulation sources gained knobs. Version 1 files were made with the fixed sources, which
+  // are exactly today's defaults, so they get an empty "sources" list (= defaults).
+  1: (j) => ({ ...j, version: 2, sources: [], scenes: Object.fromEntries(Object.entries(j.scenes || {}).map(([k, s]) => [k, { ...s, sources: [] }])) }),
+};
 
 const round6 = (x) => Number(Number(x).toPrecision(6));
 function toNorm(q, r) { return q.curve === 'log' ? Math.log(r / q.min) / Math.log(q.max / q.min) : (r - q.min) / (q.max - q.min); }
 const unitText = (q, r) => `${round6(r)}${q.unit ? (q.unit === '%' ? '%' : ' ' + q.unit) : ''}`;
 
-// Normalised in-memory snapshot: { params: {pid: 0..1}, bypass: {id: bool}, conns: {pid: sid}, depths: {pid: d}, bpm }
+// Normalised in-memory snapshot: { params: {pid: 0..1}, bypass: {id: bool}, conns: {pid: sid}, depths: {pid: d},
+// srcParams: {"lfo.rate": 0..1}, bpm }
 function currentSnapshot() {
   return { params: Object.fromEntries(Object.values(PARAMS).map((p) => [p.id, p.v])), bypass: { ...state.bypass },
-    conns: { ...state.conns }, depths: { ...state.depths }, bpm: state.bpm };
+    conns: { ...state.conns }, depths: { ...state.depths }, bpm: state.bpm,
+    srcParams: Object.fromEntries(SRC.flatMap((s) => s.params.map((q) => [q.id, q.v]))) };
 }
 function sectionFromSnapshot(s) {
   return {
     chain: MODS.map((m) => ({ id: m.id, bypass: !!s.bypass[m.id], params: Object.fromEntries(m.params.map((p) => [p.sym, round6(p.real(s.params[p.id] ?? p.v))])) })),
     mods: Object.entries(s.conns).map(([pid, sid]) => ({ target: pid, source: sid, depth: round6((s.depths || {})[pid] ?? DEPTH) })),
+    sources: SRC.filter((src) => src.params.length).map((src) => ({ id: src.id, params: Object.fromEntries(src.params.map((q) => [q.sym, round6(q.real((s.srcParams || {})[q.id] ?? q.def))])) })),
     tempo: s.bpm,
   };
 }
@@ -36,12 +44,12 @@ function buildPreset(name) {
   sec.chain.forEach((c) => { const a = state.assets[c.id]; if (a) c.asset = { kind: a.kind, name: a.name, size: a.size, hash: a.hash }; });
   return {
     format: PRESET_FORMAT, version: PRESET_VERSION, name, saved: new Date().toISOString(),
-    chain: sec.chain.concat(state.presetExtras), mods: sec.mods, tempo: sec.tempo, master: state.master,
-    scenes: Object.fromEntries(Object.entries(state.scenes).map(([k, s]) => { const x = sectionFromSnapshot(s); return [k, { chain: x.chain, mods: x.mods, tempo: x.tempo }]; })),
+    chain: sec.chain.concat(state.presetExtras), mods: sec.mods, sources: sec.sources, tempo: sec.tempo, master: state.master,
+    scenes: Object.fromEntries(Object.entries(state.scenes).map(([k, s]) => { const x = sectionFromSnapshot(s); return [k, { chain: x.chain, mods: x.mods, sources: x.sources, tempo: x.tempo }]; })),
   };
 }
 function readSection(sec, renames, warn) {
-  const snap = { params: {}, bypass: {}, conns: {}, depths: {}, bpm: undefined }, assets = {}, extras = [];
+  const snap = { params: {}, bypass: {}, conns: {}, depths: {}, srcParams: {}, bpm: undefined }, assets = {}, extras = [];
   for (const entry of Array.isArray(sec.chain) ? sec.chain : []) {
     const id = renames.modules[entry.id] || entry.id, m = MODS.find((x) => x.id === id);
     if (!m) { extras.push(entry); warn(`${entry.id}: this build has no such module; its settings are kept in the file`); continue; }
@@ -61,6 +69,18 @@ function readSection(sec, renames, warn) {
     if (!PARAMS[pid] || !SRCMAP[c.source]) { warn(`modulation ${c.source} → ${c.target}: not available in this build; skipped`); continue; }
     snap.conns[pid] = c.source;
     if (typeof c.depth === 'number' && c.depth >= 0 && c.depth <= 1) snap.depths[pid] = c.depth;
+  }
+  for (const entry of Array.isArray(sec.sources) ? sec.sources : []) {      // knobs left out stay at their defaults
+    const src = SRCMAP[entry && entry.id];
+    if (!src) { warn(`source ${entry && entry.id}: not in this build; its settings were skipped`); continue; }
+    for (const [sym, r] of Object.entries(entry.params || {})) {
+      const q = src.params.find((x) => x.sym === sym);
+      if (!q) { warn(`${src.id}: no knob called “${sym}”; ignored`); continue; }
+      if (typeof r !== 'number' || !isFinite(r) || (q.desc.curve === 'log' && r <= 0)) { warn(`${q.id}: “${r}” isn't a usable value; kept the default`); continue; }
+      const v = toNorm(q.desc, r);
+      if (v < -1e-6 || v > 1 + 1e-6) warn(`${q.id}: ${unitText(q.desc, r)} is outside ${unitText(q.desc, q.desc.min)}–${unitText(q.desc, q.desc.max)}; set to the nearest end`);
+      snap.srcParams[q.id] = clamp(v, 0, 1);
+    }
   }
   if (typeof sec.tempo === 'number' && sec.tempo >= 30 && sec.tempo <= 300) snap.bpm = sec.tempo;
   return { snap, assets, extras };

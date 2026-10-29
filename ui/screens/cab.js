@@ -25,3 +25,4 @@ screen('cab', (c, b, m, h) => {
   if (resp && taps) { c.textAlign = 'right'; c.fillText(`${taps} taps`, b.x + b.w - 20, b.y + 26); c.textAlign = 'left'; }
 });
 NOTES.cab = 'Any IR length, mono or stereo: a speaker cab, a room, or a convolution reverb (up to 20 s). Drop a .wav on this module, or pick one from the library below. Long IRs work best with MIX below 100%.';
+TILE.cab = 'gold';   // card colour (ui/assets/tile-gold.webp)

@@ -5,19 +5,18 @@ function resize() {
   document.documentElement.style.setProperty('--botH', $('bottom').offsetHeight + 'px');
 }
 function meterBar(el, pk) { const db = 20 * Math.log10(pk + 1e-9), f = clamp((db + 60) / 60, 0, 1); el.style.width = (f * 100) + '%'; el.className = db > -1 ? 'clip' : db > -9 ? 'hot' : ''; }
-const clock = new THREE.Clock(); let frame = 0, lastMeterSeq = null; const tmpV = new THREE.Vector3();
+const clock = new THREE.Clock(); let frame = 0; const tmpV = new THREE.Vector3();
 function fillCurve(curve, attr) { const arr = attr.array; for (let i = 0; i < CN; i++) { curve.getPoint(i / (CN - 1), tmpV); arr[i * 3] = tmpV.x; arr[i * 3 + 1] = tmpV.y; arr[i * 3 + 2] = tmpV.z; } attr.needsUpdate = true; }
 function loop() {
   requestAnimationFrame(loop);              // schedule first, so one bad frame can never freeze the stage
   const dt = Math.min(clock.getDelta(), .05); T += dt; frame++;
   cam.r += (camGoal.r - cam.r) * .06; cam.target.lerp(camGoal.target, .06); placeCamera();
   pollPad(frame);
-  if (meters !== lastMeterSeq) { lastMeterSeq = meters; SRC.forEach((s) => { s.hist.push(srcVal(s.idx)); if (s.hist.length > 120) s.hist.shift(); }); }
   const level = meters ? clamp((20 * Math.log10(meters.outPk + 1e-9) + 50) / 50, 0, 1) : 0;
   flowMat.opacity = .25 + .75 * level; flowMat.size = .14 + .2 * level;
-  MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.edges.material.color.set(foc ? ACC : '#2A3550'); m.glow.material.opacity = foc ? .22 : .07; });
+  MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });
   SRC.forEach((s) => { const v = srcVal(s.idx), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
-  if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach(drawLabel); }
+  if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach(drawLabel); drawSourceScope(); }
   for (let i = 0; i < NP; i++) { const u = ((i / NP) + T * (RM ? .01 : .05 + .1 * level)) % 1; flowCurve.getPointAt(u, tmpV); flowPos[i * 3] = tmpV.x; flowPos[i * 3 + 1] = tmpV.y + .06; flowPos[i * 3 + 2] = tmpV.z; }
   flowGeo.attributes.position.needsUpdate = true;
   cables.forEach((c) => {
@@ -33,6 +32,7 @@ function loop() {
   }
   if (frame % 3 === 0) {
     document.querySelectorAll('[data-disp]').forEach((el) => { const p = PARAMS[el.dataset.disp]; if (p) el.textContent = p.fmt(effOf(p)); });
+    refreshSourceReadouts();
     if (meters) { meterBar($('mIn'), meters.inPk); meterBar($('mOut'), meters.outPk); $('dspLoad').textContent = (meters.load * 100).toFixed(1) + '%'; }
   }
   renderer.render(scene, camera);
@@ -60,7 +60,7 @@ function wireStart() {
 (async function boot() {
   try { await loadModel(); }
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
-  buildStage(); wireStageInput(); wireHud(); wireAssetUi(); wireLibrary(); wireControllers(); wirePresets(); wireStart();
+  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wireAssetUi(); wireLibrary(); wireControllers(); wirePresets(); wireStart();
   initLibrary().catch((e) => logLine('library: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();
   $('master').value = state.master; canvas.style.cursor = 'grab';

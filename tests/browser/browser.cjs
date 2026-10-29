@@ -92,6 +92,46 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(m.inPk > 0.01, `riff source feeds the engine (peak ${(20 * Math.log10(m.inPk)).toFixed(1)} dBFS)`);
   await page.screenshot({ path: path.join(shots, 'shot-stage.png') });
 
+  console.log('6. Modulation sources: open, edit, depth, patch');
+  await page.click('#overview'); await sleep(1500);
+  const lbl = await page.evaluate(() => window.__rig.srcScreen('lfo', 'lbl'));
+  await page.mouse.click(lbl.x, lbl.y); await sleep(400);
+  let st = await page.evaluate(() => ({ focus: window.__rig.state.focus, carrying: window.__rig.state.carrying, h2: document.querySelector('#panel h2').textContent }));
+  check(st.focus === 'src:lfo' && !st.carrying && st.h2 === 'LFO', `clicking the LFO's name opens its panel without picking up a cable (${st.h2})`);
+  const orb = await page.evaluate(() => window.__rig.srcScreen('env', 'orb'));
+  await page.mouse.click(orb.x, orb.y); await sleep(400);
+  st = await page.evaluate(() => ({ focus: window.__rig.state.focus, carrying: window.__rig.state.carrying }));
+  check(st.focus === 'src:env' && st.carrying === 'env', 'clicking an orb opens that source and picks up a cable');
+  await page.keyboard.press('Escape'); await page.mouse.click(lbl.x, lbl.y); await sleep(400);
+  const crossings = () => page.evaluate(async () => { let n = 0, last = window.__rig.src('lfo'); for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 50)); const v = window.__rig.src('lfo'); if ((v >= 0) !== (last >= 0)) n++; last = v; } return n; });
+  const slow = await crossings();
+  await page.$eval('[data-spid="lfo.rate"]', (el) => { el.value = '0'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await sleep(300);
+  const fast = await crossings(), rate = await page.evaluate(() => window.__rig.srcParam('lfo', 'rate'));
+  const shown = await page.textContent('[data-sdisp="lfo.rate"]');
+  check(Math.abs(rate - 0.5) < 1e-6 && fast >= 8 && slow <= 2 && shown.trim() === '0.5 beats', `RATE knob: 8 beats -> 0.5 beats ("${shown.trim()}"); LFO zero crossings in 2 s: ${slow} -> ${fast}`);
+  await page.$eval('[data-depth="holo.feedback"]', (el) => { el.value = '0.05'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+  await sleep(200);
+  const dlog = await page.evaluate(() => window.__rig.log.slice(-3));
+  check(dlog.includes("mod_connect 3 feedback lfo 0.0500") && (await page.textContent(`[data-ddisp="holo.feedback"]`)) === "±5%", `depth slider: ${dlog[dlog.length - 1]}`);
+  await page.selectOption('[data-srcpatch="lfo"]', 'gate.release'); await sleep(300);
+  check(await page.evaluate(() => window.__rig.state.conns['gate.release'] === 'lfo' && document.querySelectorAll('#panel .patch').length === 2), 'Patch to: LFO -> GATE RELEASE added; panel lists 2 patches');
+  await page.click('[data-act="reset-src"]'); await sleep(200);
+  check(Math.abs((await page.evaluate(() => window.__rig.srcParam('lfo', 'rate'))) - 8) < 1e-4, 'Defaults puts RATE back to 8 beats');
+  await page.screenshot({ path: path.join(shots, 'shot-source.png') });
+
+  console.log('7. Side panel hides and comes back (button and P), remembered');
+  await page.click('#panelToggle'); await sleep(400);
+  st = await page.evaluate(() => ({ vis: getComputedStyle(document.getElementById('panel')).visibility, tab: document.getElementById('panelToggle').textContent.trim(), saved: localStorage.getItem('rig01.panelHidden') }));
+  check(st.vis === 'hidden' && st.tab.endsWith('LFO') && st.saved === '1', `hidden; the tab reads “${st.tab}”; remembered (${st.saved})`);
+  await page.keyboard.press('p'); await sleep(400);
+  check(await page.evaluate(() => getComputedStyle(document.getElementById('panel')).visibility === 'visible' && localStorage.getItem('rig01.panelHidden') === '0'), 'P brings it back');
+
+  console.log('8. Hall background and card faces');
+  const bg = await page.evaluate(() => document.getElementById('stage').style.backgroundImage.slice(0, 30));
+  const card = await page.evaluate(() => window.__rig.facePixel('cab', 259, 440)), glass = await page.evaluate(() => window.__rig.facePixel('cab', 100, 300));
+  check(bg.startsWith('url("data:image/webp') && card[0] > 200 && card[1] > 200 && card[2] > 200 && glass[0] < 60, `background is the hall image; cab face: card ${card.slice(0, 3)}, screen ${glass.slice(0, 3)}`);
+
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nALL BROWSER CHECKS PASSED');

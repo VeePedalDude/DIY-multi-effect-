@@ -4,7 +4,10 @@
 
 namespace rig {
 
-inline constexpr SourceDesc ORBIT_DESC = {"orbit", "THREE-BODY", "chaotic orbit", nullptr, 0, {nullptr, nullptr}};
+inline constexpr ParamDesc ORBIT_PARAMS[] = {
+  {"speed", "SPEED", 0.1f, 10.f, 0.5f, "x", Curve::Log, 2, false},   // 1x
+};
+inline constexpr SourceDesc ORBIT_DESC = {"orbit", "THREE-BODY", "chaotic orbit", nullptr, 0, {nullptr, nullptr}, 1, ORBIT_PARAMS};
 
 struct Orbit : Source {
   float px[3], py[3], vx[3], vy[3];
@@ -28,7 +31,8 @@ struct Orbit : Source {
     for (int a = 0; a < 3; a++) if (fabsf(px[a] - cx) > 4 || fabsf(py[a] - cy) > 4) { resetBodies(); break; }
   }
   float update(const SourceContext& c) override {
-    for (float acc = 0; acc < c.dt; acc += 0.002f) step(0.002f);
+    const float span = c.dt * knob(c, 0);                     // SPEED scales simulated time
+    for (float acc = 0; acc < span; acc += 0.002f) step(0.002f);
     float dx = px[0] - px[1], dy = py[0] - py[1];
     return tanhf((sqrtf(dx * dx + dy * dy) - 1.2f) * 1.5f);
   }

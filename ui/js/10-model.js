@@ -29,7 +29,14 @@ async function loadModel() {
   });
   PARAMS = {}; MODS.forEach((m) => m.params.forEach((p) => { PARAMS[p.id] = p; }));
   let fb = 0;
-  SRC = DESC.sources.map((d, i) => ({ id: d.id, name: d.name, sub: d.sub, ext: d.ext, meterNames: d.meters, idx: i, color: SOURCE_COLORS[d.id] || FALLBACK_COLORS[fb++ % FALLBACK_COLORS.length] }));
+  SRC = DESC.sources.map((d, i) => {
+    const s = { id: d.id, name: d.name, sub: d.sub, ext: d.ext, meterNames: d.meters, idx: i, color: SOURCE_COLORS[d.id] || FALLBACK_COLORS[fb++ % FALLBACK_COLORS.length], params: [] };
+    s.params = (d.params || []).map((q, pi) => {           // the source's own knobs (src_set), same shape as module params
+      const f = formatter(q);
+      return { id: `${d.id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, src: s, pi };
+    });
+    return s;
+  });
   SRCMAP = Object.fromEntries(SRC.map((s) => [s.id, s]));
   Object.keys(state.conns).forEach((pid) => { if (!PARAMS[pid] || !SRCMAP[state.conns[pid]]) delete state.conns[pid]; });
   state.focus = (MODS.find((m) => m.id === 'holo') || MODS[0]).id;

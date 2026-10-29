@@ -1,0 +1,18 @@
+{
+  "format": "rig-preset",
+  "version": 2,
+  "name": "Source Knobs",
+  "saved": "2026-10-29T07:00:00.000Z",
+  "chain": [
+    { "id": "holo", "bypass": false, "params": { "feedback": 40, "halo": 50 } }
+  ],
+  "mods": [ { "target": "holo.feedback", "source": "lfo", "depth": 0.3 } ],
+  "sources": [
+    { "id": "lfo", "params": { "rate": 2, "shape": 50 } },
+    { "id": "adsr", "params": { "attack": 120, "release": 1200 } },
+    { "id": "env", "params": { "floor": -72 } }
+  ],
+  "tempo": 100,
+  "master": -10,
+  "scenes": { "B": { "chain": [], "mods": [], "sources": [ { "id": "lfo", "params": { "rate": 32 } } ], "tempo": 100 } }
+}

@@ -5,26 +5,11 @@
 // facts from one place. Parameters arrive normalised 0..1; call map(i, v) to get
 // the real value (dB, ms, Hz, %), using the same curve the UI shows.
 #pragma once
-#include "dsp.h"
+#include "param.h"
 
 namespace rig {
 
-constexpr int MAXPAR = 8;          // parameters per module
 constexpr int MAXMODMETERS = 2;    // display values a module can report
-
-enum class Curve { Lin, Log };
-
-struct ParamDesc {
-  const char* symbol;              // protocol name: param_set <inst> <symbol> <0..1>
-  const char* label;               // knob label in the UI
-  float min, max;                  // real-world range
-  float def;                       // default, normalised 0..1
-  const char* unit;                // "dB", "ms", "Hz", "%", "s" or ""
-  Curve curve;                     // Lin, or Log (min and max must be > 0)
-  int decimals;                    // digits shown in the UI
-  bool sign;                       // show a leading + for positive values
-  float map(float v) const { return curve == Curve::Log ? min * powf(max / min, v) : min + (max - min) * v; }
-};
 
 // A file slot: the module accepts a file of this kind from the library (an IR, a NAM capture...).
 struct AssetSlot {

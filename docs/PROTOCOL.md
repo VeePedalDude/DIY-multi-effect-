@@ -11,6 +11,7 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `mod_disconnect <inst> <symbol>` | unpatch |
 | `set_bpm <30..300>` | tempo for synced effects and the LFO |
 | `master <-60..6>` | master gain in dB |
+| `src_set <source> <symbol> <0..1>` | set a modulation source's knob (`src_set lfo rate 0.25`) |
 | `ext <source> <value>` | feed an outside value to a source (`ext heart 72`, `ext ctrl -0.4`) |
 | `input_channel <0\|1>` | browser only: which interface input to use |
 | `asset_load <inst> <kind>/<file>` | load a library file into a module's slot (`asset_load cab ir/V30 SM57.wav`) |
@@ -27,7 +28,16 @@ from the engine's description; the current set:
 | 3 | holo | feedback, halo |
 | 4 | tess | size, fold |
 
-Sources: `lfo env adsr orbit heart ctrl`.
+Sources and their knobs (`src_set`):
+
+| source | knobs |
+|---|---|
+| lfo | rate (beats per cycle), shape (sine → triangle → square) |
+| env | attack, release, floor |
+| adsr | attack, decay, sustain, release |
+| orbit | speed |
+| heart | rest (simulated bpm when no strap is connected) |
+| ctrl | smooth, deadzone |
 
 In the browser the page reads the file from the library and sends it to the engine (a binary
 message: a `.nam` file's text as-is, or an IR decoded to the `RIR1` header plus float samples,

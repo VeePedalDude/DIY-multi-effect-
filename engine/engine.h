@@ -31,10 +31,17 @@ struct Sources {
   Source* list[NSRC] = { RIG_SOURCES(RIG_PTR) };
 #undef RIG_PTR
   float val[NSRC] = {0};
-  void init(float sr) { for (auto* s : list) s->init(sr); memset(val, 0, sizeof val); }
+  float base[NSRC][MAXPAR];                                 // each source's knobs, normalised
+  void init(float sr) {
+    for (auto* s : list) s->init(sr);
+    memset(val, 0, sizeof val);
+    for (int k = 0; k < NSRC; k++) for (int p = 0; p < MAXPAR; p++) base[k][p] = p < list[k]->desc().nparams ? list[k]->desc().params[p].def : 0.f;
+  }
   void update(const float* in, int n, float sr, float bpm) {
-    SourceContext c{in, n, sr, (float)n / sr, bpm};
-    for (int k = 0; k < NSRC; k++) val[k] = clampf(list[k]->update(c), -1.f, 1.f);
+    for (int k = 0; k < NSRC; k++) {
+      SourceContext c{in, n, sr, (float)n / sr, bpm, base[k]};
+      val[k] = clampf(list[k]->update(c), -1.f, 1.f);
+    }
   }
 };
 
@@ -51,10 +58,10 @@ struct JsonOut {
   void num(double v) {
     if (!(v == v)) { raw("null"); return; }
     if (v < 0) { ch('-'); v = -v; }
-    long long scaled = (long long)(v * 10000.0 + 0.5), ip = scaled / 10000, fp = scaled % 10000;
+    long long scaled = (long long)(v * 1000000.0 + 0.5), ip = scaled / 1000000, fp = scaled % 1000000;
     char t[24]; int n = 0; do { t[n++] = (char)('0' + ip % 10); ip /= 10; } while (ip);
     while (n) ch(t[--n]);
-    if (fp) { ch('.'); int d = 1000; while (fp && d) { ch((char)('0' + fp / d)); fp %= d; d /= 10; } }
+    if (fp) { ch('.'); int d = 100000; while (fp && d) { ch((char)('0' + fp / d)); fp %= d; d /= 10; } }
   }
   void key(const char* k) { str(k); ch(':'); }
 };
@@ -160,6 +167,23 @@ struct Engine {
   }
   int sourceIndex(const char* id) const { for (int k = 0; k < NSRC; k++) if (!strcmp(src.list[k]->desc().id, id)) return k; return -1; }
 
+  static void params(JsonOut& j, int n, const ParamDesc* ps) {
+    j.ch('[');
+    for (int p = 0; p < n; p++) {
+      const ParamDesc& q = ps[p];
+      if (p) j.ch(',');
+      j.ch('{'); j.key("symbol"); j.str(q.symbol); j.ch(','); j.key("label"); j.str(q.label); j.ch(',');
+      j.key("min"); j.num(q.min); j.ch(','); j.key("max"); j.num(q.max); j.ch(','); j.key("def"); j.num(q.def); j.ch(',');
+      j.key("unit"); j.str(q.unit); j.ch(','); j.key("curve"); j.str(q.curve == Curve::Log ? "log" : "lin"); j.ch(',');
+      j.key("decimals"); j.num(q.decimals); j.ch(','); j.key("sign"); j.raw(q.sign ? "true" : "false"); j.ch('}');
+    }
+    j.ch(']');
+  }
+  int srcParamIndex(int k, const char* sym) const {
+    const SourceDesc& d = src.list[k]->desc();
+    for (int p = 0; p < d.nparams; p++) if (!strcmp(d.params[p].symbol, sym)) return p;
+    return -1;
+  }
   void describe() {
     JsonOut j(descJson, sizeof descJson);
     j.ch('{');
@@ -175,16 +199,8 @@ struct Engine {
       const ModuleDesc& d = mods[m]->desc();
       if (m) j.ch(',');
       j.ch('{'); j.key("id"); j.str(d.id); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("kind"); j.str(d.kind); j.ch(',');
-      j.key("params"); j.ch('[');
-      for (int p = 0; p < d.nparams; p++) {
-        const ParamDesc& q = d.params[p];
-        if (p) j.ch(',');
-        j.ch('{'); j.key("symbol"); j.str(q.symbol); j.ch(','); j.key("label"); j.str(q.label); j.ch(',');
-        j.key("min"); j.num(q.min); j.ch(','); j.key("max"); j.num(q.max); j.ch(','); j.key("def"); j.num(q.def); j.ch(',');
-        j.key("unit"); j.str(q.unit); j.ch(','); j.key("curve"); j.str(q.curve == Curve::Log ? "log" : "lin"); j.ch(',');
-        j.key("decimals"); j.num(q.decimals); j.ch(','); j.key("sign"); j.raw(q.sign ? "true" : "false"); j.ch('}');
-      }
-      j.raw("],"); j.key("meters"); j.ch('[');
+      j.key("params"); params(j, d.nparams, d.params);
+      j.ch(','); j.key("meters"); j.ch('[');
       for (int k = 0; k < d.nmeters; k++) { if (k) j.ch(','); j.str(d.meters[k]); }
       j.raw("],"); j.key("asset");
       if (!d.asset.kind) j.raw("null");
@@ -201,7 +217,7 @@ struct Engine {
       const SourceDesc& d = src.list[k]->desc();
       if (k) j.ch(',');
       j.ch('{'); j.key("id"); j.str(d.id); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
-      j.key("ext"); j.str(d.ext); j.ch(','); j.key("meters"); j.ch('[');
+      j.key("ext"); j.str(d.ext); j.ch(','); j.key("params"); params(j, d.nparams, d.params); j.ch(','); j.key("meters"); j.ch('[');
       for (int q = 0; q < d.nmeters; q++) { if (q) j.ch(','); j.str(d.meters[q]); }
       j.raw("]}");
     }

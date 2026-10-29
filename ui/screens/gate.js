@@ -9,3 +9,4 @@ screen('gate', (c, b, m, h) => {
   c.fillStyle = open ? '#9BE15D' : '#94A3BD'; c.fillText(open ? 'OPEN' : 'CLOSED', b.x + 20, b.y + 128);
   c.fillStyle = '#94A3BD'; c.textAlign = 'right'; c.fillText(h.inPk != null ? inDb.toFixed(0) + ' dBFS in' : 'no signal', b.x + b.w - 20, b.y + 128); c.textAlign = 'left';
 });
+TILE.gate = 'teal';   // card colour (ui/assets/tile-teal.webp)

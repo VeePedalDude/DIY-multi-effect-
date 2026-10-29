@@ -35,6 +35,11 @@ EXPORT(rig_mod) void rig_mod(int m, int p, int src, float depth) {
   E().conn[m][p] = (src >= 0 && src < rig::NSRC) ? src : -1;
   E().depth[m][p] = rig::clampf(depth, 0.f, 1.f);
 }
+// A source's knob (LFO rate, ADSR attack...), normalised 0..1 like module parameters.
+EXPORT(rig_src_param) void rig_src_param(int src, int p, float v) {
+  if (src < 0 || src >= rig::NSRC || p < 0 || p >= E().src.list[src]->desc().nparams) return;
+  E().src.base[src][p] = rig::clampf(v, 0.f, 1.f);
+}
 EXPORT(rig_ext)    void rig_ext(int src, float v) { if (src >= 0 && src < rig::NSRC) E().src.list[src]->ext(v); }
 EXPORT(rig_tempo)  void rig_tempo(float bpm) { E().bpm = rig::clampf(bpm, 30.f, 300.f); }
 EXPORT(rig_master) void rig_master(float db) { E().masterDb = rig::clampf(db, -60.f, 6.f); }

@@ -9,7 +9,7 @@
 <style>
 /* Layout: full-bleed WebGL stage; glass HUD bars top and bottom; focus panel docked right; settings drawer on the left. */
 :root{
-  --bg:#05070C; --glass:rgba(9,13,22,.86); --raise:#0F1524; --line:#1F2A40; --line2:#2A3550;
+  --bg:#07050D; --glass:rgba(11,9,21,.86); --raise:#0F1524; --line:#1F2A40; --line2:#2A3550;
   --fg:#E6ECF5; --muted:#94A3BD; --accent:#4FE3F0; --ink:#06080E; --ok:#9BE15D; --warn:#FFB547; --bad:#FF5A6E;
   --display:"Chakra Petch","Rajdhani",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
   --topH:68px; --botH:96px; --panelW:330px; color-scheme:dark;
@@ -17,7 +17,7 @@
 html,body{height:100%;margin:0}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--display);overflow:hidden}
-#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:#0b0716 center/cover no-repeat}
 .hud{position:fixed;z-index:5}
 button,select,input{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -120,7 +120,26 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .choice input{margin-top:3px;accent-color:var(--accent)}
 .warn{font-size:13px;color:var(--warn);line-height:1.5}
 .err-box{font-size:14px;color:var(--bad);line-height:1.5}
-@media (max-width:900px){.readouts{display:none}.panel{display:none}.matrix{right:16px}}
+/* side panel: hide/show tab; when hidden the matrix takes the width */
+.ptoggle{top:calc(var(--topH) + 22px);right:calc(var(--panelW) + 24px);min-height:36px;min-width:36px;padding:0 10px;border:1px solid var(--line2);border-radius:10px;background:var(--glass);color:var(--fg);font:600 13px/1 var(--display);letter-spacing:.08em;backdrop-filter:blur(8px)}
+.ptoggle:hover{border-color:var(--accent)}
+.ptoggle span{font-size:20px;line-height:1;vertical-align:-2px}
+.panel{transition:transform .25s ease,opacity .25s ease}
+body.panel-hidden .panel{transform:translateX(calc(100% + 24px));opacity:0;pointer-events:none;visibility:hidden}
+body.panel-hidden .ptoggle{right:16px}
+body.panel-hidden .matrix{right:16px}
+@media (prefers-reduced-motion: reduce){.panel{transition:none}}
+.btn.mini{min-height:30px;padding:0 10px;font-size:11px}
+.linkbtn{background:none;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}
+.linkbtn:hover{text-decoration-color:var(--accent)}
+.depth{flex-direction:row!important;align-items:center;gap:10px!important}
+.depth input{flex:1}
+.depth .mono{min-width:46px;text-align:right;color:var(--fg)}
+.scope{width:100%;height:auto;border-radius:10px;border:1px solid var(--line)}
+.patches{display:flex;flex-direction:column;gap:12px}
+.patch{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(15,21,36,.6)}
+.patch .prow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
+@media (max-width:900px){.readouts{display:none}.panel{display:none}.ptoggle{display:none}.matrix{right:16px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -151,6 +170,7 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 </header>
 
 <aside class="hud panel" id="panel" aria-live="polite"></aside>
+<button class="hud ptoggle" id="panelToggle" aria-controls="panel" aria-expanded="true"></button>
 <div id="dropHint" hidden></div>
 <section class="hud matrix" id="matrix" hidden aria-label="Modulation matrix"></section>
 

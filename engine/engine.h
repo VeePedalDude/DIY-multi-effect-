@@ -186,7 +186,14 @@ struct Engine {
       }
       j.raw("],"); j.key("meters"); j.ch('[');
       for (int k = 0; k < d.nmeters; k++) { if (k) j.ch(','); j.str(d.meters[k]); }
-      j.raw("]}");
+      j.raw("],"); j.key("asset");
+      if (!d.asset.kind) j.raw("null");
+      else {
+        j.ch('{'); j.key("kind"); j.str(d.asset.kind); j.ch(','); j.key("label"); j.str(d.asset.label); j.ch(',');
+        j.key("exts"); j.str(d.asset.exts); j.ch(','); j.key("ready"); j.raw(d.asset.ready ? "true" : "false"); j.ch(',');
+        j.key("maxBytes"); j.num(d.asset.maxBytes); j.ch('}');
+      }
+      j.ch('}');
     }
     j.raw("],");
     j.key("sources"); j.ch('[');

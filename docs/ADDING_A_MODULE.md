@@ -71,6 +71,23 @@ TEST("70 trem: full depth dips the level") {
 
 `only(e, index)` isolates one module. `riffSignal()` gives the synthetic guitar riff.
 
+## Optional: a file slot (IRs, captures, samples)
+
+Declare a slot in the description and implement three functions. The library, search, drag and
+drop, presets and the protocol all pick it up automatically:
+
+```cpp
+inline constexpr ModuleDesc VERB_DESC = {"verb", "ROOM IR", "convolution", 2, VERB_PARAMS, 0, {nullptr, nullptr},
+                                         {"room-ir", "Room IR", ".wav", true, 48000 * 4 * 4}};   // kind, label, exts, ready, max bytes
+unsigned char* assetBuffer() override { return reinterpret_cast<unsigned char*>(irBuf); }
+int assetCommit(int bytes) override { /* use bytes / 4 float samples */ return 0; }
+void assetClear() override { /* back to built-in */ }
+```
+
+`.wav` files are decoded by the host to mono float32 at the engine rate. Any other extension
+arrives as raw file bytes. Use `ready = false` to accept files before the module can play them.
+The library gets a `room-ir/` folder automatically.
+
 ## Optional: a face screen, `ui/screens/<id>.js`
 
 Without one, the face shows a bar per parameter. To draw something specific:

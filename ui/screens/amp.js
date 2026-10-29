@@ -9,4 +9,4 @@ screen('amp', (c, b, m, h) => {
   }
   c.stroke(); c.fillStyle = '#94A3BD'; c.fillText('NAM A2 drops in here', b.x + 20, b.y + 26);
 });
-NOTES.amp = 'Built-in waveshaper amp (2x oversampled, anti-aliased). The NAM A2 engine replaces this slot next.';
+NOTES.amp = 'Built-in waveshaper amp (2x oversampled, anti-aliased) until the NAM A2 engine is compiled in.';

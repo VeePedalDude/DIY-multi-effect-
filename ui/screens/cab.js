@@ -13,4 +13,4 @@ screen('cab', (c, b, m, h) => {
   }
   c.stroke(); c.fillStyle = '#94A3BD'; c.fillText(resp ? 'loaded IR' : 'built-in cab', b.x + 20, b.y + 26);
 });
-NOTES.cab = 'Load your own cab IR from Settings.';
+NOTES.cab = 'Drop a .wav IR on this module, or pick one from the library below.';

@@ -8,7 +8,9 @@ inline constexpr ParamDesc CAB_PARAMS[] = {
   {"locut", "LO CUT", 20.f, 399.0525f, 0.25f, "Hz", Curve::Log, 0, false},
   {"mix",   "MIX",     0.f, 100.f,   0.90f, "%",  Curve::Lin, 0, false},
 };
-inline constexpr ModuleDesc CAB_DESC = {"cab", "CAB IR", "built-in cab", 2, CAB_PARAMS, 1, {"taps", nullptr}};
+// Asset payload: mono float32 samples at the engine sample rate (the host decodes and resamples the .wav).
+inline constexpr ModuleDesc CAB_DESC = {"cab", "CAB IR", "built-in cab", 2, CAB_PARAMS, 1, {"taps", nullptr},
+                                        {"ir", "Cab IR", ".wav", true, 2048 * 4}};
 
 struct Cab : Module {
   static constexpr int MAXIR = 2048;
@@ -65,6 +67,14 @@ struct Cab : Module {
     }
   }
   void meters(float* out) const override { out[0] = (float)len; }
+  unsigned char* assetBuffer() override { return reinterpret_cast<unsigned char*>(load); }
+  int assetCommit(int bytes) override {
+    int n = bytes / 4;
+    if (n < 1) return -1;
+    commit(n);
+    return 0;
+  }
+  void assetClear() override { makeDefault(); }
 };
 
 } // namespace rig

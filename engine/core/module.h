@@ -26,6 +26,15 @@ struct ParamDesc {
   float map(float v) const { return curve == Curve::Log ? min * powf(max / min, v) : min + (max - min) * v; }
 };
 
+// A file slot: the module accepts a file of this kind from the library (an IR, a NAM capture...).
+struct AssetSlot {
+  const char* kind = nullptr;      // library folder: "ir", "nam" (nullptr = no slot)
+  const char* label = nullptr;     // UI label: "Cab IR"
+  const char* exts = nullptr;      // accepted extensions, comma separated: ".wav"
+  bool ready = false;              // false = files can be chosen and saved, but the engine can't load them yet
+  int maxBytes = 0;                // size of the module's asset buffer
+};
+
 struct ModuleDesc {
   const char* id;                  // short stable id: "holo"
   const char* name;                // face title: "HOLOGRAM"
@@ -34,6 +43,7 @@ struct ModuleDesc {
   const ParamDesc* params;
   int nmeters;
   const char* meters[MAXMODMETERS];  // names of values reported by meters()
+  AssetSlot asset = {};            // optional file slot
 };
 
 // Shared per-block facts every module may read.
@@ -53,6 +63,12 @@ struct Module {
                        const float* e, const Context& ctx) = 0;
   // Optional display values (gate open, delay time...), up to MAXMODMETERS.
   virtual void meters(float* out) const { (void)out; }
+  // Optional file slot (see AssetSlot). The host writes up to desc().asset.maxBytes into
+  // assetBuffer(), then calls assetCommit(bytes); 0 = loaded, negative = rejected.
+  // assetClear() returns to the module's built-in default. Called outside process().
+  virtual unsigned char* assetBuffer() { return nullptr; }
+  virtual int assetCommit(int bytes) { (void)bytes; return -1; }
+  virtual void assetClear() {}
   float map(int i, float v) const { return desc().params[i].map(v); }
 };
 

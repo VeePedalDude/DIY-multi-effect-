@@ -92,6 +92,19 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .drawer{left:16px;top:calc(var(--topH) + 14px);bottom:calc(var(--botH) + 14px);width:360px;box-sizing:border-box;padding:20px;overflow:auto;display:flex;flex-direction:column;gap:18px;background:var(--glass);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(10px);z-index:7}
 .drawer h3{margin:0;font-size:15px;letter-spacing:.12em;text-transform:uppercase}
 .drawer section{display:flex;flex-direction:column;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.asset{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line2);border-radius:12px}
+.asset .cur{font-size:14px;line-height:1.4}
+.asset .cur b{display:block;word-break:break-word}
+.asset input[type=search]{min-height:36px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px;font:400 13px var(--mono)}
+.asset ul{list-style:none;margin:0;padding:0;max-height:190px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.asset li button{width:100%;text-align:left;padding:8px 10px;border:1px solid transparent;border-radius:8px;background:#0B1120;display:flex;flex-direction:column;gap:2px}
+.asset li button:hover{border-color:var(--accent)}
+.asset li button[aria-current="true"]{border-color:var(--accent);background:#0E2530}
+.asset li .meta{font:400 11px/1.3 var(--mono);color:var(--muted)}
+.drop{border:1px dashed var(--line2);border-radius:10px;padding:10px;text-align:center;font-size:13px;color:var(--muted)}
+.drop.over,.stage-drop{border-color:var(--accent);color:var(--fg);background:#0E2530}
+.warnline{color:var(--warn)}
+#dropHint{position:fixed;left:50%;top:calc(var(--topH) + 18px);transform:translateX(-50%);z-index:8;padding:10px 16px;border-radius:10px;background:#0E2530;border:1px solid var(--accent);font-size:15px;pointer-events:none}
 .log{font:400 12px/1.5 var(--mono);color:var(--muted);background:#070B14;border:1px solid var(--line);border-radius:8px;padding:8px;height:150px;overflow:auto;white-space:pre-wrap}
 .log .err{color:var(--bad)}
 .cmdrow{display:flex;gap:6px}
@@ -138,6 +151,7 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 </header>
 
 <aside class="hud panel" id="panel" aria-live="polite"></aside>
+<div id="dropHint" hidden></div>
 <section class="hud matrix" id="matrix" hidden aria-label="Modulation matrix"></section>
 
 <aside class="hud drawer" id="drawer" hidden aria-label="Settings">
@@ -153,10 +167,13 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
     <p class="note" id="latNote">Start audio to see measured latency.</p>
   </section>
   <section>
-    <h3>Cab IR</h3>
-    <p class="note" id="irName">Built-in synthetic cab (21 ms)</p>
-    <div class="row"><button class="btn" id="irLoad">Load IR .wav</button><button class="btn" id="irReset">Built-in</button></div>
-    <input type="file" id="irFile" accept=".wav,audio/*" hidden>
+    <h3>Library</h3>
+    <p class="note" id="libWhere">Library: starting…</p>
+    <div class="row"><button class="btn" id="libChoose">Choose folder…</button><button class="btn" id="libReconnect" hidden>Reconnect folder</button><button class="btn" id="libRescan">Rescan</button></div>
+    <div class="row"><button class="btn" id="libImport">Import files…</button><button class="btn" id="libImportDir">Import a folder…</button></div>
+    <input type="file" id="libFiles" multiple hidden>
+    <p class="note" id="libCounts"></p>
+    <p class="note">Drop .wav IRs, .nam captures or .rig.json presets onto a module or anywhere on the stage.</p>
   </section>
   <section>
     <h3>Controllers</h3>
@@ -168,8 +185,8 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
     <h3>Presets</h3>
     <div class="row"><input id="presetInput" aria-label="Preset name" style="flex:1;min-height:38px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px" value="Ambient Drive"><button class="btn" id="presetSave">Save</button></div>
     <select id="presetSel" aria-label="Saved presets"></select>
-    <div class="row"><button class="btn" id="presetLoad">Load</button><button class="btn" id="presetExport">Export</button><button class="btn" id="presetImport">Import</button></div>
-    <input type="file" id="presetFile" accept=".json" hidden>
+    <div class="row"><button class="btn" id="presetLoad">Load</button><button class="btn" id="presetDelete">Delete</button></div>
+    <p class="note" id="presetNote">Presets are .rig.json files in the library's presets folder.</p>
   </section>
   <section>
     <h3>Engine log</h3>

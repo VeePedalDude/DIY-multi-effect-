@@ -3,15 +3,16 @@ const panel = $('panel'), matrix = $('matrix'), hint = $('hint');
 function renderPanel() {
   const m = MODS.find((x) => x.id === state.focus); if (!m) return;
   const byp = !!state.bypass[m.id];
-  let h = `<div><div class="eyebrow">Module ${m.idx + 1}/${MODS.length} · instance ${m.inst}</div><h2>${m.name}</h2><div class="kind">${m.kind}</div></div>
+  let h = `<div><div class="eyebrow">Module ${m.idx + 1}/${MODS.length} · instance ${m.inst}</div><h2>${m.name}</h2><div class="kind">${moduleSubtitle(m).replace(/</g, '&lt;')}</div></div>
   <div class="row"><button class="btn ${byp ? 'byp' : 'on'}" data-act="bypass" aria-pressed="${byp}">${byp ? 'Bypassed' : 'Active'}</button></div>`;
   if (NOTES[m.id]) h += `<p class="note">${NOTES[m.id]}</p>`;
+  h += assetPanelHtml(m);
   h += `<div class="params">`;
   m.params.forEach((p) => {
     const sid = state.conns[p.id], S = sid && SRCMAP[sid];
     h += `<div class="param"><div class="prow"><b><label for="r-${p.id}" style="color:inherit;font:inherit;display:inline">${p.label}</label></b><span class="num" data-disp="${p.id}"></span></div>
     <input type="range" id="r-${p.id}" data-pid="${p.id}" min="0" max="1" step="0.001" value="${p.v}">`;
-    if (S) h += `<div class="mod"><span class="dot" style="background:${S.color}"></span><span class="grow">${S.name} <span class="muted mono">±${Math.round(DEPTH * 100)}%</span></span><button class="btn" data-act="unplug" data-pid="${p.id}">Unplug</button></div>`;
+    if (S) h += `<div class="mod"><span class="dot" style="background:${S.color}"></span><span class="grow">${S.name} <span class="muted mono">±${Math.round(depthOf(p.id) * 100)}%</span></span><button class="btn" data-act="unplug" data-pid="${p.id}">Unplug</button></div>`;
     else h += `<div class="mod"><label for="m-${p.id}" class="muted" style="flex-direction:row;align-items:center;gap:8px;font-size:13px">Patch <select id="m-${p.id}" data-patch="${p.id}" style="min-height:32px;width:auto"><option value="">—</option>${SRC.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}</select></label></div>`;
     h += `</div>`;
   });
@@ -31,7 +32,7 @@ function renderMatrix() {
       h += `<td><button class="cell" data-pid="${p.id}" data-sid="${s.id}" aria-pressed="${on}" aria-label="${s.name} to ${p.mod.name} ${p.label}${on ? ', patched' : ''}" style="${on ? `background:${s.color};border-color:${s.color};box-shadow:0 0 16px ${s.color}88` : ''}"></button></td>`; });
     h += `</tr>`;
   });
-  h += `</tbody></table></div><p class="note" style="margin-top:14px">Each knob takes one source at ±${Math.round(DEPTH * 100)}%. Click a dot to patch or unpatch.</p>`;
+  h += `</tbody></table></div><p class="note" style="margin-top:14px">Each knob takes one source; new patches swing ±${Math.round(DEPTH * 100)}%. Click a dot to patch or unpatch.</p>`;
   matrix.innerHTML = h;
 }
 function setHint() {
@@ -83,23 +84,6 @@ function wireHud() {
   $('inSel').onchange = async (e) => { try { await setSource('device', e.target.value); } catch (err) { logLine('input error: ' + err.message, true); } };
   $('chSel').onchange = (e) => rig.cmd(`input_channel ${e.target.value}`);
   $('outSel').onchange = async (e) => { try { await rig.ctx.setSinkId(e.target.value); logLine('output: ' + e.target.selectedOptions[0].textContent); } catch (err) { logLine('output error: ' + err.message, true); } };
-
-  // settings drawer: cab IR (only when the chain has a cab module)
-  const cab = MODS.find((m) => m.id === 'cab');
-  if (!cab) $('irLoad').closest('section').hidden = true;
-  $('irLoad').onclick = () => $('irFile').click();
-  $('irFile').onchange = async (e) => { const f = e.target.files[0]; if (!f || !rig.ctx || !cab) return;
-    try {
-      const buf = await rig.ctx.decodeAudioData(await f.arrayBuffer());
-      const data = buf.getChannelData(0).slice(0, 2048);
-      rig.node.port.postMessage({ type: 'ir', data }, [data.buffer]);
-      const sr = buf.sampleRate, d = buf.getChannelData(0), n = Math.min(d.length, 2048); let resp = [];
-      for (let i = 0; i <= 63; i++) { const hz = 40 * Math.pow(400, i / 63); let re = 0, im = 0; for (let k = 0; k < n; k++) { const ph = -2 * Math.PI * hz * k / sr; re += d[k] * Math.cos(ph); im += d[k] * Math.sin(ph); } resp.push(10 * Math.log10(re * re + im * im + 1e-12)); }
-      const ref = Math.max(...resp); (MODDATA.cab = MODDATA.cab || {}).irResp = resp.map((v) => v - ref);
-      $('irName').textContent = `${f.name} · ${Math.min(buf.length, 2048)} taps${buf.length > 2048 ? ' (first 2048 used)' : ''}`;
-      cab.kind = 'IR · ' + f.name.slice(0, 18);
-    } catch (err) { logLine('could not load IR: ' + err.message, true); } };
-  $('irReset').onclick = () => { if (!rig.node || !cab) return; rig.node.port.postMessage({ type: 'ir_default' }); if (MODDATA.cab) MODDATA.cab.irResp = null; $('irName').textContent = 'Built-in synthetic cab (21 ms)'; cab.kind = 'built-in cab'; };
 
   $('cmdSend').onclick = () => { const v = $('cmdIn').value.trim(); if (v) { rig.cmd(v); $('cmdIn').value = ''; } };
   $('cmdIn').onkeydown = (e) => { if (e.key === 'Enter') $('cmdSend').click(); };

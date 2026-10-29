@@ -9,7 +9,9 @@ inline constexpr ParamDesc AMP_PARAMS[] = {
   {"input",  "INPUT",  -12.f, 24.f, 0.60f, "dB", Curve::Lin, 1, true},
   {"output", "OUTPUT", -18.f,  6.f, 0.50f, "dB", Curve::Lin, 1, true},
 };
-inline constexpr ModuleDesc AMP_DESC = {"amp", "AMP", "stand-in · NAM A2 slot", 2, AMP_PARAMS, 0, {nullptr, nullptr}};
+// NAM slot: captures can be chosen, searched and saved in presets now; ready = false until the NAM engine is compiled in.
+inline constexpr ModuleDesc AMP_DESC = {"amp", "AMP", "stand-in · NAM A2 slot", 2, AMP_PARAMS, 0, {nullptr, nullptr},
+                                        {"nam", "NAM capture", ".nam", false, 0}};
 
 struct Amp : Module {
   Biquad hp, tight, scoop, post, up[3], dn[3];

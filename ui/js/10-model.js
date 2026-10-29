@@ -20,7 +20,7 @@ async function loadModel() {
   DESC = JSON.parse(cStringMain(X.memory, X.rig_describe()));
   LAYOUT = DESC.meters;
   MODS = DESC.modules.map((d, mi) => {
-    const m = { id: d.id, inst: mi, idx: mi, mi, name: d.name, kind: d.kind, meterNames: d.meters, params: [] };
+    const m = { id: d.id, inst: mi, idx: mi, mi, name: d.name, kind: d.kind, meterNames: d.meters, asset: d.asset || null, params: [] };
     m.params = d.params.map((q, pi) => {
       const f = formatter(q);
       return { id: `${d.id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, mod: m, mi, pi };

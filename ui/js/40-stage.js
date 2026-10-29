@@ -134,3 +134,5 @@ function stageClick(h) {
   if (h.knob && state.carrying) { connect(h.knob.id, state.conns[h.knob.id] === state.carrying ? null : state.carrying); state.carrying = null; state.focus = h.mod.id; update(); return; }
   state.focus = h.mod.id; flyTo(h.mod); update();
 }
+// Test helper: where a module's face is on screen (client px), e.g. to drop a file onto it.
+rig.modScreen = (id) => { const m = MODS.find((x) => x.id === id); if (!m) return null; const v = m.group.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };

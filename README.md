@@ -13,6 +13,12 @@ Linux iMac.
 3. **Start audio**, allow the microphone, then in the menu (top left) pick the Focusrite for
    input and output. Raise **MASTER** slowly from −12 dB.
 
+4. Optional but recommended: menu → **Library → Choose folder…** and pick or create a folder such as
+   `Documents/RIG Library`. Your IRs, NAM captures and presets live there as normal files
+   ([how the library works](docs/LIBRARY.md)).
+
+Drop a `.wav` IR onto the cab or a `.nam` capture onto the amp to import and load it.
+
 No guitar? Choose **Built-in test riff**. If Chrome won't ask for the microphone on a file
 opened from disk, run `python -m http.server` in `dist/` and open `http://localhost:8000/rig-test.html`.
 
@@ -30,16 +36,20 @@ engine/
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  js/          00-core 10-model 20-bridge 30-audio 40-stage 45-faces 50-hud 60-controllers 70-presets 90-main
+  js/          00-core 10-model 20-bridge 30-audio 40-stage 45-faces 50-hud
+               52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library)
+               60-controllers 70-presets 72-preset-format 90-main
   screens/     one face display per module: gate.js amp.js cab.js holo.js tess.js
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
   native/      framework.h + one test file per area (chain, gate, amp, cab, holo, tess, sources)
   parity/      native vs WebAssembly comparison
+  ui/          Node unit tests: library and preset format
+  fixtures/    golden preset file (must keep loading forever)
   browser/     headless Chromium tests of the built page
 hosts/linux/   the iMac's native JACK host (next)
 tools/         build_web.py: assembles dist/rig-test.html
-docs/          ARCHITECTURE · PROTOCOL · ADDING_A_MODULE · ADDING_A_SOURCE
+docs/          ARCHITECTURE · PROTOCOL · LIBRARY · ADDING_A_MODULE · ADDING_A_SOURCE
 dist/          rig-test.html (built, committed)
 ```
 
@@ -52,6 +62,7 @@ dist/          rig-test.html (built, committed)
 | give an effect a custom face display | new `ui/screens/<id>.js` |
 | change the stage, panel, matrix | the matching `ui/js/` file |
 | test an effect | new `tests/native/test_<id>.cpp` |
+| let an effect take files (IRs, captures) | declare a file slot in its description ([guide](docs/ADDING_A_MODULE.md#optional-a-file-slot-irs-captures-samples)) |
 
 The engine describes itself (every parameter's range, unit, curve and default), and the
 protocol and UI are built from that description. A new effect therefore shows up with knobs,
@@ -68,18 +79,18 @@ Run on Linux, macOS or WSL:
 ```
 
 It stops at the first failure. Steps: native tests (`-Wall -Wextra -Werror`) → `build/rig.wasm` →
-native vs WebAssembly parity → `dist/rig-test.html` → syntax checks.
+library and preset-format unit tests → native vs WebAssembly parity → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs` and `tests/browser/blocked.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs` and `library.cjs`.
 
 ## Current effects and sources
 
 | # | Module | Knobs | Notes |
 |---|---|---|---|
 | 0 | Noise gate | thresh −80..−20 dB, release 20..500 ms | 6 dB hysteresis, 10 ms hold |
-| 1 | Amp | input −12..+24 dB, output −18..+6 dB | stand-in for the NAM A2 slot; 2x oversampled with ADAA |
-| 2 | Cab IR | lo cut 20..399 Hz, mix | up to 2048 taps; load your own `.wav` |
+| 1 | Amp | input −12..+24 dB, output −18..+6 dB | stand-in until NAM A2 is compiled in; takes `.nam` files already |
+| 2 | Cab IR | lo cut 20..399 Hz, mix | takes `.wav` IRs from the library (first 2048 samples) |
 | 3 | Hologram | feedback 0..95 %, halo | dotted 8th from tap tempo, stereo shimmer |
 | 4 | Tesseract | size → RT60 0.5..7.5 s, 4D fold | 8-line FDN, rotating 4-D matrix |
 
@@ -88,20 +99,26 @@ or a Bluetooth strap), controller (gamepad stick or slider).
 
 ## Test results (this build)
 
-- **Native:** 15 test groups pass. The full chain uses ~4% of one core on this build machine
-  (the old engine measured the same here, back to back). Amp aliasing is 55 dB below the
-  harmonics at the worst case; 24/24 picks detected; delay and reverb stay stable at maximum
-  settings; no clicks on bypass or tempo jumps.
-- **Restructure check:** the split engine reproduces the previous engine bit for bit with fixed
-  knob settings. While knobs are modulated it differs by −81 to −92 dB, which is
-  floating-point rounding from converting through real units.
-- **WebAssembly vs native:** difference energy 86 dB below the signal; 57 KB; no imports.
-- **Headless Chromium (fake mic, 44.1 kHz):** 17/17 checks, plus 4/4 with gamepads blocked.
+- **Native:** 17 test groups pass. The full chain uses ~4% of one core on this build machine.
+  Amp aliasing is 55 dB below the harmonics at the worst case; 24/24 picks detected; delay and
+  reverb stay stable at maximum settings; no clicks on bypass or tempo jumps. File slots: a loaded
+  IR plays at the expected gain, clearing restores the built-in, empty files are rejected.
+- **Library and preset format (Node):** WAV and NAM parsing, search, duplicate and name handling,
+  finding renamed files; the hand-written version-1 preset loads with no notes; a full save and
+  load round trip; renamed knobs, unknown modules, out-of-range values and newer files.
+- **WebAssembly vs native:** difference energy 86 dB below the signal; no imports.
+- **Headless Chromium:** 16/16 main checks, 4/4 with gamepads blocked, and 16/16 library checks.
+  The library checks cover dropping files on a panel and on the stage, search, loading an IR into
+  the engine (resampled to the context rate), saving a preset file, reloading the page and loading
+  it back, and removing a file the preset uses.
 
 ## Known gaps
 
 - Not yet tested on your 2i2, real Windows latency, a real gamepad, or a real heart strap.
-- The amp is a stand-in until NAM A2 is compiled in.
+- The **Choose folder** flow (Chrome's folder picker and its permission prompt) can't be automated
+  here. The same library code is tested through browser storage, which uses the same file-handle
+  interface, but the folder picker itself needs a try on your PC.
+- NAM captures are stored, searchable and saved in presets, but don't play until the NAM engine is compiled in.
+- The cab uses the first 2048 samples of an IR (about 43 ms at 48 kHz): fine for cabinets, too short for room IRs.
 - Reverb decay runs about 18% shorter than its label at large sizes.
 - The chain order is fixed by the registry; reordering it from the UI comes later.
-- Presets saved with the earlier build used different parameter names and won't load.

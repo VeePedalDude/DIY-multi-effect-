@@ -38,7 +38,11 @@ EXPORT(rig_mod) void rig_mod(int m, int p, int src, float depth) {
 EXPORT(rig_ext)    void rig_ext(int src, float v) { if (src >= 0 && src < rig::NSRC) E().src.list[src]->ext(v); }
 EXPORT(rig_tempo)  void rig_tempo(float bpm) { E().bpm = rig::clampf(bpm, 30.f, 300.f); }
 EXPORT(rig_master) void rig_master(float db) { E().masterDb = rig::clampf(db, -60.f, 6.f); }
-EXPORT(rig_ir_buf) float* rig_ir_buf() { return E().cab.load; }
-EXPORT(rig_ir_max) int rig_ir_max() { return rig::Cab::MAXIR; }
-EXPORT(rig_ir_commit) void rig_ir_commit(int n) { E().cab.commit(n); }
-EXPORT(rig_ir_default) void rig_ir_default() { E().cab.makeDefault(); }
+// File slots (IRs, NAM captures...): write bytes into rig_asset_buf(m), then rig_asset_commit(m, bytes).
+EXPORT(rig_asset_buf) unsigned char* rig_asset_buf(int m) { return (m >= 0 && m < rig::NMOD) ? E().mods[m]->assetBuffer() : nullptr; }
+EXPORT(rig_asset_max) int rig_asset_max(int m) { return (m >= 0 && m < rig::NMOD && E().mods[m]->desc().asset.ready) ? E().mods[m]->desc().asset.maxBytes : 0; }
+EXPORT(rig_asset_commit) int rig_asset_commit(int m, int bytes) {
+  if (m < 0 || m >= rig::NMOD || bytes < 0 || bytes > rig_asset_max(m)) return -207;
+  return E().mods[m]->assetCommit(bytes);
+}
+EXPORT(rig_asset_clear) void rig_asset_clear(int m) { if (m >= 0 && m < rig::NMOD) E().mods[m]->assetClear(); }

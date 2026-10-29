@@ -18,6 +18,7 @@ async function startAudio(source) {
   node.connect(ctx.destination);
   rig.node = node;
   sendAll();
+  pushAllAssets();
   await ctx.resume();
   await setSource(source);
   await listDevices();

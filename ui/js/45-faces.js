@@ -7,7 +7,7 @@ function drawKnob(c, cx, cy, p) {
   arcDeg(c, cx, cy, R, -135, 135, '#263149', 10);
   arcDeg(c, cx, cy, R, -135, a, ACC, 10);
   if (S) {
-    const lo = clamp(p.v - DEPTH, 0, 1), hi = clamp(p.v + DEPTH, 0, 1);
+    const dp = depthOf(p.id), lo = clamp(p.v - dp, 0, 1), hi = clamp(p.v + dp, 0, 1);
     const ga = c.globalAlpha; c.globalAlpha = ga * .5; arcDeg(c, cx, cy, R + 19, -135 + 270 * lo, -135 + 270 * hi, S.color, 7); c.globalAlpha = ga;
     const ea = (-135 + 270 * e - 90) * Math.PI / 180; c.beginPath(); c.arc(cx + (R + 19) * Math.cos(ea), cy + (R + 19) * Math.sin(ea), 9, 0, Math.PI * 2); c.fillStyle = S.color; c.fill();
   }
@@ -38,6 +38,8 @@ function drawScreen(m, c) {
   catch (err) { c.fillStyle = '#FF5A6E'; c.fillText('screen error: ' + err.message.slice(0, 30), b.x + 20, b.y + 26); }
   c.restore();
 }
+// Subtitle under a module's name: the loaded file if there is one, otherwise the module's kind.
+function moduleSubtitle(m) { const an = MODDATA[m.id] && MODDATA[m.id].assetName; return an ? `${m.asset.kind.toUpperCase()} · ${an}` : m.kind; }
 function drawFace(m) {
   const c = m.ctx, byp = !!state.bypass[m.id], foc = state.focus === m.id;
   c.globalAlpha = 1; c.clearRect(0, 0, FW, m.FH);
@@ -45,7 +47,8 @@ function drawFace(m) {
   c.globalAlpha = byp ? .42 : 1; c.textBaseline = 'alphabetic';
   c.beginPath(); c.arc(44, 56, 10, 0, Math.PI * 2); c.fillStyle = byp ? '#3A4766' : '#9BE15D'; c.fill();
   c.fillStyle = '#E6ECF5'; c.font = '700 38px "Chakra Petch", sans-serif'; c.fillText(m.name, 66, 70);
-  c.fillStyle = '#94A3BD'; c.font = '400 21px "IBM Plex Mono", monospace'; c.fillText(m.kind, 34, 112);
+  const sub = moduleSubtitle(m);
+  c.fillStyle = '#94A3BD'; c.font = '400 21px "IBM Plex Mono", monospace'; c.fillText(sub.length > 34 ? sub.slice(0, 33) + '…' : sub, 34, 112);
   drawScreen(m, c); m.params.forEach((p) => { const [kx, ky] = knobXY(p); drawKnob(c, kx, ky, p); });
   c.globalAlpha = 1; m.tex.needsUpdate = true;
 }

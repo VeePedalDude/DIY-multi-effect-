@@ -24,6 +24,8 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `ui/worklet/` | runs `rig.wasm` in the browser, parses the text protocol | the engine's description |
 | `ui/js/` | page logic, one file per job (model, bridge, audio, stage, faces, HUD, controllers, presets, main) | the engine's description |
 | `ui/screens/` | the small display on each module's face, one file per module id | its own module |
+| `ui/js/52–56`, `72` | library storage backends, file helpers, library, file-slot UI, preset format ([LIBRARY.md](LIBRARY.md)) | the engine's description |
+| `tests/ui/` | Node unit tests for the library and preset format; `tests/fixtures/` holds the golden preset | `ui/js` pure files |
 | `tests/native/` | engine tests, one file per area | `engine/` |
 | `tests/parity/` | proves the WebAssembly build matches native | C API |
 | `tests/browser/` | headless Chromium tests of the built page | `dist/rig-test.html` |

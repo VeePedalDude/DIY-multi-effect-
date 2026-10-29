@@ -21,7 +21,11 @@ const state = {
   carrying: null, focus: null, view: 'stage', bpm: 120, master: -12,
   conns: { 'amp.input': 'env', 'holo.feedback': 'lfo', 'holo.halo': 'orbit', 'tess.fold': 'heart' },
   bypass: {}, scenes: {}, scene: null, storing: false, ctrl: 0,
+  depths: {},                             // per-patch swing; missing = DEPTH
+  assets: {},                             // module id -> { kind, name, size, hash } chosen from the library
+  presetExtras: [],                       // chain entries for modules this build doesn't have, kept so re-saving loses nothing
 };
+const depthOf = (pid) => state.depths[pid] ?? DEPTH;
 let meters = null;                        // latest engine meter packet
 let T = 0;                                // animation clock, seconds
 

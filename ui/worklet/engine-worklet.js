@@ -11,15 +11,17 @@
 //   src_add <type> [id]                       src_remove <source>
 //   src_mod <source> <symbol> <from source> <depth>
 //   src_unmod <source> <symbol>
+//   fx_add <type> [id] [position]             fx_remove <inst>             fx_move <inst> <position>
 // Sources are rack instances, named by id ("lfo", "lfo2"); every change to the rack is answered
-// with a {type:'rack'} message listing what's in it and in which slot.
+// with a {type:'rack'} message listing what's in it and in which slot. Modules are chain instances
+// ("holo", "holo2"); every change to the chain is answered with a {type:'chain'} message.
 // File slots arrive as {type:'asset', inst, data, ref} messages (binary: a .nam file's text, or an
 // IR as RIR1 header + float samples, see engine/core/nam.h) and are answered with the engine's
 // status line; the Linux host takes the text form `asset_load <inst> <kind>/<file name>` and reads
 // the file from its library folder.
-// <inst> is the chain index (mod-host style) or the module id ("holo").
+// <inst> is the module id ("holo") or its position in the chain (0 = first).
 // Replies: resp <status>  (0 ok, negatives follow mod-host error numbers; src_add: -1 unknown type,
-// -2 id taken or not allowed, -3 rack full)
+// -2 id taken or not allowed, -3 rack full; fx_add the same, for the chain)
 
 const ERR = { INSTANCE_INVALID: -1, ID_TAKEN: -2, RACK_FULL: -3, INVALID_PARAM_SYMBOL: -103, VALUE_OUT_OF_RANGE: -207, INVALID_OPERATION: -902 };
 
@@ -43,13 +45,14 @@ class RigEngine extends AudioWorkletProcessor {
     this.x.rig_init(sampleRate);
     this.desc = JSON.parse(cString(this.x.memory, this.x.rig_describe()));
     this.types = Object.fromEntries(this.desc.sourceTypes.map((t) => [t.type, t]));
-    this.readRack();
+    this.mtypes = Object.fromEntries(this.desc.moduleTypes.map((t) => [t.type, t]));
+    this.readRack(); this.readChain();
     this.mlen = this.x.rig_meters_len();
     this.inCh = 0;
     this.blocks = 0; this.busyMs = 0; this.wallStart = Date.now();
     this.inPk = 0; this.outPk = 0;
     this.port.onmessage = (e) => this.onMsg(e.data);
-    this.port.postMessage({ type: 'describe', desc: this.desc }); this.sendRack();
+    this.port.postMessage({ type: 'describe', desc: this.desc }); this.sendRack(); this.sendChain();
   }
   views() {
     const b = this.x.memory.buffer;
@@ -61,11 +64,16 @@ class RigEngine extends AudioWorkletProcessor {
       this.vM = new Float32Array(b, this.x.rig_meters(), this.mlen);
     }
   }
-  inst(tok) {
-    const mods = this.desc.modules, i = Number(tok);
-    if (Number.isInteger(i)) return i >= 0 && i < mods.length ? i : -1;
-    return mods.findIndex((m) => m.id === tok);
+  readChain() { this.chain = JSON.parse(cString(this.x.memory, this.x.rig_chain())).modules; }
+  sendChain() { this.port.postMessage({ type: 'chain', chain: this.chain }); }
+  inst(tok) {                                  // engine slot of a module, by id or chain position
+    const i = Number(tok);
+    if (Number.isInteger(i)) return i >= 0 && i < this.chain.length ? this.chain[i].slot : -1;
+    const m = this.chain.find((x) => x.id === tok); return m ? m.slot : -1;
   }
+  modParams(slot) { const m = this.chain.find((x) => x.slot === slot); return m ? this.mtypes[m.type].params : []; }
+  modId(slot) { const m = this.chain.find((x) => x.slot === slot); return m ? m.id : null; }
+  writeText(line) { const buf = new Uint8Array(this.x.memory.buffer, this.x.rig_text(), 64); for (let i = 0; i < 64; i++) buf[i] = i < line.length ? line.charCodeAt(i) & 0x7f : 0; }
   readRack() { this.rack = JSON.parse(cString(this.x.memory, this.x.rig_rack())).sources; }
   sendRack() { this.port.postMessage({ type: 'rack', rack: this.rack }); }
   source(tok) { const r = this.rack.find((s) => s.id === tok); return r ? r.slot : -1; }      // rack slot of an instance id
@@ -74,7 +82,7 @@ class RigEngine extends AudioWorkletProcessor {
     const t = String(line).trim().split(/\s+/), c = t[0], X = this.x;
     if (c === 'param_set' || c === 'mod_connect' || c === 'mod_disconnect') {
       const m = this.inst(t[1]); if (m < 0) return ERR.INSTANCE_INVALID;
-      const p = this.desc.modules[m].params.findIndex((q) => q.symbol === t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
+      const p = this.modParams(m).findIndex((q) => q.symbol === t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
       if (c === 'param_set') { const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE; X.rig_param(m, p, v); return 0; }
       if (c === 'mod_disconnect') { X.rig_mod(m, p, -1, 0); return 0; }
       const s = this.source(t[3]), d = Number(t[4]);
@@ -86,10 +94,22 @@ class RigEngine extends AudioWorkletProcessor {
       X.rig_tuner(t[1] === '1' ? 1 : 0, t[2] === '0' ? 0 : 1); return 0;
     }
     if (c === 'tuner_ref') { const v = Number(t[1]); if (!(v >= 400 && v <= 480)) return ERR.VALUE_OUT_OF_RANGE; X.rig_tuner_ref(v); return 0; }
+    if (c === 'fx_add') {                        // fx_add <type> [id] [position]
+      if (!this.mtypes[t[1]]) return ERR.INSTANCE_INVALID;
+      if (t[3] !== undefined && !/^\d+$/.test(t[3])) return ERR.VALUE_OUT_OF_RANGE;
+      this.writeText(`${t[1]} ${t[2] || '-'} ${t[3] || ''}`.slice(0, 60));
+      const k = X.rig_fx_add(); if (k < 0) return k === -2 ? ERR.RACK_FULL : k === -3 ? ERR.ID_TAKEN : ERR.INSTANCE_INVALID;
+      this.readChain(); this.sendChain(); return 0;
+    }
+    if (c === 'fx_remove') { const m = this.inst(t[1]); if (m < 0) return ERR.INSTANCE_INVALID; X.rig_fx_remove(m); this.readChain(); this.sendChain(); return 0; }
+    if (c === 'fx_move') {                       // fx_move <inst> <position>
+      const m = this.inst(t[1]), pos = Number(t[2]); if (m < 0) return ERR.INSTANCE_INVALID;
+      if (!Number.isInteger(pos) || pos < 0) return ERR.VALUE_OUT_OF_RANGE;
+      X.rig_fx_move(m, pos); this.readChain(); this.sendChain(); return 0;
+    }
     if (c === 'src_add') {                       // src_add <type> [id]
       if (!this.types[t[1]]) return ERR.INSTANCE_INVALID;
-      const line = `${t[1]} ${t[2] || ''}`.slice(0, 60), buf = new Uint8Array(X.memory.buffer, X.rig_text(), 64);
-      for (let i = 0; i < 64; i++) buf[i] = i < line.length ? line.charCodeAt(i) & 0x7f : 0;
+      this.writeText(`${t[1]} ${t[2] || ''}`.slice(0, 60));
       const k = X.rig_src_add(); if (k < 0) return k === -2 ? ERR.RACK_FULL : k === -3 ? ERR.ID_TAKEN : ERR.INSTANCE_INVALID;
       this.readRack(); this.sendRack(); return 0;
     }
@@ -132,10 +152,10 @@ class RigEngine extends AudioWorkletProcessor {
         }
         note = cString(this.x.memory, this.x.rig_asset_status(m));
       }
-      this.port.postMessage({ type: 'asset', inst: m, ref: d.ref, status, note, bytes, max, ms: Date.now() - t0 });
+      this.port.postMessage({ type: 'asset', inst: m, id: this.modId(m), ref: d.ref, status, note, bytes, max, ms: Date.now() - t0 });
     } else if (d.type === 'asset_clear') {
       const m = this.inst(d.inst); if (m >= 0) this.x.rig_asset_clear(m);
-      this.port.postMessage({ type: 'asset', inst: m, ref: null, status: m >= 0 ? 0 : ERR.INSTANCE_INVALID, note: m >= 0 ? cString(this.x.memory, this.x.rig_asset_status(m)) : '', bytes: 0, max: 0 });
+      this.port.postMessage({ type: 'asset', inst: m, id: this.modId(m), ref: null, status: m >= 0 ? 0 : ERR.INSTANCE_INVALID, note: m >= 0 ? cString(this.x.memory, this.x.rig_asset_status(m)) : '', bytes: 0, max: 0 });
     }
   }
   process(inputs, outputs) {
@@ -151,7 +171,8 @@ class RigEngine extends AudioWorkletProcessor {
     if (out[1]) out[1].set(this.vR.subarray(0, n));
     for (let i = 0; i < n; i++) { const a = Math.max(Math.abs(this.vL[i]), Math.abs(this.vR[i])); if (a > this.outPk) this.outPk = a; }
     this.busyMs += Date.now() - t0;          // 1 ms clock, but the average is unbiased over many blocks
-    if (++this.blocks % 12 === 0) {           // ~31 Hz meter stream at 48 kHz
+    if (++this.blocks % 12 === 0) {           // ~31 Hz meter stream at 48 kHz; and free modules that have faded out
+      this.x.rig_collect();
       const wall = Date.now() - this.wallStart;
       this.port.postMessage({ type: 'meters', t: currentTime, m: Array.from(this.vM), inPk: this.inPk, outPk: this.outPk, load: wall > 0 ? this.busyMs / wall : 0 });
       this.inPk = 0; this.outPk = 0;

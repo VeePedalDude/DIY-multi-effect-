@@ -26,12 +26,13 @@ function onEngineMsg(d) {
   }
   if (d.type === 'resp') {
     const k = d.line.split(' ').slice(0, 3).join(' '), now = performance.now();
-    if (d.status !== 0) { logLine(d.line + '  ->  resp ' + d.status, true); if (/^src_add /.test(d.line)) rackRefused(d.line, d.status); }
+    if (d.status !== 0) { logLine(d.line + '  ->  resp ' + d.status, true); if (/^src_add /.test(d.line)) rackRefused(d.line, d.status); if (/^fx_add /.test(d.line)) chainRefused(d.line, d.status); }
     else if (k !== quietLog.last || now - quietLog.t > 400) { logLine(d.line + '  ->  resp 0'); quietLog = { last: k, t: now }; }
     rig.lastResp = d;
     return;
   }
   if (d.type === 'rack') { onEngineRack(d.rack); rig.engineRack = d.rack; return; }
+  if (d.type === 'chain') { onEngineChain(d.chain); rig.engineChain = d.chain; return; }
   if (d.type === 'describe') { rig.engineDesc = d.desc; logLine(`engine: ${d.desc.modules.length} modules, ${d.desc.sources.length} sources @ ${d.desc.sr} Hz`); return; }
   if (d.type === 'asset') onAssetReply(d);
 }

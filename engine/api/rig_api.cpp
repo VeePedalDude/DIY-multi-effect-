@@ -10,7 +10,7 @@
 #endif
 
 // Placement-new into zeroed static storage keeps the big delay buffers out of the binary
-// (zero memory is free in wasm). Loaded captures and IRs live on the heap (see core/model_slot.h).
+// (zero memory is free in wasm). Module instances, captures and IRs live on the heap.
 alignas(16) static unsigned char g_storage[sizeof(rig::Engine)];
 static rig::Engine* g_engine = nullptr;
 static rig::Engine& E() { return *g_engine; }
@@ -25,13 +25,13 @@ EXPORT(rig_meters_len) int  rig_meters_len() { return rig::M_LEN; }
 EXPORT(rig_process)  void   rig_process(int n) { E().process(n); }
 
 EXPORT(rig_param) void rig_param(int m, int p, float v) {
-  if (m < 0 || m >= rig::NMOD || p < 0 || p >= E().nparams(m)) return;
+  if (!E().used(m) || p < 0 || p >= E().nparams(m)) return;
   E().base[m][p] = rig::clampf(v, 0.f, 1.f);
 }
-EXPORT(rig_bypass) void rig_bypass(int m, int on) { if (m >= 0 && m < rig::NMOD) E().byp[m] = on != 0; }
+EXPORT(rig_bypass) void rig_bypass(int m, int on) { if (E().used(m)) E().byp[m] = on != 0; }
 // src = -1 disconnects; depth is the +/- swing in normalised units around the knob
 EXPORT(rig_mod) void rig_mod(int m, int p, int src, float depth) {
-  if (m < 0 || m >= rig::NMOD || p < 0 || p >= E().nparams(m)) return;
+  if (!E().used(m) || p < 0 || p >= E().nparams(m)) return;
   E().conn[m][p] = E().rack.used(src) ? src : -1;
   E().depth[m][p] = rig::clampf(depth, 0.f, 1.f);
 }
@@ -59,6 +59,22 @@ EXPORT(rig_src_remove) int rig_src_remove(int src) { return E().removeSource(src
 // Cross-modulation: knob p of source `src` moved by source `from` (-1 unpatches), +/- depth.
 EXPORT(rig_src_mod) int rig_src_mod(int src, int p, int from, float depth) { return E().rack.patch(src, p, from, depth); }
 EXPORT(rig_rack) const char* rig_rack() { return E().rackJson; }
+// The effect chain (control thread; allocates). Modules are addressed by slot (rig_chain() lists the
+// chain in order with each instance's slot; a fresh chain is one of each type, slots 0.. in order).
+// Write "<type> [id] [position]" to rig_text(), then rig_fx_add() returns the new slot, or -1 unknown
+// type, -2 chain full, -3 bad or taken id. It fades in over 10 ms; a removed one fades out, then is
+// freed by a later rig_collect() (or any other chain call) once the audio thread is done with it.
+EXPORT(rig_fx_add) int rig_fx_add() {
+  g_text[sizeof g_text - 1] = 0;
+  char tok[3][32] = {{0}}; int i = 0;
+  for (int t = 0; t < 3; t++) { while (g_text[i] == ' ') i++; int n = 0; while (g_text[i] && g_text[i] != ' ' && n < 31) tok[t][n++] = g_text[i++]; }
+  int pos = -1; if (tok[2][0]) { pos = 0; for (int k = 0; tok[2][k]; k++) pos = pos * 10 + (tok[2][k] - '0'); }
+  return E().addModule(tok[0], (tok[1][0] == '-' && !tok[1][1]) ? nullptr : tok[1], pos);
+}
+EXPORT(rig_fx_remove) int rig_fx_remove(int m) { return E().removeModule(m); }
+EXPORT(rig_fx_move) int rig_fx_move(int m, int pos) { return E().moveModule(m, pos); }
+EXPORT(rig_chain) const char* rig_chain() { return E().chainJson; }
+EXPORT(rig_collect) void rig_collect() { E().collect(false); }
 // Tuner on the dry input: on/off, and whether the output is muted while it's on.
 EXPORT(rig_tuner) void rig_tuner(int on, int mute) { E().tuner.on = on != 0; E().tuner.mute = mute != 0; }
 EXPORT(rig_tuner_ref) void rig_tuner_ref(float a4) { E().tuner.a4 = rig::clampf(a4, 400.f, 480.f); }
@@ -69,14 +85,14 @@ EXPORT(rig_master) void rig_master(float db) { E().masterDb = rig::clampf(db, -6
 // payload there, then rig_asset_commit(m, bytes). rig_asset_status(m) says what loaded, or why not.
 // Loading allocates and parses: call these between rig_process calls (the browser does), or from a
 // control thread (the Linux host); the swap itself happens inside rig_process without allocating.
-EXPORT(rig_asset_max) int rig_asset_max(int m) { return (m >= 0 && m < rig::NMOD && E().mods[m]->desc().asset.ready) ? E().mods[m]->desc().asset.maxBytes : 0; }
+EXPORT(rig_asset_max) int rig_asset_max(int m) { return (E().used(m) && E().mods[m]->desc().asset.ready) ? E().mods[m]->desc().asset.maxBytes : 0; }
 EXPORT(rig_asset_buf) unsigned char* rig_asset_buf(int m, int bytes) {
-  if (m < 0 || m >= rig::NMOD || bytes < 1 || bytes > rig_asset_max(m)) return nullptr;
+  if (!E().used(m) || bytes < 1 || bytes > rig_asset_max(m)) return nullptr;
   return E().mods[m]->assetBuffer(bytes);
 }
 EXPORT(rig_asset_commit) int rig_asset_commit(int m, int bytes) {
-  if (m < 0 || m >= rig::NMOD || bytes < 0 || bytes > rig_asset_max(m)) return -207;
+  if (!E().used(m) || bytes < 0 || bytes > rig_asset_max(m)) return -207;
   return E().mods[m]->assetCommit(bytes);
 }
-EXPORT(rig_asset_clear) void rig_asset_clear(int m) { if (m >= 0 && m < rig::NMOD) E().mods[m]->assetClear(); }
-EXPORT(rig_asset_status) const char* rig_asset_status(int m) { return (m >= 0 && m < rig::NMOD) ? E().mods[m]->assetStatus() : ""; }
+EXPORT(rig_asset_clear) void rig_asset_clear(int m) { if (E().used(m)) E().mods[m]->assetClear(); }
+EXPORT(rig_asset_status) const char* rig_asset_status(int m) { return E().used(m) ? E().mods[m]->assetStatus() : ""; }

@@ -108,10 +108,12 @@ inline float maxStep(const std::vector<float>& x, size_t a, size_t b) {
   float m = 0; b = std::min(b, x.size()); for (size_t i = a + 1; i < b; i++) m = fmaxf(m, fabsf(x[i] - x[i - 1])); return m;
 }
 // Engine with only module `keep` active, unity master: isolates one module for a test.
-inline void only(Engine& e, int keep) { for (int m = 0; m < NMOD; m++) { e.byp[m] = (m != keep); e.wet[m] = (m != keep) ? 0.f : 1.f; } e.masterDb = 0; e.masterS.y = 1; }
+inline void only(Engine& e, int keep) { for (int m = 0; m < MAXMOD; m++) { e.byp[m] = (m != keep); e.wet[m] = (m != keep) ? 0.f : 1.f; } e.masterDb = 0; e.masterS.y = 1; }
 inline int mod(const Engine& e, const char* id) { int m = e.moduleIndex(id); if (m < 0) { printf("no module %s\n", id); exit(2); } return m; }
 inline int src(const Engine& e, const char* id) { int k = e.sourceIndex(id); if (k < 0) { printf("no source %s\n", id); exit(2); } return k; }
 // The source instance with this id, as its own type (to read its internals in a test).
+// The module instance with this id, as its own type.
+template <class T> T& fx(Engine& e, const char* id) { return *static_cast<T*>(e.mods[mod(e, id)]); }
 template <class T> T& inst(Engine& e, const char* id) { return *static_cast<T*>(e.rack.slot[src(e, id)].s.load()); }
 
 // ---------------------------------------------------------- file slots

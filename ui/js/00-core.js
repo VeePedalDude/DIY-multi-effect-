@@ -8,9 +8,9 @@ const $ = (id) => document.getElementById(id);
 const DEPTH = 0.22;                       // modulation swing per patch, +/- in normalised units
 
 
-// Per-module face screens: ui/screens/<id>.js calls screen('<id>', fn). Modules without one get a generic screen.
+// Per-module-type face screens: ui/screens/<type>.js calls screen('<type>', fn); every instance of the type uses it. Types without one get a generic screen.
 const SCREENS = {};
-const NOTES = {};                         // optional focus-panel note per module id, set from ui/screens/<id>.js
+const NOTES = {};                         // optional focus-panel note per module type, set from ui/screens/<type>.js
 const MODDATA = {};                       // per-module UI data shared between panels and screens (e.g. MODDATA.cab.irResp)
 function screen(id, fn) { SCREENS[id] = fn; }
 

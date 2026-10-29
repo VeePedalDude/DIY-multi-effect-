@@ -32,7 +32,7 @@ function loop() {
   MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });
   SRC.forEach((s) => { if (!s.orb) return; const v = srcVal(s), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
   moveBackdrop();
-  if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(); drawSourceScope(); }
+  if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(); drawAddCard(); drawSourceScope(); }
   for (let i = 0; i < NP; i++) { const u = ((i / NP) + T * (RM ? .01 : .05 + .1 * level)) % 1; flowCurve.getPointAt(u, tmpV); flowPos[i * 3] = tmpV.x; flowPos[i * 3 + 1] = tmpV.y + .06; flowPos[i * 3 + 2] = tmpV.z; }
   flowGeo.attributes.position.needsUpdate = true;
   cables.forEach((c) => {

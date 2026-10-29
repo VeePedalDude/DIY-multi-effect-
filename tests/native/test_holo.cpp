@@ -2,7 +2,7 @@
 using namespace rigtest;
 
 TEST("40 holo: stable at 95% feedback + full halo, repeats decay") {
-  Engine e; e.init(SR); int h = mod(e, "holo"); only(e, h); e.base[h][0] = 1; e.base[h][1] = 1; e.holo.fbS.y = 1; e.holo.haloS.y = 1;
+  Engine e; e.init(SR); int h = mod(e, "holo"); only(e, h); e.base[h][0] = 1; e.base[h][1] = 1; fx<Holo>(e, "holo").fbS.y = 1; fx<Holo>(e, "holo").haloS.y = 1;
   std::vector<float> in((size_t)(40 * SR), 0.f);
   for (size_t i = 0; i < (size_t)SR; i++) in[i] = riffSignal()[(size_t)(0.2f * SR) + i];
   auto r = render(e, in);
@@ -12,7 +12,7 @@ TEST("40 holo: stable at 95% feedback + full halo, repeats decay") {
 }
 
 TEST("41 holo: first repeat lands on the dotted 8th") {
-  Engine e; e.init(SR); int h = mod(e, "holo"); only(e, h); e.base[h][1] = 0; e.holo.haloS.y = 0;
+  Engine e; e.init(SR); int h = mod(e, "holo"); only(e, h); e.base[h][1] = 0; fx<Holo>(e, "holo").haloS.y = 0;
   std::vector<float> im((size_t)SR, 0.f); im[64] = 1.f;
   auto r = render(e, im);
   size_t best = 0; float bv = 0; for (size_t i = 1000; i < r.L.size(); i++) if (fabsf(r.L[i]) > bv) { bv = fabsf(r.L[i]); best = i; }

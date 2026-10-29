@@ -123,7 +123,7 @@ TEST("85 rack: never allocates while it plays, with sources coming and going") {
     if (b % 40 == 0) { if (add(*e, sourceTypeDesc((int)(next() % NSRCTYPES)).id) >= 0) adds++; }          // control thread
     if (b % 55 == 0) { int k = (int)(next() % MAXSRC); if (e->rack.used(k) && e->removeSource(k) == 0) removes++; }
     if (b % 13 == 0) { int k = (int)(next() % MAXSRC), f = (int)(next() % MAXSRC); if (e->rack.used(k) && e->rack.used(f) && e->rack.slot[k].nparams() > 0) { e->rack.patch(k, (int)(next() % e->rack.slot[k].nparams()), f, 0.5f); patches++; }
-      int m = (int)(next() % NMOD); if (e->rack.used(f)) e->conn[m][0] = f; }
+      int m = e->order.s[next() % e->order.n]; if (e->rack.used(f)) e->conn[m][0] = f; }
     memcpy(e->inBuf, &g[i], 512);
     during += heapCallsDuring([&] { e->process(128); });                                                    // audio thread
   }

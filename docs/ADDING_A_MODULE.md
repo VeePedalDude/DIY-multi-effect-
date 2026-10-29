@@ -55,7 +55,10 @@ Rules:
   X(Trem, trem)
 ```
 
-The position in the list is the position in the signal chain.
+The list is the module *types*. A fresh chain holds one of each, in this order; after that the player
+adds, removes and reorders instances freely (several of one type is fine: `holo`, `holo2`), and
+presets save the chain. Your module is one instance: keep all its state in members, never `static`
+(test 93 and the chain tests check two instances stay independent).
 
 ## 3. Add a test: `tests/native/test_<id>.cpp`
 
@@ -101,7 +104,9 @@ frees the old one back on the control thread. `amp.h` (NAM captures) and `cab.h`
 this way; the cab is the simplest example. For NAM captures and IRs, `engine/core/nam.h` already
 has `loadCapture` and `parseIr`.
 
-## Optional: a face screen, `ui/screens/<id>.js`
+## Optional: a face screen, `ui/screens/<type>.js`
+
+One screen per type: every instance of it uses the same screen (`m.id` tells them apart).
 
 Without one, the face shows a bar per parameter. To draw something specific:
 

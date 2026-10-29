@@ -2,19 +2,20 @@
 // values in real units (ms, dB, Hz, %) so a knob's range can change without changing the sound.
 // Pure functions over MODS/PARAMS/SRCMAP/state (unit-tested in Node).
 //
-//   { "format": "rig-preset", "version": 3, "name": "...", "saved": "<ISO date>",
-//     "chain":  [ { "id": "holo", "bypass": false, "params": { "feedback": 42.75, "halo": 60 },
-//                   "asset": { "kind": "ir", "name": "V30.wav", "size": 8236, "hash": "1a2b3c4d" } } ],
+//   { "format": "rig-preset", "version": 4, "name": "...", "saved": "<ISO date>",
+//     "chain":  [ { "id": "cab", "type": "cab", "bypass": false, "params": { "locut": 80, "mix": 100 },      the chain, in order (version 4)
+//                   "asset": { "kind": "ir", "name": "V30.wav", "size": 8236, "hash": "1a2b3c4d" } },
+//                 { "id": "holo", "type": "holo", ... }, { "id": "holo2", "type": "holo", ... } ],
 //     "sources": [ { "id": "lfo", "type": "lfo", "params": { "rate": 8, "shape": 0 } },        the rack, in order (version 3)
 //                  { "id": "lfo2", "type": "lfo", "params": { "rate": 0.5 } } ],
 //     "mods":   [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 },              a module knob
 //                 { "target": "lfo.rate", "source": "env", "depth": 0.3 } ],                 a source knob (cross-modulation)
 //     "tempo": 120, "master": -12,
 //     "scenes": { "A": { "chain": [...without assets], "mods": [...], "sources": [ { "id": "lfo", "params": {...} } ], "tempo": 120 } } }
-// The rack belongs to the preset; scenes change knobs and patches of the instances in it.
-const PRESET_FORMAT = 'rig-preset', PRESET_VERSION = 3;
-// When a module, source type or knob is renamed, add the old name here so older files still load:
-//   modules: { oldId: 'newId' },  params: { 'oldId.oldSymbol': 'newId.newSymbol' },
+// The chain and the rack belong to the preset; scenes change knobs, bypass and patches of the instances in them.
+const PRESET_FORMAT = 'rig-preset', PRESET_VERSION = 4;
+// When a module type, source type or knob is renamed, add the old name here so older files still load:
+//   modules: { oldType: 'newType' },  params: { 'type.oldSymbol': 'type.newSymbol' },
 //   sourceTypes: { oldType: 'newType' },  sourceKnobs: { 'type.oldSymbol': 'newSymbol' }
 const PRESET_RENAMES = { modules: {}, params: {}, sourceTypes: {}, sourceKnobs: {} };
 // When the file layout itself changes, bump PRESET_VERSION and add PRESET_MIGRATIONS[old] = (json) => upgraded json.
@@ -30,6 +31,16 @@ const PRESET_MIGRATIONS = {
     const rack = V2_RACK.map((t) => ({ id: t, type: t, params: (entry(t) && entry(t).params) || {} }))
       .concat(old.filter((e) => e && typeof e.id === 'string' && !V2_RACK.includes(e.id)).map((e) => ({ ...e, type: e.id })));
     return { ...j, version: 3, sources: rack };
+  },
+  // 3 -> 4: the effect chain became one you can add to, remove from and reorder. Version 3 files were
+  // made with the five fixed modules in this order (ids = types), so that is their chain; their
+  // settings carry over, and entries for modules that build didn't have stay (as unknown types).
+  3: (j) => {
+    const V3_CHAIN = ['gate', 'amp', 'cab', 'holo', 'tess'], old = Array.isArray(j.chain) ? j.chain : [];
+    const entry = (id) => old.find((e) => e && e.id === id);
+    const chain = V3_CHAIN.map((t) => ({ bypass: false, params: {}, ...(entry(t) || {}), id: t, type: t }))
+      .concat(old.filter((e) => e && typeof e.id === 'string' && !V3_CHAIN.includes(e.id)).map((e) => ({ ...e, type: e.id })));
+    return { ...j, version: 4, chain };
   },
 };
 const SOURCE_ID = /^[a-z][a-z0-9_]{0,14}$/;
@@ -48,7 +59,7 @@ function currentSnapshot() {
 // top: the preset's own section (sources carry their type: that's the rack); scenes list knob values only.
 function sectionFromSnapshot(s, top) {
   return {
-    chain: MODS.map((m) => ({ id: m.id, bypass: !!s.bypass[m.id], params: Object.fromEntries(m.params.map((p) => [p.sym, round6(p.real(s.params[p.id] ?? p.v))])) })),
+    chain: MODS.map((m) => ({ id: m.id, ...(top ? { type: m.type } : {}), bypass: !!s.bypass[m.id], params: Object.fromEntries(m.params.map((p) => [p.sym, round6(p.real(s.params[p.id] ?? p.v))])) })),
     mods: Object.entries(s.conns).filter(([pid, sid]) => knobOf(pid) && SRCMAP[sid]).map(([pid, sid]) => ({ target: pid, source: sid, depth: round6((s.depths || {})[pid] ?? DEPTH) })),
     sources: SRC.filter((src) => top || src.params.length).map((src) => ({ id: src.id, ...(top ? { type: src.type } : {}), params: Object.fromEntries(src.params.map((q) => [q.sym, round6(q.real((s.srcParams || {})[q.id] ?? q.def))])) })),
     tempo: s.bpm,
@@ -65,45 +76,60 @@ function buildPreset(name) {
 }
 // The preset's rack: [{ id, type }] for the types this build has; entries for unknown types are kept
 // aside (re-saving writes them back) with a note.
-function readRack(list, renames, warn) {
+// The preset's chain, the same way: [{ id, type }] in order; unknown types kept aside (re-saved).
+function readChainList(list, renames, warn) {
+  const chain = [], extras = [];
+  for (const e of Array.isArray(list) ? list : []) {
+    if (!e || typeof e.id !== 'string' || !SOURCE_ID.test(e.id)) { warn(`module ${e && e.id}: not a usable id; skipped`); continue; }
+    if (chain.some((c) => c.id === e.id)) { warn(`module ${e.id}: listed twice; the first is used`); continue; }
+    const type = renames.modules[e.type] || e.type;
+    if (!MTYPES[type]) { extras.push(e); warn(`${e.id}: this build has no “${e.type}” module; its settings are kept in the file`); continue; }
+    chain.push({ id: e.id, type });
+  }
+  return { chain, extras };
+}
+function readRack(list, renames, warn, moduleIds = new Set()) {
   const rack = [], extras = [];
   for (const e of Array.isArray(list) ? list : []) {
     if (!e || typeof e.id !== 'string' || !SOURCE_ID.test(e.id)) { warn(`source ${e && e.id}: not a usable id; skipped`); continue; }
     if (rack.some((r) => r.id === e.id)) { warn(`source ${e.id}: listed twice; the first is used`); continue; }
-    if (MODS.some((m) => m.id === e.id)) { warn(`source ${e.id}: clashes with a module's id; skipped`); continue; }
+    if (moduleIds.has(e.id)) { warn(`source ${e.id}: clashes with a module's id; skipped`); continue; }
     const type = (renames.sourceTypes || {})[e.type] || e.type;
     if (!TYPES[type]) { extras.push(e); warn(`source ${e.id}: this build has no “${e.type}” source; its settings are kept in the file`); continue; }
     rack.push({ id: e.id, type });
   }
   return { rack, extras };
 }
-// Patch targets in a preset: module knobs, or knobs of the preset's own source instances.
-function presetKnob(pid, rackTypes, renames) {
-  const r = renames.params[pid] || pid;
-  if (PARAMS[r]) return { pid: r, desc: PARAMS[r].desc };
-  const dot = pid.lastIndexOf('.'), id = pid.slice(0, dot), type = rackTypes[id];
+// A module knob's symbol after renames ('type.oldSymbol' -> 'type.newSymbol').
+const modSym = (renames, type, sym) => { const r = renames.params[`${type}.${sym}`]; return r ? r.slice(r.lastIndexOf('.') + 1) : sym; };
+// Patch targets in a preset: knobs of the preset's own module and source instances.
+function presetKnob(pid, ctx, renames) {
+  const dot = pid.lastIndexOf('.'), id = pid.slice(0, dot), mt = ctx.chainTypes[id];
+  if (mt) { const sym = modSym(renames, mt, pid.slice(dot + 1)), q = MTYPES[mt].params.find((x) => x.symbol === sym); return q ? { pid: `${id}.${sym}`, desc: q } : null; }
+  const type = ctx.rackTypes[id];
   if (!type) return null;
   const sym = (renames.sourceKnobs || {})[`${type}.${pid.slice(dot + 1)}`] || pid.slice(dot + 1), q = TYPES[type].params.find((x) => x.symbol === sym);
   return q ? { pid: `${id}.${sym}`, desc: q } : null;
 }
-function readSection(sec, renames, warn, rackTypes, extraIds) {
-  const snap = { params: {}, bypass: {}, conns: {}, depths: {}, srcParams: {}, bpm: undefined }, assets = {}, extras = [];
+function readSection(sec, renames, warn, ctx) {
+  const { rackTypes, extraIds } = ctx;
+  const snap = { params: {}, bypass: {}, conns: {}, depths: {}, srcParams: {}, bpm: undefined }, assets = {};
   for (const entry of Array.isArray(sec.chain) ? sec.chain : []) {
-    const id = renames.modules[entry.id] || entry.id, m = MODS.find((x) => x.id === id);
-    if (!m) { extras.push(entry); warn(`${entry.id}: this build has no such module; its settings are kept in the file`); continue; }
-    snap.bypass[m.id] = !!entry.bypass;
-    for (const [sym, r] of Object.entries(entry.params || {})) {
-      const pid = renames.params[`${entry.id}.${sym}`] || `${m.id}.${sym}`, p = PARAMS[pid];
-      if (!p) { warn(`${m.id}: no knob called “${sym}”; ignored`); continue; }
-      if (typeof r !== 'number' || !isFinite(r) || (p.desc.curve === 'log' && r <= 0)) { warn(`${pid}: “${r}” isn't a usable value; kept the current setting`); continue; }
-      const v = toNorm(p.desc, r);
-      if (v < -1e-6 || v > 1 + 1e-6) warn(`${pid}: ${unitText(p.desc, r)} is outside ${unitText(p.desc, p.desc.min)}–${unitText(p.desc, p.desc.max)}; set to the nearest end`);
+    const id = entry && entry.id, type = ctx.chainTypes[id];
+    if (!type) { if (!extraIds.has(id)) warn(`module ${id}: not in this preset's chain; its settings were skipped`); continue; }
+    snap.bypass[id] = !!entry.bypass;
+    for (const [sym0, r] of Object.entries(entry.params || {})) {
+      const sym = modSym(renames, type, sym0), q = MTYPES[type].params.find((x) => x.symbol === sym), pid = `${id}.${sym}`;
+      if (!q) { warn(`${id}: no knob called “${sym0}”; ignored`); continue; }
+      if (typeof r !== 'number' || !isFinite(r) || (q.curve === 'log' && r <= 0)) { warn(`${pid}: “${r}” isn't a usable value; kept the current setting`); continue; }
+      const v = toNorm(q, r);
+      if (v < -1e-6 || v > 1 + 1e-6) warn(`${pid}: ${unitText(q, r)} is outside ${unitText(q, q.min)}–${unitText(q, q.max)}; set to the nearest end`);
       snap.params[pid] = clamp(v, 0, 1);
     }
-    if (entry.asset && m.asset) assets[m.id] = entry.asset;
+    if (entry.asset && MTYPES[type].asset) assets[id] = entry.asset;
   }
   for (const c of Array.isArray(sec.mods) ? sec.mods : []) {
-    const k = typeof c.target === 'string' ? presetKnob(c.target, rackTypes, renames) : null;
+    const k = typeof c.target === 'string' ? presetKnob(c.target, ctx, renames) : null;
     if (!k || !rackTypes[c.source]) { if (!extraIds.has(c.source) && !extraIds.has(String(c.target).split('.')[0])) warn(`modulation ${c.source} → ${c.target}: not available in this build; skipped`); continue; }
     snap.conns[k.pid] = c.source;
     if (typeof c.depth === 'number' && c.depth >= 0 && c.depth <= 1) snap.depths[k.pid] = c.depth;
@@ -121,9 +147,9 @@ function readSection(sec, renames, warn, rackTypes, extraIds) {
     }
   }
   if (typeof sec.tempo === 'number' && sec.tempo >= 30 && sec.tempo <= 300) snap.bpm = sec.tempo;
-  return { snap, assets, extras };
+  return { snap, assets };
 }
-// -> { name, snap, assets, extras, rack, sourceExtras, scenes, master, warnings }  or  { error }
+// -> { name, snap, assets, chain, extras, rack, sourceExtras, scenes, master, warnings }  or  { error }
 function readPreset(json, renames = PRESET_RENAMES) {
   renames = { modules: {}, params: {}, sourceTypes: {}, sourceKnobs: {}, ...renames };
   if (!json || typeof json !== 'object' || json.format !== PRESET_FORMAT) return { error: 'not a RIG preset file' };
@@ -131,10 +157,12 @@ function readPreset(json, renames = PRESET_RENAMES) {
   let v = Number.isInteger(json.version) ? json.version : 0;
   if (v > PRESET_VERSION) warn(`saved by a newer version (format ${v}); loading what this build understands`);
   while (v < PRESET_VERSION) { if (!PRESET_MIGRATIONS[v]) { warn(`no upgrade path from format ${v}`); break; } json = PRESET_MIGRATIONS[v](json); v++; }
-  const { rack, extras: sourceExtras } = readRack(json.sources, renames, warn);
-  const rackTypes = Object.fromEntries(rack.map((r) => [r.id, r.type])), extraIds = new Set(sourceExtras.map((e) => e.id));
-  const main = readSection(json, renames, warn, rackTypes, extraIds), scenes = {};
-  for (const [k, s] of Object.entries(json.scenes || {})) if (/^[A-D]$/.test(k) && s && typeof s === 'object') scenes[k] = readSection(s, renames, (w) => warn(`scene ${k}: ${w}`), rackTypes, extraIds).snap;
+  const { chain, extras } = readChainList(json.chain, renames, warn);
+  const { rack, extras: sourceExtras } = readRack(json.sources, renames, warn, new Set(chain.map((c) => c.id)));
+  const ctx = { chainTypes: Object.fromEntries(chain.map((c) => [c.id, c.type])), rackTypes: Object.fromEntries(rack.map((r) => [r.id, r.type])),
+    extraIds: new Set(sourceExtras.map((e) => e.id).concat(extras.map((e) => e.id))) };
+  const main = readSection(json, renames, warn, ctx), scenes = {};
+  for (const [k, s] of Object.entries(json.scenes || {})) if (/^[A-D]$/.test(k) && s && typeof s === 'object') scenes[k] = readSection(s, renames, (w) => warn(`scene ${k}: ${w}`), ctx).snap;
   const master = typeof json.master === 'number' && json.master >= -60 && json.master <= 6 ? json.master : undefined;
-  return { name: typeof json.name === 'string' ? json.name : '', snap: main.snap, assets: main.assets, extras: main.extras, rack, sourceExtras, scenes, master, warnings };
+  return { name: typeof json.name === 'string' ? json.name : '', snap: main.snap, assets: main.assets, chain, extras, rack, sourceExtras, scenes, master, warnings };
 }

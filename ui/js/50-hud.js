@@ -1,13 +1,19 @@
 // 50-hud.js - focus panel, mod matrix, hint line, view switch, bottom bar and settings drawer.
 const panel = $('panel'), matrix = $('matrix'), hint = $('hint');
+let fxRemoveArmed = null;                // the module whose Remove was clicked once (click again to confirm)
 function renderPanel() {
   if (state.focus === 'add') { renderAddPanel(); return; }
+  if (state.focus === 'addfx') { renderAddFxPanel(); return; }
   const s = srcFocus(); if (s) { renderSourcePanel(s); return; }
   const m = MODS.find((x) => x.id === state.focus); if (!m) return;
   const byp = !!state.bypass[m.id];
-  let h = `<div><div class="eyebrow">Module ${m.idx + 1}/${MODS.length} · instance ${m.inst}</div><h2>${m.name}</h2><div class="kind">${moduleSubtitle(m).replace(/</g, '&lt;')}</div></div>
-  <div class="row"><button class="btn ${byp ? 'byp' : 'on'}" data-act="bypass" aria-pressed="${byp}">${byp ? 'Bypassed' : 'Active'}</button></div>`;
-  if (NOTES[m.id]) h += `<p class="note">${NOTES[m.id]}</p>`;
+  const armed = fxRemoveArmed === m.id, i = m.idx;
+  let h = `<div><div class="eyebrow">Module ${i + 1}/${MODS.length} · ${MTYPES[m.type].name} · id ${m.id}</div><h2>${m.name}</h2><div class="kind">${moduleSubtitle(m).replace(/</g, '&lt;')}</div></div>
+  <div class="row"><button class="btn ${byp ? 'byp' : 'on'}" data-act="bypass" aria-pressed="${byp}">${byp ? 'Bypassed' : 'Active'}</button>
+    <span class="seg" role="group" aria-label="Position in the chain"><button data-act="fx-left" ${i === 0 ? 'disabled' : ''} aria-label="Move earlier in the chain" title="Earlier in the chain">◀</button><button data-act="fx-right" ${i === MODS.length - 1 ? 'disabled' : ''} aria-label="Move later in the chain" title="Later in the chain">▶</button></span></div>
+  <div class="row"><button class="btn" data-act="fx-dup" ${chainFull() ? 'disabled title="The chain is full"' : 'title="Another one of these right after it, same settings"'}>Duplicate</button>
+    <button class="btn ${armed ? 'byp' : ''}" data-act="fx-remove" title="Take it out of the chain">${armed ? 'Confirm remove' : 'Remove'}</button></div>`;
+  if (NOTES[m.type]) h += `<p class="note">${NOTES[m.type]}</p>`;
   h += assetPanelHtml(m);
   h += `<div class="params">`;
   m.params.forEach((p) => {
@@ -19,7 +25,21 @@ function renderPanel() {
     else h += `<div class="mod"><label for="m-${p.id}" class="muted" style="flex-direction:row;align-items:center;gap:8px;font-size:13px">Patch <select id="m-${p.id}" data-patch="${p.id}" style="min-height:32px;width:auto"><option value="">—</option>${SRC.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}</select></label></div>`;
     h += `</div>`;
   });
-  h += `</div><div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">param_set ${m.inst} ${m.params[0].sym} 0.5<br>bypass ${m.inst} 1</span></div>`;
+  h += `</div><div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">param_set ${m.inst} ${m.params[0].sym} 0.5<br>bypass ${m.inst} 1<br>fx_move ${m.inst} ${Math.max(0, i - 1)}<br>fx_remove ${m.inst}</span></div>`;
+  panel.innerHTML = h;
+}
+// The add panel for effects: every kind the engine has, and where the new one goes.
+function renderAddFxPanel() {
+  const full = chainFull();
+  let h = `<div><div class="eyebrow">Effect chain · ${MODS.length} of ${DESC.maxModules}</div><h2>Add an effect</h2><div class="kind">${full ? 'The chain is full: remove one first.' : 'It goes at the end of the chain (move it with ◀ ▶). Several of one kind is fine.'}</div></div><div class="types">`;
+  MTYPE_ORDER.forEach((t) => {
+    const d = MTYPES[t], have = MODS.filter((m) => m.type === t).length;
+    h += `<div class="patch"><div class="prow"><span><b>${d.name}</b> <small class="muted">${d.kind.replace(/</g, '&lt;')}${have ? ` · ${have} in the chain` : ''}</small></span>
+      <button class="btn mini" data-addfx-type="${t}" ${full ? 'disabled' : ''}>Add</button></div>
+      <small class="muted">${d.params.map((q) => q.label.toLowerCase()).join(' · ')}${d.asset ? ` · loads ${d.asset.label.toLowerCase()} files` : ''}</small></div>`;
+  });
+  h += `</div><p class="note">Effects fade in when added and out when removed, and moving one dips the sound for a moment, so you can change the chain while you play.</p>
+  <div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">fx_add holo holo2<br>fx_move holo2 0<br>fx_remove holo2</span></div>`;
   panel.innerHTML = h;
 }
 let panelPending = false;
@@ -28,7 +48,7 @@ function renderMatrix() {
   // columns: every module knob, then every source knob (cross-modulation); rows: the rack
   const cols = []; MODS.forEach((m) => m.params.forEach((p) => cols.push(p)));
   const nMod = cols.length; SRC.forEach((s) => s.params.forEach((q) => cols.push(q)));
-  let h = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><span class="eyebrow">Source → target · rack ${SRC.length}/${DESC.maxSources}</span><button class="btn mini" data-matrix-add ${rackFull() ? 'disabled' : ''}>+ Add source</button></div><div style="overflow-x:auto"><table><thead>`;
+  let h = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><span class="eyebrow">Source → target · rack ${SRC.length}/${DESC.maxSources} · chain ${MODS.length}/${DESC.maxModules}</span><span class="row"><button class="btn mini" data-matrix-addfx ${chainFull() ? 'disabled' : ''}>+ Add effect</button><button class="btn mini" data-matrix-add ${rackFull() ? 'disabled' : ''}>+ Add source</button></span></div><div style="overflow-x:auto"><table><thead>`;
   h += `<tr><th></th><th scope="colgroup" colspan="${nMod}" class="grp">Module knobs</th>${cols.length > nMod ? `<th scope="colgroup" colspan="${cols.length - nMod}" class="grp">Source knobs · cross-modulation</th>` : ''}</tr><tr><th></th>`;
   cols.forEach((p) => h += `<th scope="col"><small${p.src ? ` style="color:${p.src.color}"` : ''}>${p.mod ? p.mod.name : p.src.name}</small>${p.label}</th>`);
   h += `</tr></thead><tbody>`;
@@ -44,7 +64,7 @@ function renderMatrix() {
 function setHint() {
   if (state.storing) { hint.className = 'hint carry'; hint.textContent = 'Store mode: click a scene letter to save the current settings into it'; return; }
   if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it, or another source's orb to move one of its knobs · Esc to drop`; return; }
-  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · + adds a source · P hides the panel · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
+  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · the + card adds an effect, the + orb a source · P hides the panel · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
 }
 // The side panel can be hidden (button or P) and remembers that per browser.
 let panelHidden = false;
@@ -61,16 +81,25 @@ function updatePanelToggle() {
   b.title = panelHidden ? `Show the ${name} panel (P)` : 'Hide the panel (P)';
   b.setAttribute('aria-label', b.title);
 }
-function update() { renderPanel(); updatePanelToggle(); if (state.view === 'matrix') renderMatrix(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); drawAddLabel(); }
+function update() { renderPanel(); updatePanelToggle(); if (state.view === 'matrix') renderMatrix(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); drawAddLabel(); drawAddCard(); }
 function setView(v) { state.view = v; state.carrying = null; $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vMatrix').setAttribute('aria-pressed', v === 'matrix'); matrix.hidden = v !== 'matrix'; update(); }
 
 function wireHud() {
   panel.addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]'); if (!b) return; const m = MODS.find((x) => x.id === state.focus);
     if (b.dataset.act === 'bypass' && m) { state.bypass[m.id] = !state.bypass[m.id]; rig.cmd(`bypass ${m.inst} ${state.bypass[m.id] ? 1 : 0}`); }
+    if (m && b.dataset.act !== 'fx-remove') fxRemoveArmed = null;
+    if (m && (b.dataset.act === 'fx-left' || b.dataset.act === 'fx-right')) { moveModule(m, b.dataset.act === 'fx-left' ? -1 : 1); flyTo(m); update(); return; }
+    if (m && b.dataset.act === 'fx-dup') { const d = duplicateModule(m); if (d) { state.focus = d.id; flyTo(d); update(); } return; }
+    if (m && b.dataset.act === 'fx-remove') {
+      if (fxRemoveArmed !== m.id) { fxRemoveArmed = m.id; update(); setTimeout(() => { if (fxRemoveArmed === m.id) { fxRemoveArmed = null; update(); } }, 4000); return; }
+      fxRemoveArmed = null; removeModule(m); update(); return;
+    }
     if (b.dataset.act === 'unplug') connect(b.dataset.pid, null);
     if (b.dataset.act === 'bypass' || b.dataset.act === 'unplug') update();
   });
+  panel.addEventListener('click', (e) => { const a = e.target.closest('[data-addfx-type]'); if (a) { const m = addModule(a.dataset.addfxType); if (m) { state.focus = m.id; update(); flyTo(m); } } });
+  matrix.addEventListener('click', (e) => { if (e.target.closest('[data-matrix-addfx]')) { state.focus = 'addfx'; update(); } });
   panel.addEventListener('input', (e) => { const pid = e.target.dataset && e.target.dataset.pid; if (pid) setParam(PARAMS[pid], Number(e.target.value)); });
   panel.addEventListener('change', (e) => { const pid = e.target.dataset && e.target.dataset.patch; if (pid && e.target.value) { connect(pid, e.target.value); update(); } });
   matrix.addEventListener('click', (e) => { const b = e.target.closest('.cell'); if (!b) return; const { pid, sid } = b.dataset; connect(pid, state.conns[pid] === sid ? null : sid); update(); });

@@ -83,7 +83,7 @@ async function removeAssetFile(m) {
 }
 function pushAllAssets() { MODS.forEach((m) => { if (m.asset && m.asset.ready && state.assets[m.id] && !state.assets[m.id].missing) pushAsset(m); }); }
 function onAssetReply(d) {
-  const m = MODS[d.inst]; if (!m) return;
+  const m = MODS.find((x) => x.id === d.id); if (!m) return;
   const md = MODDATA[m.id] || (MODDATA[m.id] = {});
   if (d.ref) {
     md.engineNote = d.status === 0 ? d.note : '';

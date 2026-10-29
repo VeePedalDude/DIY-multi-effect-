@@ -41,11 +41,38 @@ function pill(txt) { const cv = document.createElement('canvas'); cv.width = 128
 function drawPill(l) { const c = l.cv.getContext('2d'); c.clearRect(0, 0, 128, 64); rr(c, 4, 4, 120, 56, 28); c.fillStyle = SKIN.stage.pillBg; c.fill(); c.strokeStyle = SKIN.stage.pillLine; c.lineWidth = 3; c.stroke(); c.fillStyle = SKIN.stage.pillText; c.font = `600 26px ${SKIN.ui.fontMono}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(l.txt, 64, 33); l.s.material.map.needsUpdate = true; }
 
 function buildStage() {
-  const half = (MODS.length - 1) / 2;
+  flowPos = new Float32Array(NP * 3); flowGeo = new THREE.BufferGeometry(); flowGeo.setAttribute('position', new THREE.BufferAttribute(flowPos, 3));
+  flowMat = new THREE.PointsMaterial({ color: SKIN.stage.flow, size: .22, transparent: true, opacity: .95 });
+  const flowDots = new THREE.Points(flowGeo, flowMat); flowDots.frustumCulled = false; scene.add(flowDots);
+  inLbl = pill('IN'); outLbl = pill('OUT'); scene.add(inLbl.s, outLbl.s);
+  carryGeo = new THREE.BufferGeometry(); carryGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(CN * 3), 3));
+  carryLine = new THREE.Line(carryGeo, new THREE.LineDashedMaterial({ color: SKIN.stage.carry, dashSize: .25, gapSize: .18 })); carryLine.frustumCulled = false; carryLine.visible = false; scene.add(carryLine);
+  buildModules();
+  CHAIN_HOOKS.push(() => { buildModules(); buildSources(); update(); });
+  buildSources();
+  RACK_HOOKS.push(() => { buildSources(); update(); });
+}
+// The cards: one per chain instance, on an arc in signal order, and a "+" card at the end to add one.
+// Rebuilt whenever the chain changes. The arc flattens as the chain grows, so long chains stay in view.
+let modObjs = [], addCard = null;
+function cardSpot(i, n) {
+  const half = (n - 1) / 2, k = i - half, curve = 0.65 * Math.min(1, 4 / Math.max(1, half * half));
+  return new THREE.Vector3(k * SPACING, 0, 0.9 - curve * k * k);
+}
+function disposeObj(o) {
+  scene.remove(o);
+  o.traverse((x) => { if (x.geometry) x.geometry.dispose(); if (x.material) { if (x.material.map && x.material.map !== glowTexCache) x.material.map.dispose(); x.material.dispose(); } });
+  const k = pickables.indexOf(o); if (k >= 0) pickables.splice(k, 1);
+  o.traverse((x) => { const q = pickables.indexOf(x); if (q >= 0) pickables.splice(q, 1); });
+}
+function buildModules() {
+  modObjs.forEach(disposeObj); modObjs = []; addCard = null;
+  if (flowTube) { scene.remove(flowTube); flowTube.geometry.dispose(); flowTube.material.dispose(); flowTube = null; }
+  const n = MODS.length + (chainFull() ? 0 : 1);
   MODS.forEach((m, i) => {
-    const k = i - half, x = k * SPACING, z = 0.9 - 0.65 * k * k;
+    const pos = cardSpot(i, n);
     const FH = faceH(m), PH = PW * FH / FW, tileGlow = styleOf(m).glow;
-    const g = new THREE.Group(); g.position.set(x, 0.8 + PH / 2, z); g.lookAt(0, g.position.y, 22);
+    const g = new THREE.Group(); g.position.set(pos.x, 0.8 + PH / 2, pos.z); g.lookAt(0, g.position.y, 22);
     // the card's thickness (inset so its rounded corners stay clear) and a glow behind it when focused
     const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: SKIN.stage.slab })); slab.position.z = .02; g.add(slab);
     const halo = new THREE.Mesh(new THREE.PlaneGeometry(PW * 1.3, PH * 1.2), new THREE.MeshBasicMaterial({ map: glowTex(), color: tileGlow, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
@@ -53,31 +80,46 @@ function buildStage() {
     const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH; const tex = mkTex(cv);
     const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); face.position.z = .1; g.add(face);
     const glow = new THREE.Mesh(new THREE.RingGeometry(1.2, 2.2, 48), new THREE.MeshBasicMaterial({ color: tileGlow, transparent: true, opacity: .08, side: THREE.DoubleSide, depthWrite: false }));
-    glow.rotation.x = -Math.PI / 2; glow.position.set(x, .02, z);
-    scene.add(glow, g);
+    glow.rotation.x = -Math.PI / 2; glow.position.set(pos.x, .02, pos.z);
+    scene.add(glow, g); modObjs.push(glow, g);
     Object.assign(m, { group: g, baseY: g.position.y, face, slab, halo, glow, ctx: cv.getContext('2d'), tex, FH, PH });
     face.userData = { type: 'face', mod: m }; pickables.push(face);
+    drawFace(m);
   });
-
-  const endX = half * SPACING + 4.5;
-  flowCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(-endX, 1.0, -3.2), ...MODS.map((m) => new THREE.Vector3(m.group.position.x, .55, m.group.position.z + .6)), new THREE.Vector3(endX, 1.0, -3.2)]);
+  if (!chainFull()) {                                   // the "+" card: a plain dashed outline, half height
+    const pos = cardSpot(MODS.length, n), PH = PW * 0.62, cv = document.createElement('canvas'); cv.width = FW; cv.height = Math.round(FW * 0.62);
+    const g = new THREE.Group(); g.position.set(pos.x, 0.8 + PH / 2, pos.z); g.lookAt(0, g.position.y, 22);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: mkTex(cv), transparent: true })); g.add(face);
+    scene.add(g); modObjs.push(g);
+    addCard = { group: g, face, cv }; face.userData = { type: 'fxadd' }; pickables.push(face);
+    drawAddCard(true);
+  }
+  const span = Math.max(0, (n - 1) / 2) * SPACING, endX = span + 4.5;
+  const pts = MODS.map((m) => new THREE.Vector3(m.group.position.x, .55, m.group.position.z + .6));
+  flowCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(-endX, 1.0, -3.2), ...(pts.length ? pts : [new THREE.Vector3(0, .55, 1.5)]), new THREE.Vector3(endX, 1.0, -3.2)]);
   flowTube = new THREE.Mesh(new THREE.TubeGeometry(flowCurve, 160, .05, 8, false), new THREE.MeshBasicMaterial({ color: SKIN.stage.flow, transparent: true, opacity: .35 })); scene.add(flowTube);
-  flowPos = new Float32Array(NP * 3); flowGeo = new THREE.BufferGeometry(); flowGeo.setAttribute('position', new THREE.BufferAttribute(flowPos, 3));
-  flowMat = new THREE.PointsMaterial({ color: SKIN.stage.flow, size: .22, transparent: true, opacity: .95 });
-  const flowDots = new THREE.Points(flowGeo, flowMat); flowDots.frustumCulled = false; scene.add(flowDots);
-  inLbl = pill('IN'); outLbl = pill('OUT'); inLbl.s.position.set(-endX, 1.9, -3.2); outLbl.s.position.set(endX, 1.9, -3.2); scene.add(inLbl.s, outLbl.s);
-
-  carryGeo = new THREE.BufferGeometry(); carryGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(CN * 3), 3));
-  carryLine = new THREE.Line(carryGeo, new THREE.LineDashedMaterial({ color: SKIN.stage.carry, dashSize: .25, gapSize: .18 })); carryLine.frustumCulled = false; carryLine.visible = false; scene.add(carryLine);
-  buildSources();
-  RACK_HOOKS.push(() => { buildSources(); update(); });
+  inLbl.s.position.set(-endX, 1.9, -3.2); outLbl.s.position.set(endX, 1.9, -3.2);
+  syncCables();
+}
+function drawAddCard(force) {
+  if (!addCard) return;
+  const open = state.focus === 'addfx', key = `${open}|${MODS.length}|${SKIN.name}`;
+  if (!force && addCard.key === key) return;
+  addCard.key = key;
+  const c = addCard.cv.getContext('2d'), W = addCard.cv.width, H = addCard.cv.height;
+  c.clearRect(0, 0, W, H); rr(c, 10, 10, W - 20, H - 20, 30); c.fillStyle = SKIN.labels.bg; c.fill();
+  c.setLineDash([18, 12]); c.strokeStyle = SKIN.labels.text; c.lineWidth = open ? 8 : 4; c.stroke(); c.setLineDash([]);
+  c.fillStyle = SKIN.labels.text; c.textAlign = 'center'; c.font = `700 120px ${SKIN.ui.fontDisplay}`; c.fillText('+', W / 2, H / 2 + 20);
+  c.font = `700 34px ${SKIN.ui.fontDisplay}`; c.fillText('ADD EFFECT', W / 2, H / 2 + 80);
+  c.font = `400 24px ${SKIN.ui.fontMono}`; c.fillText(`${MODS.length} of ${DESC.maxModules}`, W / 2, H / 2 + 116);
+  addCard.face.material.map.needsUpdate = true;
 }
 // The source row: one orb, ring, glow and name label per rack instance, and a "+" orb to add one.
 // Rebuilt whenever the rack changes. Up to 8 in a row, about as wide as the cards; more go on a
 // second row behind and above (the camera re-frames to show it).
 let srcObjs = [], addOrb = null, srcRowCount = 1;
 const srcRows = (total) => (total > 8 ? 2 : 1);
-function srcSpacing(cnt) { return Math.min(SPACING, Math.max(16, (MODS.length - 1) * SPACING + 6) / Math.max(1, cnt - 1)); }
+function srcSpacing(cnt) { return Math.min(SPACING, Math.max(16, MODS.length * SPACING + 2) / Math.max(1, cnt - 1)); }
 function srcSpot(i, total) {
   const rows = srcRows(total), per = Math.ceil(total / rows), row = Math.floor(i / per), col = i % per, cnt = Math.min(per, total - row * per);
   const sp = srcSpacing(cnt);
@@ -156,7 +198,7 @@ function syncCables() {
 // ------------------------------------------------------------------ camera and input
 const cam = { theta: 0, phi: 1.12, r: 30, target: new THREE.Vector3(0, 3.6, 0) };
 const camGoal = { r: 21, target: new THREE.Vector3(0, 3.6, 0) };
-const overviewR = () => Math.max(21, MODS.length * 4.2) + (srcRowCount - 1) * 6;
+const overviewR = () => Math.max(21, (MODS.length + (chainFull() ? 0 : 1)) * 3.5) + (srcRowCount - 1) * 6;
 function placeCamera() { const t = cam.target; camera.position.set(t.x + cam.r * Math.sin(cam.phi) * Math.sin(cam.theta), t.y + cam.r * Math.cos(cam.phi), t.z + cam.r * Math.sin(cam.phi) * Math.cos(cam.theta)); camera.lookAt(t); }
 function flyTo(m) { camGoal.target.set(m.group.position.x, m.baseY, m.group.position.z); camGoal.r = 11 + 2 * (m.PH - 4); cam.theta = Math.atan2(m.group.position.x, 22) * .9; }
 function overview() { camGoal.target.set(0, 3.6 + (srcRowCount - 1) * 2.4, 0); camGoal.r = overviewR(); cam.theta = 0; cam.phi = 1.12; }
@@ -167,6 +209,7 @@ function pick(e) {
   const hit = ray.intersectObjects(pickables, false)[0]; if (!hit) return null;
   const u = hit.object.userData; if (u.type === 'src' || u.type === 'srclabel') return { type: u.type, src: u.src };
   if (u.type === 'srcadd') return { type: 'srcadd' };
+  if (u.type === 'fxadd') return { type: 'fxadd' };
   const m = u.mod, px = hit.uv.x * FW, py = (1 - hit.uv.y) * m.FH; let knob = null;
   m.params.forEach((p) => { const [kx, ky] = knobXY(p); if (Math.hypot(px - kx, py - ky) < 84) knob = p; });
   return { type: 'face', mod: m, knob };
@@ -196,6 +239,7 @@ function wireStageInput() {
 function stageClick(h) {
   if (!h) { if (state.carrying) { state.carrying = null; update(); } return; }
   if (h.type === 'srcadd') { state.carrying = null; state.focus = 'add'; update(); return; }
+  if (h.type === 'fxadd') { state.carrying = null; state.focus = 'addfx'; update(); return; }
   // carrying a cable to another source: open it, and pick which of its knobs in the panel
   if ((h.type === 'src' || h.type === 'srclabel') && state.carrying && state.carrying !== h.src.id) { state.focus = 'src:' + h.src.id; update(); return; }
   // an orb opens the source's panel and picks up a cable; its name label just opens the panel
@@ -205,6 +249,8 @@ function stageClick(h) {
   state.focus = h.mod.id; flyTo(h.mod); update();
 }
 // Test helpers: where a module's face, or a source's orb or name label, is on screen (client px).
+rig.camSnap = () => { cam.r = camGoal.r; cam.target.copy(camGoal.target); placeCamera(); camera.updateMatrixWorld(); };   // tests: skip the camera's easing
+rig.fxAddScreen = () => { if (!addCard) return null; const v = addCard.group.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
 rig.cables = () => cables.map((c) => `${c.s.id}>${c.pid}`);
 rig.addScreen = () => { if (!addOrb) return null; const v = addOrb.lbl.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
 rig.srcScreen = (id, part = 'lbl') => { const s = SRCMAP[id]; if (!s) return null; const v = s[part].position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };

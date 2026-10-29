@@ -47,6 +47,8 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .seg{display:flex;gap:4px;padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
 .seg button{min-height:34px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:600 13px/1 var(--display);letter-spacing:.1em}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--ink)}
+.seg button:disabled{opacity:.35;cursor:not-allowed}
+.seg button:not(:disabled):hover{color:var(--fg)}
 .spacer{flex:1 1 0}
 .readouts{display:flex;align-items:center;gap:16px;font:400 12px/1 var(--mono);color:var(--muted)}
 .meters{display:grid;gap:5px;width:170px}

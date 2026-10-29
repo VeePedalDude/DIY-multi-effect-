@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RIG/01 Test Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: full-bleed WebGL stage; glass HUD bars top and bottom; focus panel docked right; settings drawer on the left. */
+:root{
+  --bg:#05070C; --glass:rgba(9,13,22,.86); --raise:#0F1524; --line:#1F2A40; --line2:#2A3550;
+  --fg:#E6ECF5; --muted:#94A3BD; --accent:#4FE3F0; --ink:#06080E; --ok:#9BE15D; --warn:#FFB547; --bad:#FF5A6E;
+  --display:"Chakra Petch","Rajdhani",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --topH:68px; --botH:96px; --panelW:330px; color-scheme:dark;
+}
+html,body{height:100%;margin:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:var(--display);overflow:hidden}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+.hud{position:fixed;z-index:5}
+button,select,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{min-height:40px;padding:0 14px;border:1px solid var(--line2);background:var(--raise);border-radius:8px;color:var(--fg);font:600 13px/1 var(--display);letter-spacing:.1em;text-transform:uppercase}
+.btn:hover{border-color:var(--accent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+.icon{width:40px;padding:0;display:inline-grid;place-items:center}
+.eyebrow{font:500 11px/1.2 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.mono{font-family:var(--mono)} .muted{color:var(--muted)}
+select,input[type=number]{min-height:38px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px;width:100%;box-sizing:border-box}
+input[type=range]{width:100%;accent-color:var(--accent)}
+label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+
+.top{left:0;right:0;top:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px 18px;padding:10px 16px;background:var(--glass);border-bottom:1px solid var(--line);backdrop-filter:blur(8px)}
+.brand{font-weight:700;letter-spacing:.2em;color:var(--accent)}
+.preset{display:flex;align-items:center;gap:10px}
+.preset .name{display:flex;flex-direction:column;gap:2px;min-width:150px}
+.preset .name b{font-size:19px;font-weight:600}
+.seg{display:flex;gap:4px;padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
+.seg button{min-height:34px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:600 13px/1 var(--display);letter-spacing:.1em}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--ink)}
+.spacer{flex:1 1 0}
+.readouts{display:flex;align-items:center;gap:16px;font:400 12px/1 var(--mono);color:var(--muted)}
+.meters{display:grid;gap:5px;width:170px}
+.meter{display:flex;align-items:center;gap:6px}
+.meter span{width:44px}
+.meter .track{flex:1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
+.meter i{display:block;height:6px;border-radius:3px;background:var(--ok);width:0}
+.meter i.hot{background:var(--warn)} .meter i.clip{background:var(--bad)}
+#statusDot{width:10px;height:10px;border-radius:5px;background:var(--off,#3A4766);display:inline-block}
+
+.panel{right:16px;top:calc(var(--topH) + 14px);bottom:calc(var(--botH) + 14px);width:var(--panelW);box-sizing:border-box;padding:20px;display:flex;flex-direction:column;gap:16px;overflow:auto;background:var(--glass);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(8px)}
+.panel h2{margin:0;font-size:28px;font-weight:700;letter-spacing:.06em}
+.panel .kind{font:400 13px/1.4 var(--mono);color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.btn.on{background:#12301F;border-color:#2C6B45} .btn.byp{background:#2A1A1F;border-color:#6B2C3A}
+.params{display:flex;flex-direction:column;gap:16px}
+.param{display:flex;flex-direction:column;gap:7px}
+.prow{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.prow b{font-size:14px;letter-spacing:.08em}
+.prow .num{font:500 13px/1 var(--mono);color:#C9D3E6;font-variant-numeric:tabular-nums}
+.mod{display:flex;align-items:center;gap:8px;font-size:13px}
+.mod .dot{width:10px;height:10px;border-radius:5px;flex:none}
+.mod .grow{flex:1}
+.mod .btn{min-height:32px;font-size:11px;padding:0 10px}
+.note{font-size:13px;line-height:1.45;color:var(--muted);margin:0}
+.hw{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--line);font-size:14px}
+
+.bottom{left:0;right:0;bottom:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;padding:10px 16px;background:var(--glass);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
+.scenes{display:flex;gap:6px;align-items:center}
+.scene{width:52px;min-height:48px;border-radius:10px;border:1px solid var(--line2);background:var(--raise);font-size:19px;font-weight:700}
+.scene.stored{border-color:#4FE3F088}
+.scene[aria-pressed="true"]{background:var(--accent);color:var(--ink);border-color:var(--accent)}
+.scene.storing{outline:2px dashed var(--warn);outline-offset:2px}
+.slider{display:flex;flex-direction:column;gap:4px;width:150px;font:500 11px/1.2 var(--mono);letter-spacing:.1em;color:var(--muted)}
+.hint{flex:1 1 240px;min-width:0;text-align:right;font-size:14px;color:var(--muted)}
+.hint.carry{color:var(--fg)}
+
+.matrix{left:16px;right:calc(var(--panelW) + 32px);top:calc(var(--topH) + 14px);bottom:calc(var(--botH) + 14px);padding:20px;box-sizing:border-box;overflow:auto;background:var(--glass);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(10px)}
+.matrix table{border-collapse:collapse}
+.matrix th,.matrix td{padding:8px 6px;text-align:center}
+.matrix thead th{font-weight:600;font-size:13px;vertical-align:bottom}
+.matrix thead th small{display:block;font:400 10px/1.4 var(--mono);color:var(--muted)}
+.matrix tbody th{text-align:left;min-width:150px}
+.matrix tbody th b{display:block;font-size:16px;letter-spacing:.08em}
+.matrix tbody th small{font:400 11px/1.4 var(--mono);color:var(--muted)}
+.matrix tbody tr{border-top:1px solid var(--line)}
+.cell{width:40px;height:40px;border-radius:20px;border:2px solid var(--line2);background:var(--raise)}
+
+.drawer{left:16px;top:calc(var(--topH) + 14px);bottom:calc(var(--botH) + 14px);width:360px;box-sizing:border-box;padding:20px;overflow:auto;display:flex;flex-direction:column;gap:18px;background:var(--glass);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(10px);z-index:7}
+.drawer h3{margin:0;font-size:15px;letter-spacing:.12em;text-transform:uppercase}
+.drawer section{display:flex;flex-direction:column;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.log{font:400 12px/1.5 var(--mono);color:var(--muted);background:#070B14;border:1px solid var(--line);border-radius:8px;padding:8px;height:150px;overflow:auto;white-space:pre-wrap}
+.log .err{color:var(--bad)}
+.cmdrow{display:flex;gap:6px}
+.cmdrow input{flex:1;min-height:36px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 8px;font:400 12px var(--mono)}
+
+.overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:rgba(5,7,12,.78);backdrop-filter:blur(6px);padding:16px}
+.card{width:min(560px,100%);box-sizing:border-box;background:#0A0E17;border:1px solid var(--line2);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:18px}
+.card h1{margin:0;font-size:30px;letter-spacing:.1em}
+.card p{margin:0;line-height:1.55;color:#C9D3E6;max-width:62ch}
+.choice{display:flex;flex-direction:column;gap:8px}
+.choice label{flex-direction:row;align-items:flex-start;gap:10px;color:var(--fg);font-size:15px;padding:12px;border:1px solid var(--line2);border-radius:10px;cursor:pointer}
+.choice label small{display:block;color:var(--muted);font-size:13px;margin-top:3px}
+.choice input{margin-top:3px;accent-color:var(--accent)}
+.warn{font-size:13px;color:var(--warn);line-height:1.5}
+.err-box{font-size:14px;color:var(--bad);line-height:1.5}
+@media (max-width:900px){.readouts{display:none}.panel{display:none}.matrix{right:16px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<canvas id="stage" tabindex="0" role="img" aria-label="3D stage: five effect modules in an arc, six modulation sources above, and cables showing which source moves which knob. The Mod Matrix view shows the same routing as a table."></canvas>
+
+<header class="hud top" id="top">
+  <span class="brand">RIG/01</span>
+  <button class="btn icon" id="settingsBtn" aria-label="Settings" aria-expanded="false" aria-controls="drawer"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" fill="none"/></svg></button>
+  <div class="preset">
+    <div class="name"><span class="eyebrow">Preset</span><b id="presetName">Ambient Drive</b></div>
+  </div>
+  <div class="seg" role="group" aria-label="View">
+    <button id="vStage" aria-pressed="true">3D Stage</button>
+    <button id="vMatrix" aria-pressed="false">Mod Matrix</button>
+  </div>
+  <button class="btn" id="overview">Overview</button>
+  <span class="spacer"></span>
+  <div class="readouts">
+    <span><span id="statusDot"></span> <span id="engineState">engine off</span></span>
+    <span id="rateLat">-- kHz · -- ms</span>
+    <span>DSP <span id="dspLoad">--</span></span>
+    <div class="meters">
+      <div class="meter"><span>IN</span><div class="track"><i id="mIn"></i></div></div>
+      <div class="meter"><span>OUT</span><div class="track"><i id="mOut"></i></div></div>
+    </div>
+  </div>
+</header>
+
+<aside class="hud panel" id="panel" aria-live="polite"></aside>
+<section class="hud matrix" id="matrix" hidden aria-label="Modulation matrix"></section>
+
+<aside class="hud drawer" id="drawer" hidden aria-label="Settings">
+  <section>
+    <h3>Audio</h3>
+    <label>Source
+      <select id="srcSel"><option value="device">Audio interface / input device</option><option value="riff">Built-in test riff</option><option value="file">DI file (loop)…</option></select>
+    </label>
+    <label>Input device <select id="inSel"></select></label>
+    <label>Input channel <select id="chSel"><option value="0">Input 1 (left)</option><option value="1">Input 2 (right)</option></select></label>
+    <label>Output device <select id="outSel"></select></label>
+    <input type="file" id="diFile" accept="audio/*" hidden>
+    <p class="note" id="latNote">Start audio to see measured latency.</p>
+  </section>
+  <section>
+    <h3>Cab IR</h3>
+    <p class="note" id="irName">Built-in synthetic cab (21 ms)</p>
+    <div class="row"><button class="btn" id="irLoad">Load IR .wav</button><button class="btn" id="irReset">Built-in</button></div>
+    <input type="file" id="irFile" accept=".wav,audio/*" hidden>
+  </section>
+  <section>
+    <h3>Controllers</h3>
+    <p class="note" id="padNote">No gamepad detected. Press a button on a connected pad to wake it.</p>
+    <p class="note" id="heartNote">Heart source: simulated 72 bpm.</p>
+    <button class="btn" id="heartBtn">Connect heart strap</button>
+  </section>
+  <section>
+    <h3>Presets</h3>
+    <div class="row"><input id="presetInput" aria-label="Preset name" style="flex:1;min-height:38px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px" value="Ambient Drive"><button class="btn" id="presetSave">Save</button></div>
+    <select id="presetSel" aria-label="Saved presets"></select>
+    <div class="row"><button class="btn" id="presetLoad">Load</button><button class="btn" id="presetExport">Export</button><button class="btn" id="presetImport">Import</button></div>
+    <input type="file" id="presetFile" accept=".json" hidden>
+  </section>
+  <section>
+    <h3>Engine log</h3>
+    <div class="log" id="log" aria-live="off"></div>
+    <div class="cmdrow"><input id="cmdIn" aria-label="Engine command" placeholder="param_set 3 feedback 0.6"><button class="btn" id="cmdSend">Send</button></div>
+  </section>
+</aside>
+
+<footer class="hud bottom" id="bottom">
+  <div class="scenes" role="group" aria-label="Scenes">
+    <button class="scene" data-scene="A" aria-pressed="false">A</button>
+    <button class="scene" data-scene="B" aria-pressed="false">B</button>
+    <button class="scene" data-scene="C" aria-pressed="false">C</button>
+    <button class="scene" data-scene="D" aria-pressed="false">D</button>
+    <button class="btn" id="storeBtn" aria-pressed="false">Store</button>
+  </div>
+  <button class="btn" id="tap">Tap <span class="mono" id="bpm">120</span></button>
+  <div class="slider"><label for="master" style="color:inherit;font:inherit">MASTER <span id="masterVal">-12 dB</span></label><input type="range" id="master" min="-60" max="6" step="1" value="-12"></div>
+  <div class="slider"><label for="ctrlSlider" style="color:inherit;font:inherit">CONTROLLER <span id="ctrlVal">0.00</span></label><input type="range" id="ctrlSlider" min="-1" max="1" step="0.01" value="0"></div>
+  <div class="hint" id="hint"></div>
+</footer>
+
+<div class="overlay" id="startOverlay">
+  <div class="card" role="dialog" aria-labelledby="startTitle">
+    <h1 id="startTitle">RIG/01 TEST BENCH</h1>
+    <p>Real-time engine in your browser: gate, amp stand-in, cab IR, Hologram delay and Tesseract reverb, with live modulation. The 3D stage shows what the engine is actually doing.</p>
+    <div class="choice" role="radiogroup" aria-label="Sound source">
+      <label><input type="radio" name="src" value="device" checked><span>Guitar through my audio interface<small>Scarlett 2i2: guitar in Input 1, INST on, Direct Monitor off.</small></span></label>
+      <label><input type="radio" name="src" value="riff"><span>Built-in test riff<small>A synthesized guitar loop, so you can try everything without plugging in.</small></span></label>
+    </div>
+    <p class="warn">Use headphones or the 2i2's outputs. Laptop mic plus laptop speakers will howl. Master starts at -12 dB.</p>
+    <p class="err-box" id="startErr" hidden></p>
+    <button class="btn primary" id="startBtn" style="min-height:52px;font-size:16px">Start audio</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script id="worklet-src" type="text/plain">/*__WORKLET__*/</script>
+<script>
+const RIG_WASM_B64 = "/*__WASM_B64__*/";
+</script>
+<script>
+/*__APP__*/
+</script>
+</body>
+</html>

@@ -84,10 +84,12 @@ function toneWav(file) {
   // the median step per packet: Chromium's fake microphone jumps a fraction of a cycle where it loops the file
   const rates = [1, 2, 3].map((k) => { const v = []; for (let i = 1; i < pk.rows.length; i++) { let d = pk.rows[i][k] - pk.rows[i - 1][k]; d -= 2 * Math.PI * Math.round(d / (2 * Math.PI)); v.push(d / (2 * Math.PI) / ((pk.rows[i][0] - pk.rows[i - 1][0]) / 1000)); } v.sort((x, y) => x - y); return v[v.length >> 1]; });
   check(rates.every((v, k) => Math.abs(v - want * [1, 2, 4][k]) < 0.05 * want * [1, 2, 4][k]), `bands turn ${rates.map((v) => v.toFixed(3)).join(' / ')} per s (expect ${[1, 2, 4].map((h) => (h * want).toFixed(3)).join(' / ')}), ${pk.rows.length} packets`);
-  // and the drawn x1 band follows (headless Chromium paints about once a second, so only x1 can't alias here)
-  const dd0 = await page.evaluate(() => [window.__rig.tuner.state.disp[0], window.__rig.ctx.currentTime]); await sleep(4000);
-  const dd1 = await page.evaluate(() => [window.__rig.tuner.state.disp[0], window.__rig.ctx.currentTime]), shown = (dd1[0] - dd0[0]) / (2 * Math.PI) / (dd1[1] - dd0[1]);
-  check(shown > 0.1 * want, `the drawn x1 stripes move right (${shown.toFixed(3)} per s; the fake microphone's loop jump can land in this window, so only the direction is checked)`);
+  // and the drawn x1 band follows: headless Chromium paints about once a second and the fake
+  // microphone jumps where it loops, so count which way it moved over eight half-second steps
+  const steps = await page.evaluate(async () => { const v = []; for (let i = 0; i < 9; i++) { v.push(window.__rig.tuner.state.disp[0]); await new Promise((r) => setTimeout(r, 500)); } return v; });
+  const moves = steps.slice(1).map((v, i) => v - steps[i]).filter((d) => Math.abs(d) > 1e-6);
+  const right = moves.filter((d) => d > 0).length;
+  check(moves.length >= 3 && right > moves.length / 2, `the drawn x1 stripes move right when sharp (${right} of ${moves.length} steps)`);
 
   console.log('4. Reference pitch and mute');
   for (let i = 0; i < 3; i++) await page.click('#tunerRefUp');

@@ -107,3 +107,18 @@ TEST("73 tuner: mutes the output while on (if asked), and costs nothing when off
   auto q = run(r, tone(69, 0, 1.f, 432.f));
   CHECK(q.note == 69 && fabsf(q.cents) < 0.1f, "A4 = 432 Hz reference: a 432 Hz A reads %+.2f cents", q.cents);
 }
+
+TEST("74 tuner: re-picking a held note doesn't throw the reading off") {
+  // the same note picked again every 0.7 s: each new pick makes the string's phase jump (90 degrees here)
+  float worstAll = 0; printf("      ");
+  for (int midi : {40, 45, 57, 64, 76}) {
+    const float cents = -2.f; const double f = 440 * pow(2.0, (midi - 69 + cents / 100.0) / 12.0); double ph = 0;
+    std::vector<float> s((size_t)(6 * SR));
+    for (size_t i = 0; i < s.size(); i++) { if (i % 33600 == 0 && i) ph += M_PI / 2; ph += 2 * M_PI * f / SR; s[i] = (float)(0.3 * (sin(ph) + .5 * sin(2 * ph + .4) + .25 * sin(3 * ph + 1.1))); }
+    Engine e; e.init(SR); e.tuner.on = true; float worst = 0;
+    for (size_t i = 0, b = 0; i + 128 <= s.size(); i += 128, b++) { memcpy(e.inBuf, &s[i], 512); e.process(128); if (i > SR) worst = fmaxf(worst, fabsf(e.meters[M_TUN + T_CENTS] - cents)); }
+    printf("%s%d %.2f  ", NAMES[midi % 12], midi / 12 - 1, worst); worstAll = fmaxf(worstAll, worst);
+  }
+  printf(" (worst cents error over 5 s with a new pick every 0.7 s)\n");
+  CHECK(worstAll < 0.5f, "worst %.2f cents through every re-pick (was up to 5 cents before the hold)", worstAll);
+}

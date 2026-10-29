@@ -9,6 +9,11 @@
 //  - Fine cents: one more heterodyne, anchored at the detector's first reading of the note, so its
 //    beat is near 0 Hz however far off the string is. Its turning rate is exactly (string - anchor)
 //    Hz; once a note has held for FINE_AFTER seconds, cents come from that: ±0.01 cent from B1 to C7.
+//    Its filter's cutoff follows the note (10% of its frequency, 6-60 Hz): it rejects the neighbouring
+//    harmonics by ~70 dB and settles quickly. The rate is the median of the last RATE_WINDOW seconds.
+//  - Re-plucks: a new pick makes the string's phase jump, and the heterodyne swings for a moment.
+//    The detector is steady through that, so while the two disagree by more than the detector's own
+//    accuracy, the last good fine reading is held (up to HOLD seconds), then the detector's is shown.
 //    If a bend moves the pitch away from the anchor, it re-anchors.
 //  - The strobe: like a mechanical strobe tuner, the input is compared with reference oscillators
 //    at the target note's pitch and at 2x and 4x (the bands). Each band is mixed down to a slowly
@@ -17,6 +22,7 @@
 //    string's actual tuning error, not a needle animation of a number.
 // Off by default; when off it costs nothing. Nothing here allocates after init().
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <memory>
 #include "dsp.h"
@@ -52,6 +58,9 @@ struct Tuner {
   float freq = 0, level = 0, conf = 0, cents = 0, target = 0, qFreq = 0, qCents = 0;
   int note = -1, silentFor = 0, held = 0;
   double beat = 0, lastPh = 0;   // the fine heterodyne's turning rate (Hz), and its phase at the last block
+  static constexpr int RATE_MAX = 512; static constexpr float RATE_WINDOW = 0.2f, HOLD = 0.6f;
+  float flpA = 0, lastGood = 0; int disagreeFor = 0; bool haveGood = false;
+  float rates[RATE_MAX] = {0}, sorted[RATE_MAX] = {0}; int nRates = 0, rateAt = 0;   // per-block rates since the anchor (a ring)
   double fref = 0, fph = 0, fr[4] = {0}, fi[4] = {0};   // the fine heterodyne: anchor (Hz), oscillator phase, filter
   static constexpr int POLES = 4;
   double ph[TUN_BANDS] = {0}, zr[TUN_BANDS][POLES] = {{0}}, zi[TUN_BANDS][POLES] = {{0}};
@@ -70,7 +79,7 @@ struct Tuner {
     if (pd) pd->reset();
     if (pdHi) pdHi->reset();
     hiAge = 1 << 30;
-    freq = level = conf = cents = target = qFreq = qCents = 0; note = -1; silentFor = held = 0; beat = lastPh = fref = fph = 0; for (int k = 0; k < POLES; k++) fr[k] = fi[k] = 0;
+    freq = level = conf = cents = target = qFreq = qCents = 0; note = -1; silentFor = held = 0; haveGood = false; disagreeFor = 0; lastGood = 0; beat = lastPh = fref = fph = 0; nRates = rateAt = 0; for (int k = 0; k < POLES; k++) fr[k] = fi[k] = 0;
     for (int b = 0; b < TUN_BANDS; b++) { ph[b] = 0; for (int k = 0; k < POLES; k++) zr[b][k] = zi[b][k] = 0; }
   }
   static float midiOf(float f, float a4) { return 69.f + 12.f * log2f(f / a4); }
@@ -98,7 +107,7 @@ struct Tuner {
       if (fref > 0) {                                       // the fine heterodyne
         fph += w * fref; if (fph > 2 * M_PI) fph -= 2 * M_PI;
         double r = x * cos(fph), q = -x * sin(fph);
-        for (int k = 0; k < POLES; k++) { fr[k] += lpA * (r - fr[k]); fi[k] += lpA * (q - fi[k]); r = fr[k]; q = fi[k]; }
+        for (int k = 0; k < POLES; k++) { fr[k] += flpA * (r - fr[k]); fi[k] += flpA * (q - fi[k]); r = fr[k]; q = fi[k]; }
       }
       if (target > 0) {                                     // the strobe bands
         for (int b = 0; b < TUN_BANDS; b++) {
@@ -112,18 +121,28 @@ struct Tuner {
     level = undenorm(level);
     if (target > 0 && qFreq > 0) {                          // fine cents
       const double p = atan2(fi[POLES - 1], fr[POLES - 1]);
-      if (held == 0) { fref = qFreq; beat = 0; }            // anchor at the detector's reading
+      if (held == 0) {                                      // anchor at the detector's reading
+        fref = qFreq; beat = 0; nRates = rateAt = 0;
+        flpA = 1.f - expf(-2.f * PI_F * clampf(0.1f * (float)fref, 6.f, 60.f) / sr);
+      }
       else {
         double d = p - lastPh; if (d > M_PI) d -= 2 * M_PI; if (d < -M_PI) d += 2 * M_PI;
-        beat += (1.0 - exp(-n / (0.06 * sr))) * (d * sr / (2 * M_PI * n) - beat);
+        const int win = std::min(RATE_MAX, std::max(8, (int)lrintf(RATE_WINDOW * sr / (float)n)));
+        rates[rateAt] = (float)(d * sr / (2 * M_PI * n)); rateAt = (rateAt + 1) % win; if (nRates < win) nRates++;
+        std::copy(rates, rates + nRates, sorted);                        // median of the window (no allocation)
+        std::nth_element(sorted, sorted + nRates / 2, sorted + nRates);
+        beat = sorted[nRates / 2];
       }
       lastPh = p; held += n;
       const float fAmp = level > 1e-5f ? 2.f * (float)hypot(fr[POLES - 1], fi[POLES - 1]) / level : 0.f;
       const float fineCents = (float)(1200.0 * log2((fref + beat) / target));
       bool fine = held > (int)(FINE_AFTER * sr) && fAmp > 0.05f;
-      if (held > (int)(FINE_AFTER * sr) && (!fine || fabsf(fineCents - qCents) > 5.f)) { held = 0; fine = false; }   // moved away (a bend): re-anchor
-      freq = fine ? (float)(fref + beat) : qFreq;
-      cents = fine ? fineCents : qCents;
+      if (held > (int)(FINE_AFTER * sr) && (!fine || fabsf(fineCents - qCents) > 5.f)) { held = 0; fine = false; haveGood = false; }   // moved away (a bend): re-anchor
+      // the detector's own accuracy: ~0.1 cent low down, ~1 cent near the top of the range
+      const float tol = 0.4f + 1.2f * clampf((qFreq - 500.f) / 1600.f, 0.f, 1.f);
+      if (fine && fabsf(fineCents - qCents) <= tol) { cents = fineCents; freq = (float)(fref + beat); lastGood = fineCents; haveGood = true; disagreeFor = 0; }
+      else if (fine && haveGood && (disagreeFor += n) < (int)(HOLD * sr)) { cents = lastGood; freq = target * exp2f(lastGood / 1200.f); }   // a re-pluck: hold
+      else { cents = qCents; freq = qFreq; }
     }
     if (level < 0.0015f) { if ((silentFor += n) > (int)(0.4f * sr)) { note = -1; freq = qFreq = 0; cents = qCents = 0; target = 0; held = 0; pd->reset(); pdHi->reset(); hiAge = 1 << 30; } }   // quiet for 0.4 s: no note
     else silentFor = 0;

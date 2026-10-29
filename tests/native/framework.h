@@ -109,6 +109,34 @@ inline void only(Engine& e, int keep) { for (int m = 0; m < NMOD; m++) { e.byp[m
 inline int mod(const Engine& e, const char* id) { int m = e.moduleIndex(id); if (m < 0) { printf("no module %s\n", id); exit(2); } return m; }
 inline int src(const Engine& e, const char* id) { int k = e.sourceIndex(id); if (k < 0) { printf("no source %s\n", id); exit(2); } return k; }
 
+// ---------------------------------------------------------- file slots
+inline std::vector<unsigned char> readFile(const char* path) {
+  std::vector<unsigned char> b; FILE* f = fopen(path, "rb"); if (!f) { printf("missing %s (run from the repo root)\n", path); exit(2); }
+  unsigned char tmp[65536]; size_t n; while ((n = fread(tmp, 1, sizeof tmp, f)) > 0) b.insert(b.end(), tmp, tmp + n);
+  fclose(f); return b;
+}
+// Hand a payload to a module's file slot the way every host does: reserve, copy, commit.
+inline int loadAsset(Engine& e, int m, const std::vector<unsigned char>& bytes) {
+  unsigned char* p = e.mods[m]->assetBuffer((int)bytes.size());
+  if (!p) return -207;
+  memcpy(p, bytes.data(), bytes.size());
+  return e.mods[m]->assetCommit((int)bytes.size());
+}
+// IR payload (core/nam.h): RIR1 header + planar channels
+inline std::vector<unsigned char> irPayload(const std::vector<std::vector<float>>& ch, float rate) {
+  int32_t h[3] = {IR_MAGIC, (int32_t)ch.size(), (int32_t)ch[0].size()};
+  std::vector<unsigned char> b(IR_HEADER + ch.size() * ch[0].size() * 4);
+  memcpy(b.data(), h, 12); memcpy(b.data() + 12, &rate, 4);
+  size_t o = IR_HEADER; for (auto& c : ch) { memcpy(b.data() + o, c.data(), c.size() * 4); o += c.size() * 4; }
+  return b;
+}
+// Exponentially decaying noise: a stand-in room / reverb IR. RT60 = rt60 seconds.
+inline std::vector<float> decayNoise(int frames, float rt60, unsigned seed) {
+  std::vector<float> v(frames); unsigned x = seed * 2654435761u + 1;
+  for (int i = 0; i < frames; i++) { x = x * 1664525u + 1013904223u; v[i] = ((x >> 8) / 8388608.f - 1.f) * powf(10.f, -3.f * i / (rt60 * SR)); }
+  return v;
+}
+
 inline void fft(std::vector<std::complex<double>>& a) {
   size_t n = a.size();
   for (size_t i = 1, j = 0; i < n; i++) { size_t bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) std::swap(a[i], a[j]); }

@@ -16,7 +16,8 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 
 | Folder | What lives there | Knows about |
 |---|---|---|
-| `engine/core/` | DSP building blocks (`dsp.h`), the `Module` and `Source` contracts | nothing project-specific |
+| `engine/core/` | DSP building blocks (`dsp.h`), the `Module` and `Source` contracts, the NAM glue (`nam.h`: captures and IRs) and the click-free model swap (`model_slot.h`) | nothing project-specific; `nam.h` uses `third_party/` |
+| `third_party/` | NeuralAmpModelerCore (plays every `.nam`, convolves IRs), Eigen, nlohmann/json: vendored, never edited ([README](../third_party/README.md)) | nothing |
 | `engine/modules/` | one effect per file + `registry.h` (chain order) | `core/` only |
 | `engine/sources/` | one modulation source per file + `registry.h` | `core/` only |
 | `engine/engine.h` | the chain: routing, modulation, bypass, master, limiter, meters, `describe()` | the two registries, never a specific effect |
@@ -30,7 +31,8 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `tests/parity/` | proves the WebAssembly build matches native | C API |
 | `tests/browser/` | headless Chromium tests of the built page | `dist/rig-test.html` |
 | `hosts/linux/` | (next) native JACK host for the iMac | C API + protocol |
-| `tools/` | build helpers | |
+| `tools/` | build helpers; `tools/wasm/` holds the shims that let NAM core build for WebAssembly ([README](../tools/wasm/README.md)) | |
+| `tests/models/` | `.nam` captures of every architecture, used by the native, parity and browser tests ([README](../tests/models/README.md)) | |
 
 ## The self-description
 
@@ -43,6 +45,9 @@ needs no UI or protocol changes.
 ## Rules that keep it modular
 
 - Modules and sources never include each other. They only include `core/`.
+- Vendored code in `third_party/` is never edited; WebAssembly differences live in `tools/wasm/`.
+- Nothing in `process()` allocates. Files are parsed and built on the control thread and swapped in
+  through a `ModelSlot`; a test counts heap calls inside `process()` while files load and swap.
 - `engine.h` never names a specific effect or source.
 - The UI never hard-codes parameter positions; it looks values up by `module id` + `symbol`
   (`rig.eff('holo', 'feedback')`).

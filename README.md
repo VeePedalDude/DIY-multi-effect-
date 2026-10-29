@@ -17,7 +17,9 @@ Linux iMac.
    `Documents/RIG Library`. Your IRs, NAM captures and presets live there as normal files
    ([how the library works](docs/LIBRARY.md)).
 
-Drop a `.wav` IR onto the cab or a `.nam` capture onto the amp to import and load it.
+Drop a `.nam` capture onto the amp or a `.wav` IR onto the cab to import and play it. Any NAM
+architecture plays (A1, A2, slimmable, LSTM, ConvNet...), and IRs can be up to 20 s, mono or stereo:
+a cab, a room or a convolution reverb. Free captures and IRs: [TONE3000](https://www.tone3000.com).
 
 No guitar? Choose **Built-in test riff**. If Chrome won't ask for the microphone on a file
 opened from disk, run `python -m http.server` in `dist/` and open `http://localhost:8000/rig-test.html`.
@@ -30,6 +32,7 @@ Browser audio on Windows adds roughly 20–40 ms. Fine for building sounds; the 
 ```
 engine/
   core/        dsp.h (filters, delays, smoothing) · module.h · source.h   ← the contracts
+               nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps)
   modules/     gate.h amp.h cab.h holo.h tess.h + registry.h (chain order)
   sources/     lfo.h env.h adsr.h orbit.h heart.h ctrl.h + registry.h
   engine.h     the chain: routing, modulation, bypass, master, meters, self-description
@@ -47,8 +50,10 @@ tests/
   ui/          Node unit tests: library and preset format
   fixtures/    golden preset file (must keep loading forever)
   browser/     headless Chromium tests of the built page
+  models/      .nam captures of every architecture, for the tests
 hosts/linux/   the iMac's native JACK host (next)
-tools/         build_web.py: assembles dist/rig-test.html
+third_party/   NeuralAmpModelerCore, Eigen, nlohmann/json (vendored, unchanged)
+tools/         build_web.py: assembles dist/rig-test.html · wasm/: shims for the WebAssembly build
 docs/          ARCHITECTURE · PROTOCOL · LIBRARY · ADDING_A_MODULE · ADDING_A_SOURCE
 dist/          rig-test.html (built, committed)
 ```
@@ -71,15 +76,17 @@ adding a three-knob tremolo with only its own file and one registry line.
 
 ## Build and test
 
-Needs `g++`, Python 3 with `pip install ziglang` (the WebAssembly compiler), and Node.
-Run on Linux, macOS or WSL:
+Needs `g++` (C++20), Python 3 with `pip install ziglang` (the WebAssembly compiler), and Node.
+Run on Linux, macOS or WSL. The first run compiles NAM core for both targets (a few minutes);
+after that it takes seconds.
 
 ```
 ./build.sh
 ```
 
-It stops at the first failure. Steps: native tests (`-Wall -Wextra -Werror`) → `build/rig.wasm` →
-library and preset-format unit tests → native vs WebAssembly parity → `dist/rig-test.html` → syntax checks.
+It stops at the first failure. Steps: third-party objects (cached) → native tests (`-Wall -Wextra -Werror`) →
+`build/rig.wasm` → library and preset-format unit tests → native vs WebAssembly parity (and what
+each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
 `PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs` and `library.cjs`.
@@ -89,8 +96,8 @@ Browser tests (need `playwright-core` and three.js r128 locally):
 | # | Module | Knobs | Notes |
 |---|---|---|---|
 | 0 | Noise gate | thresh −80..−20 dB, release 20..500 ms | 6 dB hysteresis, 10 ms hold |
-| 1 | Amp | input −12..+24 dB, output −18..+6 dB | stand-in until NAM A2 is compiled in; takes `.nam` files already |
-| 2 | Cab IR | lo cut 20..399 Hz, mix | takes `.wav` IRs from the library (first 2048 samples) |
+| 1 | Amp | input −12..+24 dB, output −18..+6 dB | plays any `.nam` capture through NeuralAmpModelerCore; built-in waveshaper when none is loaded |
+| 2 | Cab IR | lo cut 20..399 Hz, mix | IRs up to 20 s, mono or stereo (cab, room, reverb); zero-latency partitioned FFT convolution |
 | 3 | Hologram | feedback 0..95 %, halo | dotted 8th from tap tempo, stereo shimmer |
 | 4 | Tesseract | size → RT60 0.5..7.5 s, 4D fold | 8-line FDN, rotating 4-D matrix |
 
@@ -99,18 +106,39 @@ or a Bluetooth strap), controller (gamepad stick or slider).
 
 ## Test results (this build)
 
-- **Native:** 17 test groups pass. The full chain uses ~4% of one core on this build machine.
-  Amp aliasing is 55 dB below the harmonics at the worst case; 24/24 picks detected; delay and
-  reverb stay stable at maximum settings; no clicks on bypass or tempo jumps. File slots: a loaded
-  IR plays at the expected gain, clearing restores the built-in, empty files are rejected.
+- **Native:** 25 test groups pass. The full chain uses ~4% of one core on this build machine.
+  - **NAM:** all 11 test captures play (A1 standard, A2 slimmable, A2 features, slimmable WaveNet and
+    container, small WaveNet, condition-DSP WaveNet, LSTM, ConvNet, Linear, Sequential), sample-identical
+    to NAM core run directly.
+  - **Bad files:** damaged, unknown or too-wide files are refused with a reason while the old capture
+    keeps playing.
+  - **Swaps:** capture swaps are no steppier than steady playing.
+  - **Real-time safety:** zero heap calls inside `process()` over 14 s with 5 loads and swaps.
+  - **IRs** from 21 ms to 20 s stereo match the exact convolution to −134 dB with no latency.
+  - **Other checks:** amp aliasing is 55 dB below the harmonics at the worst case; 24/24 picks are
+    detected; delay and reverb stay stable at maximum settings; no clicks on bypass or tempo jumps.
 - **Library and preset format (Node):** WAV and NAM parsing, search, duplicate and name handling,
-  finding renamed files; the hand-written version-1 preset loads with no notes; a full save and
-  load round trip; renamed knobs, unknown modules, out-of-range values and newer files.
-- **WebAssembly vs native:** difference energy 86 dB below the signal; no imports.
-- **Headless Chromium:** 16/16 main checks, 4/4 with gamepads blocked, and 16/16 library checks.
-  The library checks cover dropping files on a panel and on the stage, search, loading an IR into
-  the engine (resampled to the context rate), saving a preset file, reloading the page and loading
-  it back, and removing a file the preset uses.
+  finding renamed files. The hand-written version-1 preset loads with no notes. Also tested: a full
+  save and load round trip, renamed knobs, unknown modules, out-of-range values and newer files.
+- **WebAssembly vs native:** difference 83 dB below the signal, with and without a capture and a 3 s
+  stereo IR loaded. The engine has no imports.
+- **Headless Chromium:** 16/16 main checks, 4/4 with gamepads blocked, and 22/22 library checks. The
+  library checks cover dropping files on a panel and on the stage, search, saving a preset file,
+  reloading the page and loading it back, and removing a file the preset uses. They also play four
+  real captures (A2, LSTM, A1, ConvNet), refuse a fake one with its reason, and run a 3 s stereo IR.
+
+What files cost (this build machine, one core; it's a shared cloud VM, so runs vary by a few points):
+
+| Loaded | Native (Linux host) | Browser (WebAssembly) |
+|---|---|---|
+| built-in amp + cab, whole chain | 4% | 5% |
+| A1 standard WaveNet | 13–21% | 35% |
+| A2 (slimmable, full size) | 14–17% | 35% |
+| LSTM / ConvNet | 1–3% | 5% |
+| IR 2 s mono / 5 s stereo / 20 s stereo | 5% / 11% / 22% | 9% (1 s) / 19% / 33% |
+
+The iMac's 1.6 GHz i5 is roughly half this speed per core, so A1/A2 captures belong on the native
+Linux host there. In the browser on a recent PC they run comfortably.
 
 ## Known gaps
 
@@ -118,7 +146,13 @@ or a Bluetooth strap), controller (gamepad stick or slider).
 - The **Choose folder** flow (Chrome's folder picker and its permission prompt) can't be automated
   here. The same library code is tested through browser storage, which uses the same file-handle
   interface, but the folder picker itself needs a try on your PC.
-- NAM captures are stored, searchable and saved in presets, but don't play until the NAM engine is compiled in.
-- The cab uses the first 2048 samples of an IR (about 43 ms at 48 kHz): fine for cabinets, too short for room IRs.
+- In the browser, loading a capture pauses audio for about 0.1 s (a 20 s stereo IR, about 0.5 s),
+  because loading runs on the audio thread there. The swap itself crossfades cleanly.
+- Captures run at the page's rate. The page asks for 48 kHz (what captures are made at), and a capture
+  at another rate plays with a slightly shifted tone and says so. NAM's plugin resamples; this doesn't yet.
+- Slimmable (A2) captures play at full size; a size control comes later.
+- NAM core trusts a capture file's weight count (see `third_party/README.md`); LSTM counts are checked.
 - Reverb decay runs about 18% shorter than its label at large sizes.
 - The chain order is fixed by the registry; reordering it from the UI comes later.
+- Amp INPUT now defaults to 0 dB (unity into a capture). A fresh start of the built-in amp is cleaner and
+  about 6 dB quieter than before; saved presets sound the same.

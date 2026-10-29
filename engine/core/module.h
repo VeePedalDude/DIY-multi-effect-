@@ -32,7 +32,7 @@ struct AssetSlot {
   const char* label = nullptr;     // UI label: "Cab IR"
   const char* exts = nullptr;      // accepted extensions, comma separated: ".wav"
   bool ready = false;              // false = files can be chosen and saved, but the engine can't load them yet
-  int maxBytes = 0;                // size of the module's asset buffer
+  int maxBytes = 0;                // largest payload the module accepts
 };
 
 struct ModuleDesc {
@@ -63,12 +63,15 @@ struct Module {
                        const float* e, const Context& ctx) = 0;
   // Optional display values (gate open, delay time...), up to MAXMODMETERS.
   virtual void meters(float* out) const { (void)out; }
-  // Optional file slot (see AssetSlot). The host writes up to desc().asset.maxBytes into
-  // assetBuffer(), then calls assetCommit(bytes); 0 = loaded, negative = rejected.
-  // assetClear() returns to the module's built-in default. Called outside process().
-  virtual unsigned char* assetBuffer() { return nullptr; }
+  // Optional file slot (see AssetSlot). The host asks assetBuffer(bytes) for room (bytes <=
+  // desc().asset.maxBytes), writes the file's payload there, then calls assetCommit(bytes):
+  // 0 = loaded, negative = rejected. assetStatus() then describes what loaded, or why it was
+  // rejected. assetClear() returns to the module's built-in default. These run on the control
+  // thread, never inside process(); they may allocate (see core/model_slot.h for the swap).
+  virtual unsigned char* assetBuffer(int bytes) { (void)bytes; return nullptr; }
   virtual int assetCommit(int bytes) { (void)bytes; return -1; }
   virtual void assetClear() {}
+  virtual const char* assetStatus() const { return ""; }
   float map(int i, float v) const { return desc().params[i].map(v); }
 };
 

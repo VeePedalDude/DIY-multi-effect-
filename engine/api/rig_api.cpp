@@ -9,8 +9,8 @@
 #define EXPORT(name) extern "C"
 #endif
 
-// Placement-new into zeroed static storage: keeps the big delay buffers out of the
-// binary (zero memory is free in wasm) and needs no allocator or libc++ runtime.
+// Placement-new into zeroed static storage keeps the big delay buffers out of the binary
+// (zero memory is free in wasm). Loaded captures and IRs live on the heap (see core/model_slot.h).
 alignas(16) static unsigned char g_storage[sizeof(rig::Engine)];
 static rig::Engine* g_engine = nullptr;
 static rig::Engine& E() { return *g_engine; }
@@ -38,11 +38,18 @@ EXPORT(rig_mod) void rig_mod(int m, int p, int src, float depth) {
 EXPORT(rig_ext)    void rig_ext(int src, float v) { if (src >= 0 && src < rig::NSRC) E().src.list[src]->ext(v); }
 EXPORT(rig_tempo)  void rig_tempo(float bpm) { E().bpm = rig::clampf(bpm, 30.f, 300.f); }
 EXPORT(rig_master) void rig_master(float db) { E().masterDb = rig::clampf(db, -60.f, 6.f); }
-// File slots (IRs, NAM captures...): write bytes into rig_asset_buf(m), then rig_asset_commit(m, bytes).
-EXPORT(rig_asset_buf) unsigned char* rig_asset_buf(int m) { return (m >= 0 && m < rig::NMOD) ? E().mods[m]->assetBuffer() : nullptr; }
+// File slots (IRs, NAM captures...): p = rig_asset_buf(m, bytes) reserves room, the host writes the
+// payload there, then rig_asset_commit(m, bytes). rig_asset_status(m) says what loaded, or why not.
+// Loading allocates and parses: call these between rig_process calls (the browser does), or from a
+// control thread (the Linux host); the swap itself happens inside rig_process without allocating.
 EXPORT(rig_asset_max) int rig_asset_max(int m) { return (m >= 0 && m < rig::NMOD && E().mods[m]->desc().asset.ready) ? E().mods[m]->desc().asset.maxBytes : 0; }
+EXPORT(rig_asset_buf) unsigned char* rig_asset_buf(int m, int bytes) {
+  if (m < 0 || m >= rig::NMOD || bytes < 1 || bytes > rig_asset_max(m)) return nullptr;
+  return E().mods[m]->assetBuffer(bytes);
+}
 EXPORT(rig_asset_commit) int rig_asset_commit(int m, int bytes) {
   if (m < 0 || m >= rig::NMOD || bytes < 0 || bytes > rig_asset_max(m)) return -207;
   return E().mods[m]->assetCommit(bytes);
 }
 EXPORT(rig_asset_clear) void rig_asset_clear(int m) { if (m >= 0 && m < rig::NMOD) E().mods[m]->assetClear(); }
+EXPORT(rig_asset_status) const char* rig_asset_status(int m) { return (m >= 0 && m < rig::NMOD) ? E().mods[m]->assetStatus() : ""; }

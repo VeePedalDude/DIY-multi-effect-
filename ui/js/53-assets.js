@@ -27,7 +27,9 @@ function parseWavInfo(buf) {
 function parseNamMeta(text) {
   let j; try { j = JSON.parse(text); } catch (e) { return null; }
   if (!j || typeof j !== 'object' || !('architecture' in j || 'weights' in j)) return null;
-  const md = j.metadata || {}, gear = [md.gear_make, md.gear_model].filter(Boolean).join(' ');
+  // Slimmable and Sequential captures may keep their details on the first inner model
+  const inner = j.config && ((j.config.submodels && j.config.submodels[0] && j.config.submodels[0].model) || (j.config.models && j.config.models[0]));
+  const md = (j.metadata && Object.keys(j.metadata).length ? j.metadata : inner && inner.metadata) || {}, gear = [md.gear_make, md.gear_model].filter(Boolean).join(' ');
   return { version: j.version || '', architecture: j.architecture || 'unknown', sampleRate: j.sample_rate || null,
     name: md.name || '', modeledBy: md.modeled_by || '', gear, gearType: md.gear_type || '', toneType: md.tone_type || '', loudness: md.loudness ?? null };
 }
@@ -35,7 +37,7 @@ function parseNamMeta(text) {
 function metaLine(e) {
   const m = e.meta;
   if (!m) return `${(e.size / 1024).toFixed(0)} KB`;
-  if (e.kind === 'ir') return `${(m.sampleRate / 1000).toFixed(1)} kHz · ${m.channels} ch · ${m.ms.toFixed(0)} ms`;
+  if (e.kind === 'ir') return `${(m.sampleRate / 1000).toFixed(1)} kHz · ${m.channels} ch · ${m.ms < 1000 ? m.ms.toFixed(0) + ' ms' : (m.ms / 1000).toFixed(2) + ' s'}`;
   if (e.kind === 'nam') return [m.architecture, m.gear || m.name, m.toneType, m.modeledBy && 'by ' + m.modeledBy].filter(Boolean).join(' · ');
   return `${(e.size / 1024).toFixed(1)} KB`;
 }

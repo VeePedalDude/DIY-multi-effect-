@@ -28,4 +28,23 @@ int main() {
   }
   f = fopen("build/out_native.f32", "wb"); fwrite(out.data(), 4, out.size(), f); fclose(f);
   printf("native dump: %zu samples\n", g.size());
+
+  // Scenario 2 (mirrored in parity.mjs): files. Re-init, load A2.nam into the amp and a 3 s stereo
+  // IR into the cab (35% mix); at 5 s swap the amp to lstm.nam; at 8 s put the cab back to built-in.
+  const int n = 3 * 48000;
+  auto ir = irPayload({decayNoise(n, 2.5f, 21), decayNoise(n, 2.5f, 22)}, 48000.f);
+  f = fopen("build/ir_test.rir", "wb"); fwrite(ir.data(), 1, ir.size(), f); fclose(f);
+  auto a2 = readFile("tests/models/A2.nam"), lstm = readFile("tests/models/lstm.nam");
+  auto load = [](int m, const std::vector<unsigned char>& b) { memcpy(rig_asset_buf(m, (int)b.size()), b.data(), b.size()); return rig_asset_commit(m, (int)b.size()); };
+  rig_init(48000); rig_param(2, 1, 0.35f);
+  int s1 = load(1, a2), s2 = load(2, ir);
+  for (size_t i = 0; i < g.size(); i += 128) {
+    if (i == 48000 * 5) load(1, lstm);
+    if (i == 48000 * 8) rig_asset_clear(2);
+    memcpy(rig_in(), &g[i], 512); rig_process(128);
+    for (int k = 0; k < 128; k++) { out[2 * (i + k)] = rig_out_l()[k]; out[2 * (i + k) + 1] = rig_out_r()[k]; }
+  }
+  f = fopen("build/out_native2.f32", "wb"); fwrite(out.data(), 4, out.size(), f); fclose(f);
+  printf("native dump 2 (A2 capture, 3 s stereo IR): loads %d %d · %s · %s\n", s1, s2, rig_asset_status(1), rig_asset_status(2));
+  return s1 || s2;
 }

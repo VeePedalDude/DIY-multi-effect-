@@ -1,6 +1,8 @@
 // tests/browser/library.cjs - library + presets in headless Chromium (browser-storage backend):
 // drop files on a panel and on the stage, search, load into the engine, save a preset file,
 // reload the page, load it back, then remove a file and check the preset keeps its reference.
+// Then real files: NAM captures of several architectures play, a broken one is refused with a
+// reason, and a long stereo IR runs as a convolution reverb.
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const path = require('path'), fs = require('fs');
 const root = path.resolve(__dirname, '../..');
@@ -11,6 +13,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Runs in the page: build files and drop them on an element or a screen point.
 async function drop(page, target, files) {
   await page.evaluate(async ({ target, files }) => {
+    function stereoFloatWav(secs, seed) {          // decaying noise, like a room / reverb IR
+      const n = Math.round(secs * 48000), b = new ArrayBuffer(44 + n * 8), v = new DataView(b); let o = 0, s = seed;
+      const str = (t) => { for (const c of t) v.setUint8(o++, c.charCodeAt(0)); }, u32 = (x) => { v.setUint32(o, x, true); o += 4; }, u16 = (x) => { v.setUint16(o, x, true); o += 2; };
+      str('RIFF'); u32(36 + n * 8); str('WAVE'); str('fmt '); u32(16); u16(3); u16(2); u32(48000); u32(384000); u16(8); u16(32); str('data'); u32(n * 8);
+      for (let i = 0; i < n; i++) for (let c = 0; c < 2; c++) { s = (s * 1103515245 + 12345) >>> 0; v.setFloat32(o, ((s / 4294967296) * 2 - 1) * Math.pow(10, -3 * i / (0.8 * n)), true); o += 4; }
+      return b;
+    }
     function wav(frames, seed) {
       const b = new ArrayBuffer(44 + frames * 2), v = new DataView(b); let o = 0, s = seed;
       const str = (t) => { for (const c of t) v.setUint8(o++, c.charCodeAt(0)); }, u32 = (x) => { v.setUint32(o, x, true); o += 4; }, u16 = (x) => { v.setUint16(o, x, true); o += 2; };
@@ -19,7 +28,7 @@ async function drop(page, target, files) {
       return b;
     }
     const dt = new DataTransfer();
-    for (const f of files) dt.items.add(new File([f.wav ? wav(f.wav, f.seed || 1) : f.text], f.name));
+    for (const f of files) dt.items.add(new File([f.reverb ? stereoFloatWav(f.reverb, f.seed || 1) : f.wav ? wav(f.wav, f.seed || 1) : f.text], f.name));
     let el, x = 0, y = 0;
     if (target.sel) { el = document.querySelector(target.sel); const r = el.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + r.height / 2; }
     else { x = target.x; y = target.y; el = document.elementFromPoint(x, y); }
@@ -106,6 +115,30 @@ async function drop(page, target, files) {
   await page.click('#presetSave'); await sleep(500);
   const resaved = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'Lib Test.rig.json')).text()));
   check(resaved.chain.find((c) => c.id === 'cab').asset.name === 'V30 SM57.wav', 're-saving keeps the missing file’s reference');
+
+  console.log('8. Real captures play; a broken one is refused with a reason');
+  const ampMeter = () => page.evaluate(() => window.__rig.modMeter('amp', 'rate'));
+  const ampLine = () => page.textContent('[data-asset-mod="amp"] .cur');
+  await page.keyboard.press('2'); await sleep(400);
+  check(/couldn.t load/.test(await ampLine()) || (await ampMeter()) === 0, `the hand-made “Plexi crunch.nam” has no real network: amp stays built-in (“${(await ampLine()).trim().slice(0, 90)}”)`);
+  for (const f of ['A2.nam', 'lstm.nam', 'wavenet_a1_standard.nam', 'convnet.nam']) {
+    await drop(page, { sel: '[data-drop="amp"]' }, [{ name: f, text: fs.readFileSync(path.join(root, 'tests/models', f), 'utf8') }]);
+    for (let i = 0; i < 30 && !(/48 kHz/.test(await ampLine()) && (await ampMeter()) === 48000); i++) await sleep(200);
+    await sleep(1200);
+    const r = await page.evaluate(() => ({ out: window.__rig.meters.outPk, nan: window.__rig.nanResets(), load: window.__rig.meters.load }));
+    check((await ampMeter()) === 48000 && r.out > 0.001 && r.nan === 0, `${f}: plays (“${(await ampLine()).trim().slice(0, 70)}”, out peak ${r.out.toFixed(3)}, engine load ${(100 * r.load).toFixed(0)}%)`);
+  }
+
+  console.log('9. A 3 s stereo IR: convolution reverb');
+  await page.keyboard.press('3'); await sleep(400);
+  await drop(page, { sel: '[data-drop="cab"]' }, [{ name: 'Hall 3s.wav', reverb: 3, seed: 5 }]);
+  const cabM = () => page.evaluate(() => [window.__rig.modMeter('cab', 'taps'), window.__rig.modMeter('cab', 'chans')]);
+  for (let i = 0; i < 30 && (await cabM())[1] !== 2; i++) await sleep(200);
+  await sleep(1200);
+  const [taps, chans] = await cabM(), r9 = await page.evaluate(() => ({ nan: window.__rig.nanResets(), load: window.__rig.meters.load }));
+  const cabLine = (await page.textContent('[data-asset-mod="cab"] .cur')).trim();
+  check(taps === 144000 && chans === 2 && r9.nan === 0 && /stereo · 3\.00 s/.test(cabLine), `engine runs ${taps} taps × ${chans} channels (“${cabLine.slice(0, 60)}”, engine load ${(100 * r9.load).toFixed(0)}%)`);
+  await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-nam-reverb.png') });
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

@@ -43,11 +43,20 @@ captures. Type in the search box: every word must match the name or the details.
 **Use built-in** returns to the module's default. **Remove file** deletes the file from the
 library; it asks you to press again to confirm.
 
-IRs are decoded to mono at the engine's sample rate. The cab uses the first 2048 samples
-(about 43 ms at 48 kHz), which is the usual length for cabinet IRs. Longer room IRs are cut short.
+**IRs** of any length up to 20 s, mono or stereo, play in full: a 20 ms cabinet, a room, or a long
+reverb. The browser decodes the WAV (16/24/32-bit or float, any sample rate it reads) and resamples
+it to the engine's rate; a stereo IR gives a stereo output. Every IR is level-matched by its energy,
+so swapping a cab for a hall doesn't jump in volume. Longer than 20 s, the first 20 s are used.
 
-NAM captures can be imported, searched, assigned and saved in presets now. They play once the
-NAM engine is compiled into the amp slot; until then the amp's panel says so.
+**NAM captures** of every architecture play in the amp: WaveNet (A1 standard/lite/feather, A2 and
+slimmable A2), LSTM, ConvNet, Linear and Sequential, using NeuralAmpModelerCore itself
+(`third_party/`). Captures that carry loudness data are levelled to −18 dB like the NAM plugin.
+A file the engine can't play (damaged, an unknown architecture, more than 2 channels) is refused
+and the amp's panel and the engine log say why; whatever was playing keeps playing.
+
+In the browser, loading a capture briefly pauses audio (about 0.1 s for a large one; a 20 s stereo IR
+about half a second) because the engine runs on the audio thread there. The swap itself is
+a click-free crossfade. The Linux host loads on a background thread instead.
 
 ## Preset files
 

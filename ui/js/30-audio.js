@@ -2,7 +2,8 @@
 let inputNode = null, mediaStream = null, loopSrc = null, riffBuf = null;
 
 async function startAudio(source) {
-  const ctx = new AudioContext({ latencyHint: 0 });
+  // 48 kHz, the rate NAM captures are made at (the browser converts if the interface runs at another rate).
+  let ctx; try { ctx = new AudioContext({ latencyHint: 0, sampleRate: 48000 }); } catch (e) { ctx = new AudioContext({ latencyHint: 0 }); }
   rig.ctx = ctx;
   // A data: URL works when the page is opened straight from disk (file://), where blob: worklets are refused.
   const src = $('worklet-src').textContent;

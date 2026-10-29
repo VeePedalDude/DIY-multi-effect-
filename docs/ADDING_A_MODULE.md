@@ -73,20 +73,33 @@ TEST("70 trem: full depth dips the level") {
 
 ## Optional: a file slot (IRs, captures, samples)
 
-Declare a slot in the description and implement three functions. The library, search, drag and
+Declare a slot in the description and implement four functions. The library, search, drag and
 drop, presets and the protocol all pick it up automatically:
 
 ```cpp
 inline constexpr ModuleDesc VERB_DESC = {"verb", "ROOM IR", "convolution", 2, VERB_PARAMS, 0, {nullptr, nullptr},
-                                         {"room-ir", "Room IR", ".wav", true, 48000 * 4 * 4}};   // kind, label, exts, ready, max bytes
-unsigned char* assetBuffer() override { return reinterpret_cast<unsigned char*>(irBuf); }
-int assetCommit(int bytes) override { /* use bytes / 4 float samples */ return 0; }
+                                         {"room-ir", "Room IR", ".wav", true, irMaxBytes()}};   // kind, label, exts, ready, max bytes
+std::vector<unsigned char> staging; std::string status;
+unsigned char* assetBuffer(int bytes) override { staging.resize(bytes); return staging.data(); }
+int assetCommit(int bytes) override { /* build from staging; set status; 0 = ok, negative = refused */ return 0; }
 void assetClear() override { /* back to built-in */ }
+const char* assetStatus() const override { return status.c_str(); }   // shown in the panel and log
 ```
 
-`.wav` files are decoded by the host to mono float32 at the engine rate. Any other extension
-arrives as raw file bytes. Use `ready = false` to accept files before the module can play them.
-The library gets a `room-ir/` folder automatically.
+The host reserves room with `assetBuffer(bytes)`, copies the file's payload in, then calls
+`assetCommit`. These run on the control thread, never inside `process()`, so they may parse and
+allocate. `.wav` files arrive decoded (the `RIR1` header and planar float32 channels described in
+`engine/core/nam.h`, at the engine rate). Any other extension arrives as the file's raw bytes. Use
+`ready = false` to accept files before the module can play them. The library gets a `room-ir/`
+folder automatically.
+
+**Swapping without clicks or audio-thread allocation:** build the new thing in `assetCommit`, wrap it
+in a `LoadedModel` and hand it to a `ModelSlot` (`engine/core/model_slot.h`). In `process()`, call
+`slot.begin(n)` once, run `slot.current()` and, while a swap is under way, `slot.next()`, mixed by
+the weights `begin` returns. The slot warms the new model up silently, crossfades over 10 ms and
+frees the old one back on the control thread. `amp.h` (NAM captures) and `cab.h` (IRs) both work
+this way; the cab is the simplest example. For NAM captures and IRs, `engine/core/nam.h` already
+has `loadCapture` and `parseIr`.
 
 ## Optional: a face screen, `ui/screens/<id>.js`
 

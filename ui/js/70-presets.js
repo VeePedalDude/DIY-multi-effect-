@@ -43,7 +43,7 @@ async function loadPresetFile(file) {
       r.warnings.push(`${m.id}: ${ref.kind}/${ref.name} isn't in the library; using built-in until you add it`);
       if (rig.node) rig.node.port.postMessage({ type: 'asset_clear', inst: m.inst });
       state.assets[m.id] = { kind: ref.kind, name: ref.name, size: ref.size, hash: ref.hash, missing: true };
-      const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null;
+      const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null; d.irDecay = null; d.namMeta = null; d.engineNote = "";
       assetStatus[m.id] = ' · missing from library (kept in the preset)';
     }
   }

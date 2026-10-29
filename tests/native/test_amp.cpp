@@ -22,7 +22,7 @@ static double aliasDb(float f0, float amp, float drive, int os, bool adaa) {
 
 TEST("20 amp: aliasing (non-harmonic energy below harmonics; bigger is cleaner)") {
   struct V { int os; bool adaa; const char* name; } vs[] = {{1,false,"1x"},{2,false,"2x"},{4,false,"4x"},{1,true,"1x+ADAA"},{2,true,"2x+ADAA"},{4,true,"4x+ADAA"}};
-  printf("      %-9s %22s %22s %22s\n", "variant", "2.5k sine, max drive", "1234 Hz sine, max drive", "330 Hz, default drive");
+  printf("      %-9s %22s %22s %22s\n", "variant", "2.5k sine, max drive", "1234 Hz sine, max drive", "330 Hz, +9.6 dB input");
   for (auto& v : vs) printf("      %-9s %19.1f dB %19.1f dB %19.1f dB\n", v.name, aliasDb(2500, .25f, 1.f, v.os, v.adaa), aliasDb(1234, .25f, 1.f, v.os, v.adaa), aliasDb(330, .25f, .6f, v.os, v.adaa));
   Engine d; d.init(SR);
   double shipped = aliasDb(2500, .25f, 1.f, d.amp.os, d.amp.adaa);

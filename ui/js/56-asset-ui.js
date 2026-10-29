@@ -17,7 +17,7 @@ function assetPanelHtml(m) {
   return `<div class="asset" data-asset-mod="${m.id}">
     <span class="eyebrow">${a.label} · ${total} in library</span>
     <div class="cur">${cur ? `<b>${cur.name.replace(/</g, '&lt;')}</b>` : '<b>Built-in</b>'}<span class="muted">${assetStatus[m.id] || ''}</span></div>
-    ${a.ready ? '' : `<p class="note warnline">The NAM engine isn’t compiled in yet. Captures are stored, searchable and saved in presets, and will play once it lands.</p>`}
+    ${a.ready ? '' : `<p class="note warnline">This build can’t load these files yet. They are stored, searchable and saved in presets.</p>`}
     <input type="search" id="as-${m.id}" data-asset-search="${m.id}" placeholder="Search ${kindLabel(a.kind)}…" aria-label="Search ${kindLabel(a.kind)}" value="${(assetQuery[m.id] || '').replace(/"/g, '&quot;')}">
     <ul id="al-${m.id}">${assetListHtml(m)}</ul>
     <div class="drop" data-drop="${m.id}">Drop ${a.exts} files here, or
@@ -38,25 +38,39 @@ async function selectAsset(m, name) {
 }
 function clearAsset(m) {
   delete state.assets[m.id];
-  const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null;
+  const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null; d.irDecay = null; d.namMeta = null; d.engineNote = '';
   assetStatus[m.id] = '';
   if (rig.node) rig.node.port.postMessage({ type: 'asset_clear', inst: m.inst });
   logLine(`asset_clear ${m.inst}`); renderPanel();
 }
-// Read the chosen file and hand it to the engine. IRs are decoded to mono at the engine's sample rate.
+// Read the chosen file and hand it to the engine. A .nam goes as its text; an IR is decoded by the
+// browser (any WAV it can read, resampled to the engine's rate) and sent as RIR1 header + planar floats.
+const IR_MAX_SECONDS = 20;
 async function pushAsset(m) {
   const ref = state.assets[m.id]; if (!ref || ref.missing || !m.asset.ready || !rig.node) return;
+  const d = MODDATA[m.id] || (MODDATA[m.id] = {});
   try {
     const file = await library.core.file(ref.kind, ref.name), raw = await file.arrayBuffer();
     let data = raw;
     if (ref.kind === 'ir') {
-      const buf = await rig.ctx.decodeAudioData(raw.slice(0)), max = m.asset.maxBytes / 4;
-      const ch = buf.getChannelData(0).slice(0, max); data = ch.buffer;
-      const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.irResp = irResponse(ch, buf.sampleRate);
-      if (buf.length > max) assetStatus[m.id] = ` · first ${max} of ${buf.length} samples used`;
+      data = await irPayload(raw, d);
+      if (d.irTrimmed) assetStatus[m.id] = ` · first ${IR_MAX_SECONDS} s used`;
+    } else if (ref.kind === 'nam') {
+      d.namMeta = parseNamMeta(new TextDecoder().decode(raw));
     }
     rig.node.port.postMessage({ type: 'asset', inst: m.inst, data, ref: `${ref.kind}/${ref.name}` }, [data]);
   } catch (e) { assetStatus[m.id] = ' · couldn’t load: ' + e.message; logLine(`asset ${ref.name}: ${e.message}`, true); renderPanel(); }
+}
+async function irPayload(raw, d) {
+  const buf = await rig.ctx.decodeAudioData(raw.slice(0)), sr = buf.sampleRate;
+  const ch = Math.min(2, buf.numberOfChannels), frames = Math.min(buf.length, Math.floor(IR_MAX_SECONDS * sr));
+  d.irTrimmed = buf.length > frames;
+  const out = new ArrayBuffer(16 + ch * frames * 4), h = new DataView(out);
+  h.setInt32(0, 0x31524952, true); h.setInt32(4, ch, true); h.setInt32(8, frames, true); h.setFloat32(12, sr, true);
+  for (let c = 0; c < ch; c++) new Float32Array(out, 16 + c * frames * 4, frames).set(buf.getChannelData(c).subarray(0, frames));
+  const first = buf.getChannelData(0).subarray(0, frames);
+  d.irResp = irResponse(first, sr); d.irDecay = irDecay(first, sr); d.irSecs = frames / sr; d.irCh = ch;
+  return out;
 }
 // Delete the module's current file from the library (two clicks), then fall back to built-in.
 async function removeAssetFile(m) {
@@ -70,9 +84,20 @@ async function removeAssetFile(m) {
 function pushAllAssets() { MODS.forEach((m) => { if (m.asset && m.asset.ready && state.assets[m.id] && !state.assets[m.id].missing) pushAsset(m); }); }
 function onAssetReply(d) {
   const m = MODS[d.inst]; if (!m) return;
-  if (d.ref) assetStatus[m.id] = d.status === 0 ? ` · loaded (${(d.bytes / 4) | 0} samples)` : ` · engine rejected it (resp ${d.status})`;
-  logLine(d.ref ? `${d.ref} -> resp ${d.status}` : `asset_clear ${d.inst} -> resp ${d.status}`, d.status !== 0);
+  const md = MODDATA[m.id] || (MODDATA[m.id] = {});
+  if (d.ref) {
+    md.engineNote = d.status === 0 ? d.note : '';
+    assetStatus[m.id] = d.status === 0 ? ` · ${d.note}${md.irTrimmed ? ` · first ${IR_MAX_SECONDS} s used` : ''}` : ` · couldn’t load: ${d.note || 'resp ' + d.status}`;
+  } else md.engineNote = '';
+  logLine(d.ref ? `${d.ref} -> resp ${d.status}${d.note ? ' (' + d.note + ')' : ''}${d.ms ? ` · ${d.ms} ms` : ''}` : `asset_clear ${d.inst} -> resp ${d.status}`, d.status !== 0);
   renderPanelSoon();
+}
+// Energy decay (dB, 48 points over the IR's length): the reverb-style view of a long IR
+function irDecay(d, sr) {
+  const n = d.length, tail = new Float64Array(n + 1);
+  for (let i = n - 1; i >= 0; i--) tail[i] = tail[i + 1] + d[i] * d[i];
+  const out = []; for (let k = 0; k < 48; k++) out.push(10 * Math.log10(tail[Math.floor(k * n / 48)] / (tail[0] || 1) + 1e-12));
+  return out;
 }
 // 64 log-spaced magnitudes (dB, 40 Hz..16 kHz) for the cab screen
 function irResponse(d, sr) {

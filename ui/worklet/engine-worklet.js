@@ -7,8 +7,10 @@
 //   mod_disconnect <inst> <symbol>            set_bpm <bpm>
 //   master <dB>                               ext <source> <value>
 //   input_channel <0|1>
-// File slots arrive as {type:'asset', inst, data, ref} messages (binary); the Linux host takes
-// the text form `asset_load <inst> <kind>/<file name>` and reads the file from its library folder.
+// File slots arrive as {type:'asset', inst, data, ref} messages (binary: a .nam file's text, or an
+// IR as RIR1 header + float samples, see engine/core/nam.h) and are answered with the engine's
+// status line; the Linux host takes the text form `asset_load <inst> <kind>/<file name>` and reads
+// the file from its library folder.
 // <inst> is the chain index (mod-host style) or the module id ("holo").
 // Replies: resp <status>  (0 ok, negatives follow mod-host error numbers)
 
@@ -78,16 +80,24 @@ class RigEngine extends AudioWorkletProcessor {
     if (d.type === 'cmd') {
       this.port.postMessage({ type: 'resp', id: d.id, line: d.line, status: this.exec(d.line) });
     } else if (d.type === 'asset') {             // file slot: d.inst, d.data (ArrayBuffer), d.ref (library name, for the log)
+      // Loading parses and allocates here on the audio thread, so audio pauses briefly (a capture
+      // takes ~0.1 s); the swap itself is a click-free crossfade inside rig_process.
       const m = this.inst(d.inst), max = m < 0 ? 0 : this.x.rig_asset_max(m), bytes = d.data ? d.data.byteLength : 0;
-      let status = ERR.INSTANCE_INVALID;
+      let status = ERR.INSTANCE_INVALID, note = '';
+      const t0 = Date.now();
       if (m >= 0) {
-        if (bytes > max) status = ERR.VALUE_OUT_OF_RANGE;
-        else { new Uint8Array(this.x.memory.buffer, this.x.rig_asset_buf(m), bytes).set(new Uint8Array(d.data)); status = this.x.rig_asset_commit(m, bytes); }
+        if (!bytes || bytes > max) status = ERR.VALUE_OUT_OF_RANGE;
+        else {
+          const p = this.x.rig_asset_buf(m, bytes);              // reserve first: it can grow (and detach) memory
+          new Uint8Array(this.x.memory.buffer, p, bytes).set(new Uint8Array(d.data));
+          status = this.x.rig_asset_commit(m, bytes);
+        }
+        note = cString(this.x.memory, this.x.rig_asset_status(m));
       }
-      this.port.postMessage({ type: 'asset', inst: m, ref: d.ref, status, bytes, max });
+      this.port.postMessage({ type: 'asset', inst: m, ref: d.ref, status, note, bytes, max, ms: Date.now() - t0 });
     } else if (d.type === 'asset_clear') {
       const m = this.inst(d.inst); if (m >= 0) this.x.rig_asset_clear(m);
-      this.port.postMessage({ type: 'asset', inst: m, ref: null, status: m >= 0 ? 0 : ERR.INSTANCE_INVALID, bytes: 0, max: 0 });
+      this.port.postMessage({ type: 'asset', inst: m, ref: null, status: m >= 0 ? 0 : ERR.INSTANCE_INVALID, note: m >= 0 ? cString(this.x.memory, this.x.rig_asset_status(m)) : '', bytes: 0, max: 0 });
     }
   }
   process(inputs, outputs) {

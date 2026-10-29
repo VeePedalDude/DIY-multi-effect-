@@ -61,10 +61,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#vMatrix');
   await page.click('button.cell[data-pid="cab.mix"][data-sid="ctrl"]');
   const setSlider = (v) => page.evaluate((v) => { const s = document.getElementById('ctrlSlider'); s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); }, v);
-  await setSlider(-1); await sleep(500);
+  // a meter packet made at least 0.3 s (audio time) after now: a busy headless page can hand them over late
+  const fresh = async () => { const t0 = await page.evaluate(() => window.__rig.ctx.currentTime); await page.waitForFunction((t0) => window.__rig.meters.t > t0 + 0.3, t0, { timeout: 10000 }); };
+  await setSlider(-1); await sleep(200); await fresh();
   v = await page.evaluate(() => window.__rig.eff('cab', 'mix'));
   check(Math.abs(v - 0.68) < 0.02, `controller -1 -> cab mix ${v.toFixed(3)} (expect 0.68)`);
-  await setSlider(1); await sleep(500);
+  await setSlider(1); await sleep(200); await fresh();
   v = await page.evaluate(() => window.__rig.eff('cab', 'mix'));
   check(v > 0.99, `controller +1 -> cab mix ${v.toFixed(3)} (expect 1.00, clamped)`);
   await page.screenshot({ path: path.join(shots, 'shot-matrix.png') });
@@ -89,7 +91,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.screenshot({ path: path.join(shots, 'shot-settings.png') });
   await page.click('#settingsBtn');
   await sleep(300);
-  m = await page.evaluate(() => window.__rig.meters);
+  m = { inPk: await page.evaluate(async () => { let p = 0; const t0 = performance.now(); while (performance.now() - t0 < 1500) { p = Math.max(p, window.__rig.meters.inPk); await new Promise((r) => setTimeout(r, 25)); } return p; }) };   // the riff has gaps: take the peak over 1.5 s
   check(m.inPk > 0.01, `riff source feeds the engine (peak ${(20 * Math.log10(m.inPk)).toFixed(1)} dBFS)`);
   await page.screenshot({ path: path.join(shots, 'shot-stage.png') });
 

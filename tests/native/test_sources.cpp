@@ -11,7 +11,7 @@ TEST("60 mod: LFO -> HOLOGRAM feedback swings base 0.45 by +/-0.22") {
 }
 
 TEST("61 mod: controller ext value reaches its target (clamped at 1)") {
-  Engine e; e.init(SR); int c = mod(e, "cab"); e.src.list[src(e, "ctrl")]->ext(0.5f); e.conn[c][1] = src(e, "ctrl");
+  Engine e; e.init(SR); int c = mod(e, "cab"); e.rack.ext(src(e, "ctrl"), 0.5f); e.conn[c][1] = src(e, "ctrl");
   for (int k = 0; k < 400; k++) { memset(e.inBuf, 0, sizeof e.inBuf); e.process(128); }
   CHECK(fabsf(e.eff[c][1] - 1.f) < 0.01f, "cab mix %.3f (0.90 + 0.22 x 0.5, clamped to 1)", e.eff[c][1]);
 }
@@ -20,14 +20,14 @@ TEST("62 adsr: pick onsets on the riff") {
   Engine e; e.init(SR);
   render(e, riffWithNoise());
   int truth = countOnsetGroups(riff());
-  CHECK(abs(e.src.adsr.onsets - truth) <= 2, "detected %d onsets, riff has %d pick events", e.src.adsr.onsets, truth);
+  CHECK(abs(inst<PickAdsr>(e, "adsr").onsets - truth) <= 2, "detected %d onsets, riff has %d pick events", inst<PickAdsr>(e, "adsr").onsets, truth);
 }
 
 TEST("63 orbit: bounded and moving over 10 minutes") {
   Engine e; e.init(SR); int o = src(e, "orbit"); float lo = 1, hi = -1; int jumps = 0; float last = 0;
   for (int k = 0; k < (int)(600 * SR / 128); k++) {
     memset(e.inBuf, 0, sizeof e.inBuf); e.process(128);
-    float v = e.src.val[o]; lo = fminf(lo, v); hi = fmaxf(hi, v);
+    float v = e.rack.slot[o].val; lo = fminf(lo, v); hi = fmaxf(hi, v);
     if (fabsf(v - last) > 0.5f) jumps++;
     last = v;
   }
@@ -36,30 +36,30 @@ TEST("63 orbit: bounded and moving over 10 minutes") {
 
 TEST("64 heart: strap bpm used while fresh, falls back to 72 after 5 s") {
   Engine e; e.init(SR); int hs = src(e, "heart");
-  e.src.list[hs]->ext(120.f);
+  e.rack.ext(hs, 120.f);
   for (int k = 0; k < 100; k++) { memset(e.inBuf, 0, sizeof e.inBuf); e.process(128); }
-  float live = e.src.heart.bpm;
+  float live = inst<Heart>(e, "heart").bpm;
   for (int k = 0; k < (int)(6 * SR / 128); k++) { memset(e.inBuf, 0, sizeof e.inBuf); e.process(128); }
-  CHECK(live == 120.f && e.src.heart.bpm == 72.f, "live %.0f bpm, after silence %.0f bpm", live, e.src.heart.bpm);
+  CHECK(live == 120.f && inst<Heart>(e, "heart").bpm == 72.f, "live %.0f bpm, after silence %.0f bpm", live, inst<Heart>(e, "heart").bpm);
 }
 
 // ----------------------------------------------------------------- source knobs (src_set)
 static int srcKnob(Engine& e, int k, const char* sym) { int p = e.srcParamIndex(k, sym); if (p < 0) { printf("no knob %s\n", sym); exit(2); } return p; }
 static void setReal(Engine& e, int k, const char* sym, float real) {           // set a source knob by its real value
-  const ParamDesc& q = e.src.list[k]->desc().params[srcKnob(e, k, sym)];
-  e.src.base[k][srcKnob(e, k, sym)] = q.curve == Curve::Log ? logf(real / q.min) / logf(q.max / q.min) : (real - q.min) / (q.max - q.min);
+  const ParamDesc& q = sourceTypeDesc(e.rack.slot[k].type).params[srcKnob(e, k, sym)];
+  e.rack.slot[k].base[srcKnob(e, k, sym)] = q.curve == Curve::Log ? logf(real / q.min) / logf(q.max / q.min) : (real - q.min) / (q.max - q.min);
 }
 static std::vector<float> trace(Engine& e, int k, const std::vector<float>& in) {   // source value per block
-  std::vector<float> v; for (size_t i = 0; i + 128 <= in.size(); i += 128) { memcpy(e.inBuf, &in[i], 512); e.process(128); v.push_back(e.src.val[k]); } return v;
+  std::vector<float> v; for (size_t i = 0; i + 128 <= in.size(); i += 128) { memcpy(e.inBuf, &in[i], 512); e.process(128); v.push_back(e.rack.slot[k].val); } return v;
 }
 
 TEST("65 sources: every source describes its knobs, with defaults in range") {
   Engine e; e.init(SR); int total = 0; bool ok = true;
-  for (int k = 0; k < NSRC; k++) {
-    const SourceDesc& d = e.src.list[k]->desc(); total += d.nparams;
+  for (int k = 0; k < NSRCTYPES; k++) {
+    const SourceDesc& d = sourceTypeDesc(e.rack.slot[k].type); total += d.nparams;
     for (int p = 0; p < d.nparams; p++) { const ParamDesc& q = d.params[p]; ok = ok && q.def >= 0 && q.def <= 1 && q.max > q.min && (q.curve == Curve::Lin || q.min > 0); }
   }
-  CHECK(ok && total >= NSRC && strstr(e.descJson, "\"symbol\":\"rate\""), "%d sources, %d knobs, all listed in describe()", NSRC, total);
+  CHECK(ok && total >= NSRCTYPES && strstr(e.descJson, "\"symbol\":\"rate\""), "%d sources, %d knobs, all listed in describe()", NSRCTYPES, total);
 }
 
 TEST("66 sources: LFO rate and shape") {
@@ -87,10 +87,10 @@ TEST("67 sources: envelope release, ADSR attack, orbit speed, heart rest rate, c
   double t01 = travel(0.1f), t1 = travel(1.f), t5 = travel(5.f);
   CHECK(t01 < t1 && t1 < t5, "ORBIT SPEED 0.1x / 1x / 5x: travel %.1f / %.1f / %.1f in 20 s", t01, t1, t5);
   // heart: simulated rate
-  { Engine e; e.init(SR); int k = src(e, "heart"); setReal(e, k, "rest", 110.f); trace(e, k, std::vector<float>(1280, 0.f)); float m[2]; e.src.list[k]->meters(m);
+  { Engine e; e.init(SR); int k = src(e, "heart"); setReal(e, k, "rest", 110.f); trace(e, k, std::vector<float>(1280, 0.f)); float m[2]; e.rack.meters(k, m);
     CHECK(fabsf(m[0] - 110.f) < 0.5f, "HEART REST 110 bpm -> meter %.1f bpm", m[0]); }
   // controller: dead zone swallows a drifting stick, full throw still reaches 1
-  { Engine e; e.init(SR); int k = src(e, "ctrl"); setReal(e, k, "deadzone", 20.f); e.src.list[k]->ext(0.15f); auto v = trace(e, k, std::vector<float>((size_t)(0.5f * SR), 0.f));
-    float drift = v.back(); e.src.list[k]->ext(1.f); auto w = trace(e, k, std::vector<float>((size_t)(0.5f * SR), 0.f));
+  { Engine e; e.init(SR); int k = src(e, "ctrl"); setReal(e, k, "deadzone", 20.f); e.rack.ext(k, 0.15f); auto v = trace(e, k, std::vector<float>((size_t)(0.5f * SR), 0.f));
+    float drift = v.back(); e.rack.ext(k, 1.f); auto w = trace(e, k, std::vector<float>((size_t)(0.5f * SR), 0.f));
     CHECK(drift == 0.f && w.back() > 0.99f, "CTRL DEAD ZONE 20%%: stick at 0.15 -> %.3f, full throw -> %.3f", drift, w.back()); }
 }

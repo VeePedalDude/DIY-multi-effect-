@@ -1,0 +1,26 @@
+{
+  "format": "rig-preset",
+  "version": 3,
+  "name": "Mod Rack",
+  "saved": "2026-10-29T18:00:00.000Z",
+  "chain": [
+    { "id": "holo", "bypass": false, "params": { "feedback": 40, "halo": 50 } }
+  ],
+  "sources": [
+    { "id": "env", "type": "env", "params": { "release": 300 } },
+    { "id": "lfo", "type": "lfo", "params": { "rate": 4 } },
+    { "id": "lfo2", "type": "lfo", "params": { "rate": 0.5, "shape": 100 } },
+    { "id": "drift", "type": "orbit", "params": { "speed": 0.2 } }
+  ],
+  "mods": [
+    { "target": "holo.feedback", "source": "lfo", "depth": 0.3 },
+    { "target": "holo.halo", "source": "lfo2", "depth": 0.2 },
+    { "target": "lfo.rate", "source": "env", "depth": 0.4 },
+    { "target": "lfo2.shape", "source": "drift", "depth": 0.5 },
+    { "target": "drift.speed", "source": "drift", "depth": 0.1 }
+  ],
+  "tempo": 110,
+  "master": -9,
+  "scenes": { "A": { "chain": [], "sources": [ { "id": "lfo2", "params": { "rate": 2 } } ],
+                     "mods": [ { "target": "lfo.rate", "source": "lfo2", "depth": 0.6 } ], "tempo": 110 } }
+}

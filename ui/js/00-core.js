@@ -21,6 +21,7 @@ const state = {
   depths: {},                             // per-patch swing; missing = DEPTH
   assets: {},                             // module id -> { kind, name, size, hash } chosen from the library
   presetExtras: [],                       // chain entries for modules this build doesn't have, kept so re-saving loses nothing
+  sourceExtras: [],                       // the same for sources of a type this build doesn't have
 };
 const depthOf = (pid) => state.depths[pid] ?? DEPTH;
 let meters = null;                        // latest engine meter packet

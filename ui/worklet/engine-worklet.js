@@ -8,14 +8,20 @@
 //   master <dB>                               ext <source> <value>
 //   input_channel <0|1>                       src_set <source> <symbol> <0..1>
 //   tuner <0|1> [mute 0|1]                    tuner_ref <A4 Hz, 400..480>
+//   src_add <type> [id]                       src_remove <source>
+//   src_mod <source> <symbol> <from source> <depth>
+//   src_unmod <source> <symbol>
+// Sources are rack instances, named by id ("lfo", "lfo2"); every change to the rack is answered
+// with a {type:'rack'} message listing what's in it and in which slot.
 // File slots arrive as {type:'asset', inst, data, ref} messages (binary: a .nam file's text, or an
 // IR as RIR1 header + float samples, see engine/core/nam.h) and are answered with the engine's
 // status line; the Linux host takes the text form `asset_load <inst> <kind>/<file name>` and reads
 // the file from its library folder.
 // <inst> is the chain index (mod-host style) or the module id ("holo").
-// Replies: resp <status>  (0 ok, negatives follow mod-host error numbers)
+// Replies: resp <status>  (0 ok, negatives follow mod-host error numbers; src_add: -1 unknown type,
+// -2 id taken or not allowed, -3 rack full)
 
-const ERR = { INSTANCE_INVALID: -1, INVALID_PARAM_SYMBOL: -103, VALUE_OUT_OF_RANGE: -207, INVALID_OPERATION: -902 };
+const ERR = { INSTANCE_INVALID: -1, ID_TAKEN: -2, RACK_FULL: -3, INVALID_PARAM_SYMBOL: -103, VALUE_OUT_OF_RANGE: -207, INVALID_OPERATION: -902 };
 
 function cString(mem, ptr) {                 // UTF-8 C string from wasm memory (no TextDecoder in worklets)
   const u = new Uint8Array(mem.buffer, ptr); let s = '', i = 0;
@@ -36,12 +42,14 @@ class RigEngine extends AudioWorkletProcessor {
     if (this.x._initialize) this.x._initialize();
     this.x.rig_init(sampleRate);
     this.desc = JSON.parse(cString(this.x.memory, this.x.rig_describe()));
+    this.types = Object.fromEntries(this.desc.sourceTypes.map((t) => [t.type, t]));
+    this.readRack();
     this.mlen = this.x.rig_meters_len();
     this.inCh = 0;
     this.blocks = 0; this.busyMs = 0; this.wallStart = Date.now();
     this.inPk = 0; this.outPk = 0;
     this.port.onmessage = (e) => this.onMsg(e.data);
-    this.port.postMessage({ type: 'describe', desc: this.desc });
+    this.port.postMessage({ type: 'describe', desc: this.desc }); this.sendRack();
   }
   views() {
     const b = this.x.memory.buffer;
@@ -58,7 +66,10 @@ class RigEngine extends AudioWorkletProcessor {
     if (Number.isInteger(i)) return i >= 0 && i < mods.length ? i : -1;
     return mods.findIndex((m) => m.id === tok);
   }
-  source(tok) { return this.desc.sources.findIndex((s) => s.id === tok); }
+  readRack() { this.rack = JSON.parse(cString(this.x.memory, this.x.rig_rack())).sources; }
+  sendRack() { this.port.postMessage({ type: 'rack', rack: this.rack }); }
+  source(tok) { const r = this.rack.find((s) => s.id === tok); return r ? r.slot : -1; }      // rack slot of an instance id
+  sourceKnob(slot, sym) { const r = this.rack.find((s) => s.slot === slot), t = r && this.types[r.type]; return t ? t.params.findIndex((q) => q.symbol === sym) : -1; }
   exec(line) {
     const t = String(line).trim().split(/\s+/), c = t[0], X = this.x;
     if (c === 'param_set' || c === 'mod_connect' || c === 'mod_disconnect') {
@@ -75,9 +86,24 @@ class RigEngine extends AudioWorkletProcessor {
       X.rig_tuner(t[1] === '1' ? 1 : 0, t[2] === '0' ? 0 : 1); return 0;
     }
     if (c === 'tuner_ref') { const v = Number(t[1]); if (!(v >= 400 && v <= 480)) return ERR.VALUE_OUT_OF_RANGE; X.rig_tuner_ref(v); return 0; }
+    if (c === 'src_add') {                       // src_add <type> [id]
+      if (!this.types[t[1]]) return ERR.INSTANCE_INVALID;
+      const line = `${t[1]} ${t[2] || ''}`.slice(0, 60), buf = new Uint8Array(X.memory.buffer, X.rig_text(), 64);
+      for (let i = 0; i < 64; i++) buf[i] = i < line.length ? line.charCodeAt(i) & 0x7f : 0;
+      const k = X.rig_src_add(); if (k < 0) return k === -2 ? ERR.RACK_FULL : k === -3 ? ERR.ID_TAKEN : ERR.INSTANCE_INVALID;
+      this.readRack(); this.sendRack(); return 0;
+    }
+    if (c === 'src_remove') { const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID; X.rig_src_remove(k); this.readRack(); this.sendRack(); return 0; }
+    if (c === 'src_mod' || c === 'src_unmod') {  // src_mod <source> <symbol> <from source> <depth> | src_unmod <source> <symbol>
+      const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
+      const p = this.sourceKnob(k, t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
+      if (c === 'src_unmod') { X.rig_src_mod(k, p, -1, 0); return 0; }
+      const f = this.source(t[3]), d = Number(t[4]); if (f < 0 || !(d >= 0 && d <= 1)) return ERR.VALUE_OUT_OF_RANGE;
+      return X.rig_src_mod(k, p, f, d) === 0 ? 0 : ERR.INSTANCE_INVALID;
+    }
     if (c === 'src_set') {                       // src_set <source> <symbol> <0..1>
       const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
-      const p = (this.desc.sources[k].params || []).findIndex((q) => q.symbol === t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
+      const p = this.sourceKnob(k, t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
       const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE;
       X.rig_src_param(k, p, v); return 0;
     }

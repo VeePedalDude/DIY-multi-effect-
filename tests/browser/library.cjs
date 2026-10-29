@@ -90,7 +90,7 @@ async function drop(page, target, files) {
   await page.click('#settingsBtn'); await page.fill('#presetInput', 'Lib Test'); await page.click('#presetSave'); await sleep(500);
   const saved = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'Lib Test.rig.json')).text()));
   const cabEntry = saved.chain.find((c) => c.id === 'cab'), ampEntry = saved.chain.find((c) => c.id === 'amp');
-  check(saved.format === "rig-preset" && saved.version === 2 && cabEntry.asset.name === 'V30 SM57.wav' && /^[0-9a-f]{8}$/.test(cabEntry.asset.hash) && ampEntry.asset.kind === 'nam', 'presets/Lib Test.rig.json written with both file references');
+  check(saved.format === "rig-preset" && saved.version === 3 && cabEntry.asset.name === 'V30 SM57.wav' && /^[0-9a-f]{8}$/.test(cabEntry.asset.hash) && ampEntry.asset.kind === 'nam', 'presets/Lib Test.rig.json written with both file references');
   check(typeof cabEntry.params.locut === 'number' && saved.chain.find((c) => c.id === 'holo').params.feedback > 1, `values in real units (holo feedback ${saved.chain.find((c) => c.id === 'holo').params.feedback} %)`);
   await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-library.png') });
 

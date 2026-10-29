@@ -4,27 +4,7 @@
 #include <chrono>
 using namespace rigtest;
 
-// Count heap calls made while the audio path runs (glibc builds only): the audio thread must never allocate.
-#if defined(__GLIBC__) && !defined(__SANITIZE_ADDRESS__)   // AddressSanitizer brings its own malloc
-extern "C" void* __libc_malloc(size_t);
-extern "C" void* __libc_calloc(size_t, size_t);
-extern "C" void* __libc_realloc(void*, size_t);
-extern "C" void* __libc_memalign(size_t, size_t);
-extern "C" void __libc_free(void*);
-static std::atomic<long> g_heapCalls{0};
-static std::atomic<bool> g_counting{false};
-static inline void note() { if (g_counting.load(std::memory_order_relaxed)) g_heapCalls++; }
-extern "C" void* malloc(size_t n) noexcept { note(); return __libc_malloc(n); }
-extern "C" void* calloc(size_t a, size_t b) noexcept { note(); return __libc_calloc(a, b); }
-extern "C" void* realloc(void* p, size_t n) noexcept { note(); return __libc_realloc(p, n); }
-extern "C" void free(void* p) noexcept { if (p) note(); __libc_free(p); }
-extern "C" void* aligned_alloc(size_t a, size_t n) noexcept { note(); return __libc_memalign(a, n); }
-extern "C" void* memalign(size_t a, size_t n) noexcept { note(); return __libc_memalign(a, n); }
-extern "C" int posix_memalign(void** p, size_t a, size_t n) noexcept { note(); *p = __libc_memalign(a, n); return *p ? 0 : 12; }
-#define HEAP_COUNTING 1
-#else
-#define HEAP_COUNTING 0
-#endif
+#define HEAP_COUNTING 1   // see heap_count.cpp; heapCounting() says whether it works on this platform
 
 static const char* MODELS[] = {
   "wavenet_a1_standard.nam", "A2.nam", "wavenet_a2_feature_test.nam", "slimmable_wavenet.nam", "slimmable_container.nam",
@@ -145,12 +125,11 @@ TEST("26 amp+cab: the audio path never touches the heap, even while files load a
     if (blk == 200 || blk == 1300) e->tuner.on = true;      // the strobe tuner, switched on (a fresh start) twice
     if (blk == 1200) e->tuner.on = false;
     memcpy(e->inBuf, &g[i], 512);
-    g_heapCalls = 0; g_counting = true;
-    e->process(128);                                        // audio-thread work: must not
-    g_counting = false; during += g_heapCalls;
+    during += heapCallsDuring([&] { e->process(128); });    // audio-thread work: must not
   }
   delete e;
-  CHECK(during == 0, "heap calls inside process() over %.0f s with 5 loads and swaps, tuner on and off: %ld", g.size() / SR, during);
+  if (heapCounting()) CHECK(during == 0, "heap calls inside process() over %.0f s with 5 loads and swaps, tuner on and off: %ld", g.size() / SR, during);
+  else CHECK(true, "heap counting needs glibc; skipped on this platform");
 #else
   CHECK(true, "heap counting needs glibc; skipped on this platform");
 #endif

@@ -73,7 +73,8 @@ async function applySkin(S, files) {
   scene.fog.color.set(S.stage.fog); scene.fog.density = S.stage.fogDensity;
   flowTube.material.color.set(S.stage.flow); flowMat.color.set(S.stage.flow);
   MODS.forEach((m) => { const st = styleOf(m); m.slab.material.color.set(S.stage.slab); m.halo.material.color.set(st.glow); m.glow.material.color.set(st.glow); });
-  SRC.forEach((s, i) => { s.color = sourceColor(s.id, i); [s.orb, s.ring, s.halo].forEach((o) => o.material.color.set(s.color)); });
+  SRC.forEach((s) => { s.color = instanceColor(S, s.type, s.n, TYPES[s.type].index); if (s.orb) [s.orb, s.ring, s.halo].forEach((o) => o.material.color.set(s.color)); });
+  if (addOrb) addOrb.orb.material.color.set(S.labels.text);
   syncCables();
   // card images, decoded before the faces are redrawn
   Object.keys(SKIN_IMG).forEach((k) => delete SKIN_IMG[k]);
@@ -82,7 +83,7 @@ async function applySkin(S, files) {
     const im = new Image(); im.src = u;
     try { await im.decode(); SKIN_IMG[n] = im; } catch (e) { logLine(`skin image ${n} couldn't be decoded`, true); }
   }));
-  drawPill(inLbl); drawPill(outLbl); MODS.forEach(drawFace); SRC.forEach(drawLabel);
+  drawPill(inLbl); drawPill(outLbl); MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(true);
   rig.skinHooks.forEach((f) => f());
   update();
 }

@@ -65,12 +65,14 @@ a click-free crossfade. The Linux host loads on a background thread instead.
 Presets are `.rig.json` files in `presets/`. They are versioned and built to keep working as the rig changes:
 
 ```json
-{ "format": "rig-preset", "version": 2, "name": "Ambient Drive",
+{ "format": "rig-preset", "version": 3, "name": "Ambient Drive",
   "chain": [ { "id": "holo", "bypass": false, "params": { "feedback": 42.75, "halo": 60 } },
              { "id": "cab",  "bypass": false, "params": { "locut": 42.27, "mix": 90 },
                "asset": { "kind": "ir", "name": "V30 SM57.wav", "size": 8236, "hash": "1a2b3c4d" } } ],
-  "mods": [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 } ],
-  "sources": [ { "id": "lfo", "params": { "rate": 8, "shape": 0 } } ],
+  "sources": [ { "id": "lfo", "type": "lfo", "params": { "rate": 8, "shape": 0 } },
+               { "id": "lfo2", "type": "lfo", "params": { "rate": 0.5 } } ],
+  "mods": [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 },
+            { "target": "lfo2.rate", "source": "env", "depth": 0.3 } ],
   "tempo": 120, "master": -12,
   "scenes": { "A": { "chain": [ ... ], "mods": [ ... ], "sources": [ ... ], "tempo": 120 } } }
 ```
@@ -87,9 +89,15 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
 - **Changes to the file layout itself** bump `PRESET_VERSION` and add a `PRESET_MIGRATIONS` step.
 - **Version 2** added `sources` (the modulation sources' knobs, in real units). Version 1 files
   migrate to it with every source at its default, which is exactly how they sounded.
-- `tests/fixtures/ambient-drive.v1.rig.json` (version 1) and `source-knobs.v2.rig.json` (version 2)
-  are hand-written. The build fails if either ever stops loading cleanly, so a change that would
-  break existing presets can't slip through.
+- **Version 3** made `sources` the modulation rack: every instance in order, with its `type`
+  (several of one type is fine), and `mods` targets can be source knobs (`lfo2.rate`:
+  cross-modulation). The rack belongs to the preset; scenes change the knobs and patches of the
+  instances in it. Version 2 files migrate to the six fixed sources they were made with.
+- **Source types this build doesn't have** are kept (with their patches) and written back on re-save.
+  Renamed source types and knobs go in `PRESET_RENAMES.sourceTypes` and `.sourceKnobs`.
+- `tests/fixtures/ambient-drive.v1.rig.json` (version 1), `source-knobs.v2.rig.json` (version 2)
+  and `mod-rack.v3.rig.json` (version 3) are hand-written. The build fails if any ever stops loading
+  cleanly, so a change that would break existing presets can't slip through.
 
 ## On the iMac
 

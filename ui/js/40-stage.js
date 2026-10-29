@@ -67,28 +67,84 @@ function buildStage() {
   const flowDots = new THREE.Points(flowGeo, flowMat); flowDots.frustumCulled = false; scene.add(flowDots);
   inLbl = pill('IN'); outLbl = pill('OUT'); inLbl.s.position.set(-endX, 1.9, -3.2); outLbl.s.position.set(endX, 1.9, -3.2); scene.add(inLbl.s, outLbl.s);
 
-  const shalf = (SRC.length - 1) / 2;
-  SRC.forEach((s, i) => {
-    const x = (i - shalf) * SPACING, col = new THREE.Color(s.color);
-    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(.42, 1), new THREE.MeshBasicMaterial({ color: col })); orb.position.set(x, 7.6, -4.2);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(.75, .03, 8, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .7 })); ring.position.copy(orb.position);
-    const halo = new THREE.Mesh(new THREE.SphereGeometry(.9, 16, 12), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .1, depthWrite: false })); halo.position.copy(orb.position);
-    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128; const tex = mkTex(cv);
-    const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true })); lbl.scale.set(3.2, 1.6, 1); lbl.position.set(x, 9.3, -4.2);
-    scene.add(orb, ring, halo, lbl);
-    Object.assign(s, { orb, ring, halo, lbl, ctx: cv.getContext('2d'), tex, hist: [] });
-    orb.userData = halo.userData = { type: 'src', src: s }; lbl.userData = { type: 'srclabel', src: s }; pickables.push(orb, halo, lbl);
-  });
-
   carryGeo = new THREE.BufferGeometry(); carryGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(CN * 3), 3));
   carryLine = new THREE.Line(carryGeo, new THREE.LineDashedMaterial({ color: SKIN.stage.carry, dashSize: .25, gapSize: .18 })); carryLine.frustumCulled = false; carryLine.visible = false; scene.add(carryLine);
+  buildSources();
+  RACK_HOOKS.push(() => { buildSources(); update(); });
+}
+// The source row: one orb, ring, glow and name label per rack instance, and a "+" orb to add one.
+// Rebuilt whenever the rack changes. Up to 8 in a row, about as wide as the cards; more go on a
+// second row behind and above (the camera re-frames to show it).
+let srcObjs = [], addOrb = null, srcRowCount = 1;
+const srcRows = (total) => (total > 8 ? 2 : 1);
+function srcSpacing(cnt) { return Math.min(SPACING, Math.max(16, (MODS.length - 1) * SPACING + 6) / Math.max(1, cnt - 1)); }
+function srcSpot(i, total) {
+  const rows = srcRows(total), per = Math.ceil(total / rows), row = Math.floor(i / per), col = i % per, cnt = Math.min(per, total - row * per);
+  const sp = srcSpacing(cnt);
+  return new THREE.Vector3((col - (cnt - 1) / 2) * sp, 7.6 + row * 3.4, -4.2 - row * 2.6);
+}
+const srcLabelW = (total) => Math.min(3.2, srcSpacing(Math.ceil(total / srcRows(total))) * 0.94);
+function buildSources() {
+  srcObjs.forEach((o) => {
+    scene.remove(o); if (o.geometry) o.geometry.dispose();
+    if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); }
+    const k = pickables.indexOf(o); if (k >= 0) pickables.splice(k, 1);
+  });
+  srcObjs = []; addOrb = null;
+  const total = SRC.length + (rackFull() ? 0 : 1), lw = srcLabelW(total);
+  SRC.forEach((s, i) => {
+    const pos = srcSpot(i, total), col = new THREE.Color(s.color);
+    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(.42, 1), new THREE.MeshBasicMaterial({ color: col })); orb.position.copy(pos);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(.75, .03, 8, 48), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .7 })); ring.position.copy(pos);
+    const halo = new THREE.Mesh(new THREE.SphereGeometry(.9, 16, 12), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .1, depthWrite: false })); halo.position.copy(pos);
+    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128; const tex = mkTex(cv);
+    const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true })); lbl.scale.set(lw, lw / 2, 1); lbl.position.set(pos.x, pos.y + 1.7, pos.z);
+    scene.add(orb, ring, halo, lbl); srcObjs.push(orb, ring, halo, lbl);
+    Object.assign(s, { orb, ring, halo, lbl, ctx: cv.getContext('2d'), tex });
+    orb.userData = halo.userData = { type: 'src', src: s }; lbl.userData = { type: 'srclabel', src: s }; pickables.push(orb, halo, lbl);
+    drawLabel(s);
+  });
+  if (!rackFull()) {
+    const pos = srcSpot(SRC.length, total), cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
+    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(.36, 0), new THREE.MeshBasicMaterial({ color: SKIN.labels.text, wireframe: true, transparent: true, opacity: .6 })); orb.position.copy(pos);
+    const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: mkTex(cv), transparent: true })); lbl.scale.set(lw, lw / 2, 1); lbl.position.set(pos.x, pos.y + 1.7, pos.z);
+    scene.add(orb, lbl); srcObjs.push(orb, lbl);
+    addOrb = { orb, lbl, cv }; orb.userData = lbl.userData = { type: 'srcadd' }; pickables.push(orb, lbl);
+    drawAddLabel();
+  }
   syncCables();
+  const rows = srcRows(total); if (rows !== srcRowCount) { srcRowCount = rows; overview(); }
+}
+function drawAddLabel(force) {
+  if (!addOrb) return;
+  const open = state.focus === 'add', key = `${open}|${SRC.length}|${SKIN.name}`;
+  if (!force && addOrb.key === key) return;                // only when what it says changes
+  addOrb.key = key;
+  const c = addOrb.cv.getContext('2d');
+  c.clearRect(0, 0, 256, 128); rr(c, 3, 3, 250, 122, 16); c.fillStyle = SKIN.labels.bg; c.fill(); c.setLineDash([8, 6]); c.strokeStyle = SKIN.labels.text; c.lineWidth = open ? 4 : 2; c.stroke(); c.setLineDash([]);
+  c.fillStyle = SKIN.labels.text; c.font = `700 26px ${SKIN.ui.fontDisplay}`; c.fillText('+ ADD', 16, 34);
+  c.font = `400 16px ${SKIN.ui.fontMono}`; c.fillText(`a source · ${SRC.length}/${DESC.maxSources}`, 16, 58);
+  addOrb.lbl.material.map.needsUpdate = true;
 }
 function knobWorld(p) { const m = p.mod, [kx, ky] = knobXY(p); return m.face.localToWorld(new THREE.Vector3((kx / FW - .5) * PW, (.5 - ky / m.FH) * m.PH, .12)); }
 function bez(a, b) { return new THREE.CubicBezierCurve3(a, a.clone().add(new THREE.Vector3(0, -3.5, 1.5)), b.clone().add(new THREE.Vector3(0, 3, 2.5)), b); }
+// Where a cable ends: a module's knob, or just under the orb of the source whose knob it moves
+// (one point per knob, spread across the orb).
+function targetWorld(pid) {
+  const k = knobOf(pid); if (k.mod) return knobWorld(k);
+  const o = k.src.orb.position, n = k.src.params.length;
+  return new THREE.Vector3(o.x + (k.pi - (n - 1) / 2) * .32, o.y - .62, o.z + .25);
+}
+// A cable's path: down to a module knob, or arching over to another source (or looping back to its own).
+function cableCurve(s, pid) {
+  const a = s.orb.position.clone(), b = targetWorld(pid);
+  if (PARAMS[pid]) return bez(a, b);
+  const self = SPARAMS[pid].src === s, side = self ? 1.6 : 0;
+  return new THREE.CubicBezierCurve3(a, a.clone().add(new THREE.Vector3(-side, 2.6, 1.2)), b.clone().add(new THREE.Vector3(side, -2.4, 1.4)), b);
+}
 function syncCables() {
-  cables.forEach((c) => { scene.remove(c.line); c.pulses.forEach((p) => scene.remove(p)); });
-  cables = Object.keys(state.conns).filter((pid) => PARAMS[pid] && SRCMAP[state.conns[pid]]).map((pid) => {
+  cables.forEach((c) => { scene.remove(c.line); c.line.geometry.dispose(); c.line.material.dispose(); c.pulses.forEach((p) => { scene.remove(p); p.geometry.dispose(); p.material.dispose(); }); });
+  cables = Object.keys(state.conns).filter((pid) => knobOf(pid) && SRCMAP[state.conns[pid]] && SRCMAP[state.conns[pid]].orb).map((pid) => {
     const s = SRCMAP[state.conns[pid]], col = new THREE.Color(s.color);
     const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(CN * 3), 3));
     const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: .85 })); line.frustumCulled = false; scene.add(line);
@@ -100,16 +156,17 @@ function syncCables() {
 // ------------------------------------------------------------------ camera and input
 const cam = { theta: 0, phi: 1.12, r: 30, target: new THREE.Vector3(0, 3.6, 0) };
 const camGoal = { r: 21, target: new THREE.Vector3(0, 3.6, 0) };
-const overviewR = () => Math.max(21, MODS.length * 4.2);
+const overviewR = () => Math.max(21, MODS.length * 4.2) + (srcRowCount - 1) * 6;
 function placeCamera() { const t = cam.target; camera.position.set(t.x + cam.r * Math.sin(cam.phi) * Math.sin(cam.theta), t.y + cam.r * Math.cos(cam.phi), t.z + cam.r * Math.sin(cam.phi) * Math.cos(cam.theta)); camera.lookAt(t); }
 function flyTo(m) { camGoal.target.set(m.group.position.x, m.baseY, m.group.position.z); camGoal.r = 11 + 2 * (m.PH - 4); cam.theta = Math.atan2(m.group.position.x, 22) * .9; }
-function overview() { camGoal.target.set(0, 3.6, 0); camGoal.r = overviewR(); cam.theta = 0; cam.phi = 1.12; }
+function overview() { camGoal.target.set(0, 3.6 + (srcRowCount - 1) * 2.4, 0); camGoal.r = overviewR(); cam.theta = 0; cam.phi = 1.12; }
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 function setNdc(e) { const r = canvas.getBoundingClientRect(); ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1; ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1; }
 function pick(e) {
   setNdc(e); ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObjects(pickables, false)[0]; if (!hit) return null;
   const u = hit.object.userData; if (u.type === 'src' || u.type === 'srclabel') return { type: u.type, src: u.src };
+  if (u.type === 'srcadd') return { type: 'srcadd' };
   const m = u.mod, px = hit.uv.x * FW, py = (1 - hit.uv.y) * m.FH; let knob = null;
   m.params.forEach((p) => { const [kx, ky] = knobXY(p); if (Math.hypot(px - kx, py - ky) < 84) knob = p; });
   return { type: 'face', mod: m, knob };
@@ -138,6 +195,9 @@ function wireStageInput() {
 }
 function stageClick(h) {
   if (!h) { if (state.carrying) { state.carrying = null; update(); } return; }
+  if (h.type === 'srcadd') { state.carrying = null; state.focus = 'add'; update(); return; }
+  // carrying a cable to another source: open it, and pick which of its knobs in the panel
+  if ((h.type === 'src' || h.type === 'srclabel') && state.carrying && state.carrying !== h.src.id) { state.focus = 'src:' + h.src.id; update(); return; }
   // an orb opens the source's panel and picks up a cable; its name label just opens the panel
   if (h.type === 'src') { state.carrying = state.carrying === h.src.id ? null : h.src.id; state.focus = 'src:' + h.src.id; update(); return; }
   if (h.type === 'srclabel') { state.focus = 'src:' + h.src.id; update(); return; }
@@ -145,5 +205,7 @@ function stageClick(h) {
   state.focus = h.mod.id; flyTo(h.mod); update();
 }
 // Test helpers: where a module's face, or a source's orb or name label, is on screen (client px).
+rig.cables = () => cables.map((c) => `${c.s.id}>${c.pid}`);
+rig.addScreen = () => { if (!addOrb) return null; const v = addOrb.lbl.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
 rig.srcScreen = (id, part = 'lbl') => { const s = SRCMAP[id]; if (!s) return null; const v = s[part].position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
 rig.modScreen = (id) => { const m = MODS.find((x) => x.id === id); if (!m) return null; const v = m.group.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };

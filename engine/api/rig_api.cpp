@@ -32,18 +32,37 @@ EXPORT(rig_bypass) void rig_bypass(int m, int on) { if (m >= 0 && m < rig::NMOD)
 // src = -1 disconnects; depth is the +/- swing in normalised units around the knob
 EXPORT(rig_mod) void rig_mod(int m, int p, int src, float depth) {
   if (m < 0 || m >= rig::NMOD || p < 0 || p >= E().nparams(m)) return;
-  E().conn[m][p] = (src >= 0 && src < rig::NSRC) ? src : -1;
+  E().conn[m][p] = E().rack.used(src) ? src : -1;
   E().depth[m][p] = rig::clampf(depth, 0.f, 1.f);
 }
-// A source's knob (LFO rate, ADSR attack...), normalised 0..1 like module parameters.
+// Sources are addressed by rack slot (rig_rack() lists them; a fresh rack has one of each type in
+// registry order, slots 0..). A source's knob (LFO rate, ADSR attack...), normalised 0..1.
 EXPORT(rig_src_param) void rig_src_param(int src, int p, float v) {
-  if (src < 0 || src >= rig::NSRC || p < 0 || p >= E().src.list[src]->desc().nparams) return;
-  E().src.base[src][p] = rig::clampf(v, 0.f, 1.f);
+  if (!E().rack.used(src) || p < 0 || p >= E().rack.slot[src].nparams()) return;
+  E().rack.slot[src].base[p] = rig::clampf(v, 0.f, 1.f);
 }
+// The rack (control thread; allocates). Text in and out goes through a small shared buffer:
+// write "<type> [id]" to rig_text(), then rig_src_add() returns the new slot, or a negative error
+// (-1 unknown type, -2 rack full, -3 bad or taken id).
+static char g_text[64];
+EXPORT(rig_text) char* rig_text() { return g_text; }
+EXPORT(rig_src_add) int rig_src_add() {
+  g_text[sizeof g_text - 1] = 0;
+  char type[32] = {0}, id[rig::SRC_ID_LEN + 8] = {0}; int i = 0, n = 0;
+  while (g_text[i] == ' ') i++;
+  while (g_text[i] && g_text[i] != ' ' && n < (int)sizeof type - 1) type[n++] = g_text[i++];
+  while (g_text[i] == ' ') i++;
+  n = 0; while (g_text[i] && g_text[i] != ' ' && n < (int)sizeof id - 1) id[n++] = g_text[i++];
+  return E().addSource(type, id);
+}
+EXPORT(rig_src_remove) int rig_src_remove(int src) { return E().removeSource(src); }
+// Cross-modulation: knob p of source `src` moved by source `from` (-1 unpatches), +/- depth.
+EXPORT(rig_src_mod) int rig_src_mod(int src, int p, int from, float depth) { return E().rack.patch(src, p, from, depth); }
+EXPORT(rig_rack) const char* rig_rack() { return E().rackJson; }
 // Tuner on the dry input: on/off, and whether the output is muted while it's on.
 EXPORT(rig_tuner) void rig_tuner(int on, int mute) { E().tuner.on = on != 0; E().tuner.mute = mute != 0; }
 EXPORT(rig_tuner_ref) void rig_tuner_ref(float a4) { E().tuner.a4 = rig::clampf(a4, 400.f, 480.f); }
-EXPORT(rig_ext)    void rig_ext(int src, float v) { if (src >= 0 && src < rig::NSRC) E().src.list[src]->ext(v); }
+EXPORT(rig_ext)    void rig_ext(int src, float v) { if (E().rack.used(src)) E().rack.ext(src, v); }
 EXPORT(rig_tempo)  void rig_tempo(float bpm) { E().bpm = rig::clampf(bpm, 30.f, 300.f); }
 EXPORT(rig_master) void rig_master(float db) { E().masterDb = rig::clampf(db, -60.f, 6.f); }
 // File slots (IRs, NAM captures...): p = rig_asset_buf(m, bytes) reserves room, the host writes the

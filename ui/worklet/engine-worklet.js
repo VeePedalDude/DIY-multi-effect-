@@ -1,23 +1,27 @@
-// engine-worklet.js - runs rig.wasm inside an AudioWorklet.
-// Control is a mod-host-style text protocol, so the same UI can later talk to the
-// real rig (WebSocket -> control hub -> mod-host) by swapping only the transport.
+// ui/worklet/engine-worklet.js - runs rig.wasm inside an AudioWorklet.
+// The protocol is built from the engine's own description (rig_describe), so new
+// modules and sources need no changes here. Same text commands as the future Linux host:
 //
 //   param_set <inst> <symbol> <0..1>          bypass <inst> <0|1>
 //   mod_connect <inst> <symbol> <source> <depth>
 //   mod_disconnect <inst> <symbol>            set_bpm <bpm>
 //   master <dB>                               ext <source> <value>
 //   input_channel <0|1>
-// Replies:  resp <status>   (0 ok, negatives follow mod-host error numbers)
+// <inst> is the chain index (mod-host style) or the module id ("holo").
+// Replies: resp <status>  (0 ok, negatives follow mod-host error numbers)
 
-const INSTANCES = [
-  { name: 'gate', symbols: ['thresh', 'release'] },
-  { name: 'amp',  symbols: ['input', 'output'] },
-  { name: 'cab',  symbols: ['locut', 'mix'] },
-  { name: 'holo', symbols: ['feedback', 'halo'] },
-  { name: 'tess', symbols: ['size', 'fold'] },
-];
-const SOURCES = ['lfo', 'env', 'adsr', 'orbit', 'heart', 'ctrl'];
 const ERR = { INSTANCE_INVALID: -1, INVALID_PARAM_SYMBOL: -103, VALUE_OUT_OF_RANGE: -207, INVALID_OPERATION: -902 };
+
+function cString(mem, ptr) {                 // UTF-8 C string from wasm memory (no TextDecoder in worklets)
+  const u = new Uint8Array(mem.buffer, ptr); let s = '', i = 0;
+  while (u[i]) {
+    const c = u[i++];
+    if (c < 0x80) s += String.fromCharCode(c);
+    else if (c < 0xe0) s += String.fromCharCode(((c & 31) << 6) | (u[i++] & 63));
+    else { const c2 = u[i++], c3 = u[i++]; s += String.fromCharCode(((c & 15) << 12) | ((c2 & 63) << 6) | (c3 & 63)); }
+  }
+  return s;
+}
 
 class RigEngine extends AudioWorkletProcessor {
   constructor(options) {
@@ -26,10 +30,13 @@ class RigEngine extends AudioWorkletProcessor {
     this.x = new WebAssembly.Instance(mod, {}).exports;
     if (this.x._initialize) this.x._initialize();
     this.x.rig_init(sampleRate);
+    this.desc = JSON.parse(cString(this.x.memory, this.x.rig_describe()));
+    this.mlen = this.x.rig_meters_len();
     this.inCh = 0;
     this.blocks = 0; this.busyMs = 0; this.wallStart = Date.now();
     this.inPk = 0; this.outPk = 0;
     this.port.onmessage = (e) => this.onMsg(e.data);
+    this.port.postMessage({ type: 'describe', desc: this.desc });
   }
   views() {
     const b = this.x.memory.buffer;
@@ -38,33 +45,36 @@ class RigEngine extends AudioWorkletProcessor {
       this.vIn = new Float32Array(b, this.x.rig_in(), 128);
       this.vL = new Float32Array(b, this.x.rig_out_l(), 128);
       this.vR = new Float32Array(b, this.x.rig_out_r(), 128);
-      this.vM = new Float32Array(b, this.x.rig_meters(), 32);
+      this.vM = new Float32Array(b, this.x.rig_meters(), this.mlen);
     }
   }
-  inst(tok) { const i = Number(tok); return Number.isInteger(i) && i >= 0 && i < INSTANCES.length ? i : -1; }
+  inst(tok) {
+    const mods = this.desc.modules, i = Number(tok);
+    if (Number.isInteger(i)) return i >= 0 && i < mods.length ? i : -1;
+    return mods.findIndex((m) => m.id === tok);
+  }
+  source(tok) { return this.desc.sources.findIndex((s) => s.id === tok); }
   exec(line) {
-    const t = String(line).trim().split(/\s+/), c = t[0];
-    const X = this.x;
+    const t = String(line).trim().split(/\s+/), c = t[0], X = this.x;
     if (c === 'param_set' || c === 'mod_connect' || c === 'mod_disconnect') {
       const m = this.inst(t[1]); if (m < 0) return ERR.INSTANCE_INVALID;
-      const p = INSTANCES[m].symbols.indexOf(t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
+      const p = this.desc.modules[m].params.findIndex((q) => q.symbol === t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
       if (c === 'param_set') { const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE; X.rig_param(m, p, v); return 0; }
       if (c === 'mod_disconnect') { X.rig_mod(m, p, -1, 0); return 0; }
-      const s = SOURCES.indexOf(t[3]); const d = Number(t[4]);
+      const s = this.source(t[3]), d = Number(t[4]);
       if (s < 0 || !(d >= 0 && d <= 1)) return ERR.VALUE_OUT_OF_RANGE;
       X.rig_mod(m, p, s, d); return 0;
     }
     if (c === 'bypass') { const m = this.inst(t[1]); if (m < 0) return ERR.INSTANCE_INVALID; X.rig_bypass(m, t[2] === '1' ? 1 : 0); return 0; }
     if (c === 'set_bpm') { const v = Number(t[1]); if (!(v >= 30 && v <= 300)) return ERR.VALUE_OUT_OF_RANGE; X.rig_tempo(v); return 0; }
     if (c === 'master') { const v = Number(t[1]); if (!(v >= -60 && v <= 6)) return ERR.VALUE_OUT_OF_RANGE; X.rig_master(v); return 0; }
-    if (c === 'ext') { const s = SOURCES.indexOf(t[1]); const v = Number(t[2]); if (s < 0 || !Number.isFinite(v)) return ERR.VALUE_OUT_OF_RANGE; X.rig_ext(s, v); return 0; }
+    if (c === 'ext') { const s = this.source(t[1]), v = Number(t[2]); if (s < 0 || !Number.isFinite(v)) return ERR.VALUE_OUT_OF_RANGE; X.rig_ext(s, v); return 0; }
     if (c === 'input_channel') { this.inCh = t[1] === '1' ? 1 : 0; return 0; }
     return ERR.INVALID_OPERATION;
   }
   onMsg(d) {
     if (d.type === 'cmd') {
-      const st = this.exec(d.line);
-      this.port.postMessage({ type: 'resp', id: d.id, line: d.line, status: st });
+      this.port.postMessage({ type: 'resp', id: d.id, line: d.line, status: this.exec(d.line) });
     } else if (d.type === 'ir') {
       const max = this.x.rig_ir_max(), n = Math.min(max, d.data.length);
       new Float32Array(this.x.memory.buffer, this.x.rig_ir_buf(), max).set(d.data.subarray(0, n));
@@ -90,8 +100,7 @@ class RigEngine extends AudioWorkletProcessor {
     this.busyMs += Date.now() - t0;          // 1 ms clock, but the average is unbiased over many blocks
     if (++this.blocks % 12 === 0) {           // ~31 Hz meter stream at 48 kHz
       const wall = Date.now() - this.wallStart;
-      this.port.postMessage({ type: 'meters', m: Array.from(this.vM), inPk: this.inPk, outPk: this.outPk,
-        load: wall > 0 ? this.busyMs / wall : 0 });
+      this.port.postMessage({ type: 'meters', m: Array.from(this.vM), inPk: this.inPk, outPk: this.outPk, load: wall > 0 ? this.busyMs / wall : 0 });
       this.inPk = 0; this.outPk = 0;
       if (wall > 2000) { this.busyMs = 0; this.wallStart = Date.now(); }
     }

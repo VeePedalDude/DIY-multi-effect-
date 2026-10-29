@@ -1,7 +1,7 @@
 // blocked.cjs - simulate a host that blocks gamepads (the in-app preview error) and check the page survives
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const path = require('path'), fs = require('fs');
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(__dirname, '../..');
 let fails = 0; const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 (async () => {
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -15,6 +15,7 @@ let fails = 0; const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAI
   await page.route('**/cdnjs.cloudflare.com/**three.min.js', (r) => r.fulfill({ body: fs.readFileSync(process.env.THREE_JS), contentType: 'text/javascript' }));
   await page.route('**/fonts.googleapis.com/**', (r) => r.fulfill({ body: '', contentType: 'text/css' }));
   await page.goto('file://' + path.join(root, 'dist/rig-test.html'));
+  await page.waitForFunction(() => window.__rig && window.__rig.ready, null, { timeout: 8000 });
   await page.check('input[name=src][value=riff]');
   await page.click('#startBtn');
   await page.waitForTimeout(2500);

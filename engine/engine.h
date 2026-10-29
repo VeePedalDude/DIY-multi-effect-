@@ -6,46 +6,24 @@
 // registries, so adding one never touches this file.
 #pragma once
 #include "modules/registry.h"
-#include "sources/registry.h"
+#include "mod_rack.h"
 #include "core/tuner.h"
 
 namespace rig {
 
 #define RIG_COUNT(T, m) +1
 constexpr int NMOD = 0 RIG_MODULES(RIG_COUNT);
-constexpr int NSRC = 0 RIG_SOURCES(RIG_COUNT);
 #undef RIG_COUNT
 
 // Meter block layout (offsets are also published in describe()).
 constexpr int M_NAN  = 0;                                   // NaN/Inf resets so far
-constexpr int M_SRC  = 1;                                   // NSRC source values, -1..1
-constexpr int M_EFF  = M_SRC + NSRC;                        // NMOD x MAXPAR effective params, 0..1
+constexpr int M_SRC  = 1;                                   // MAXSRC rack slots' values, -1..1 (0 when empty)
+constexpr int M_EFF  = M_SRC + MAXSRC;                      // NMOD x MAXPAR effective params, 0..1
 constexpr int M_MOD  = M_EFF + NMOD * MAXPAR;               // NMOD x MAXMODMETERS module display values
-constexpr int M_SRCM = M_MOD + NMOD * MAXMODMETERS;         // NSRC x MAXSRCMETERS source display values
-constexpr int M_TUN  = M_SRCM + NSRC * MAXSRCMETERS;        // the tuner (core/tuner.h TunerMeter)
+constexpr int M_SRCM = M_MOD + NMOD * MAXMODMETERS;         // MAXSRC x MAXSRCMETERS source display values
+constexpr int M_SEFF = M_SRCM + MAXSRC * MAXSRCMETERS;      // MAXSRC x MAXPAR source knobs after cross-modulation, 0..1
+constexpr int M_TUN  = M_SEFF + MAXSRC * MAXPAR;            // the tuner (core/tuner.h TunerMeter)
 constexpr int M_LEN  = M_TUN + T_LEN;
-
-struct Sources {
-#define RIG_DECL(T, m) T m;
-  RIG_SOURCES(RIG_DECL)
-#undef RIG_DECL
-#define RIG_PTR(T, m) &m,
-  Source* list[NSRC] = { RIG_SOURCES(RIG_PTR) };
-#undef RIG_PTR
-  float val[NSRC] = {0};
-  float base[NSRC][MAXPAR];                                 // each source's knobs, normalised
-  void init(float sr) {
-    for (auto* s : list) s->init(sr);
-    memset(val, 0, sizeof val);
-    for (int k = 0; k < NSRC; k++) for (int p = 0; p < MAXPAR; p++) base[k][p] = p < list[k]->desc().nparams ? list[k]->desc().params[p].def : 0.f;
-  }
-  void update(const float* in, int n, float sr, float bpm) {
-    for (int k = 0; k < NSRC; k++) {
-      SourceContext c{in, n, sr, (float)n / sr, bpm, base[k]};
-      val[k] = clampf(list[k]->update(c), -1.f, 1.f);
-    }
-  }
-};
 
 // Small allocation-free JSON writer (no printf, so the WebAssembly build needs no imports).
 struct JsonOut {
@@ -75,7 +53,7 @@ struct Engine {
 #define RIG_PTR(T, m) &m,
   Module* mods[NMOD] = { RIG_MODULES(RIG_PTR) };
 #undef RIG_PTR
-  Sources src;
+  ModRack rack;                                             // modulation sources (mod_rack.h)
   Context ctx;
   float sr = 48000, bpm = 120;
   float base[NMOD][MAXPAR];
@@ -92,13 +70,14 @@ struct Engine {
   int nanResets = 0;
   float meters[M_LEN];
   char descJson[16384];
+  char rackJson[4096];
 
   int nparams(int m) const { return mods[m]->desc().nparams; }
 
   void init(float s) {
     sr = s; ctx.sr = s;
     for (auto* m : mods) m->init(sr);
-    src.init(sr); tuner.init(sr); muteG = 1.f; muteStep = 1.f / (0.010f * sr);
+    rack.init(sr); tuner.init(sr); muteG = 1.f; muteStep = 1.f / (0.010f * sr);
     for (int m = 0; m < NMOD; m++) {
       byp[m] = false; wet[m] = 1.f;
       for (int p = 0; p < MAXPAR; p++) {
@@ -108,7 +87,7 @@ struct Engine {
     }
     masterS.setMs(sr, 30); masterS.y = db2lin(masterDb);
     memset(meters, 0, sizeof meters);
-    describe();
+    describe(); writeRack();
   }
   static float limit(float x) {                       // soft knee from 0.8, ceiling 0.98
     float a = fabsf(x);
@@ -119,10 +98,10 @@ struct Engine {
   void process(int n) {
     if (n > MAXBLOCK) n = MAXBLOCK;
     ctx.bpm = bpm;
-    src.update(inBuf, n, sr, bpm);
+    rack.update(inBuf, n, bpm);
     for (int m = 0; m < NMOD; m++) for (int p = 0; p < nparams(m); p++) {
       float v = base[m][p];
-      if (conn[m][p] >= 0) v += depth[m][p] * src.val[conn[m][p]];
+      if (conn[m][p] >= 0) v += depth[m][p] * rack.slot[conn[m][p]].val;
       eff[m][p] = clampf(v, 0.f, 1.f);
     }
     memcpy(aL, inBuf, n * sizeof(float)); memcpy(aR, inBuf, n * sizeof(float));
@@ -160,10 +139,14 @@ struct Engine {
   void publish() {
     tuner.meters(&meters[M_TUN]);
     meters[M_NAN] = (float)nanResets;
-    for (int k = 0; k < NSRC; k++) meters[M_SRC + k] = src.val[k];
+    for (int k = 0; k < MAXSRC; k++) meters[M_SRC + k] = rack.slot[k].val;
     for (int m = 0; m < NMOD; m++) for (int p = 0; p < MAXPAR; p++) meters[M_EFF + m * MAXPAR + p] = eff[m][p];
     for (int m = 0; m < NMOD; m++) mods[m]->meters(&meters[M_MOD + m * MAXMODMETERS]);
-    for (int k = 0; k < NSRC; k++) src.list[k]->meters(&meters[M_SRCM + k * MAXSRCMETERS]);
+    for (int k = 0; k < MAXSRC; k++) {
+      float* sm = &meters[M_SRCM + k * MAXSRCMETERS]; for (int q = 0; q < MAXSRCMETERS; q++) sm[q] = 0.f;
+      rack.meters(k, sm);
+      for (int p = 0; p < MAXPAR; p++) meters[M_SEFF + k * MAXPAR + p] = rack.slot[k].eff[p];
+    }
   }
   // Index lookups used by the text protocol.
   int moduleIndex(const char* id) const { for (int m = 0; m < NMOD; m++) if (!strcmp(mods[m]->desc().id, id)) return m; return -1; }
@@ -172,7 +155,33 @@ struct Engine {
     for (int p = 0; p < d.nparams; p++) if (!strcmp(d.params[p].symbol, sym)) return p;
     return -1;
   }
-  int sourceIndex(const char* id) const { for (int k = 0; k < NSRC; k++) if (!strcmp(src.list[k]->desc().id, id)) return k; return -1; }
+  int sourceIndex(const char* id) const { return rack.find(id); }   // rack slot of a source instance
+
+  // The rack, from the control thread. Instance ids may not clash with module ids.
+  int addSource(const char* type, const char* id) {
+    if (id && id[0] && moduleIndex(id) >= 0) return RACK_BAD_ID;
+    int k = rack.add(sourceTypeIndex(type), id);
+    if (k >= 0 && moduleIndex(rack.slot[k].id) >= 0) { rack.remove(k); return RACK_BAD_ID; }
+    if (k >= 0) writeRack();
+    return k;
+  }
+  int removeSource(int k) {
+    if (!rack.used(k)) return RACK_NO_SUCH;
+    for (int m = 0; m < NMOD; m++) for (int p = 0; p < MAXPAR; p++) if (conn[m][p] == k) conn[m][p] = -1;
+    rack.remove(k); writeRack();
+    return 0;
+  }
+  static void rackList(JsonOut& j, const ModRack& r) {
+    j.ch('['); bool first = true;
+    for (int k = 0; k < MAXSRC; k++) if (r.used(k)) {
+      if (!first) { j.ch(','); }
+      first = false;
+      j.ch('{'); j.key("id"); j.str(r.slot[k].id); j.ch(','); j.key("type"); j.str(sourceTypeDesc(r.slot[k].type).id); j.ch(','); j.key("slot"); j.num(k); j.ch('}');
+    }
+    j.ch(']');
+  }
+  // {"max":16,"sources":[{"id":"lfo","type":"lfo","slot":0},...]}: what's in the rack now (rig_rack()).
+  void writeRack() { JsonOut j(rackJson, sizeof rackJson); j.ch('{'); j.key("max"); j.num(MAXSRC); j.ch(','); j.key("sources"); rackList(j, rack); j.ch('}'); }
 
   static void params(JsonOut& j, int n, const ParamDesc* ps) {
     j.ch('[');
@@ -187,7 +196,8 @@ struct Engine {
     j.ch(']');
   }
   int srcParamIndex(int k, const char* sym) const {
-    const SourceDesc& d = src.list[k]->desc();
+    if (!rack.used(k)) return -1;
+    const SourceDesc& d = sourceTypeDesc(rack.slot[k].type);
     for (int p = 0; p < d.nparams; p++) if (!strcmp(d.params[p].symbol, sym)) return p;
     return -1;
   }
@@ -199,7 +209,7 @@ struct Engine {
     j.key("meters"); j.ch('{');
     j.key("nan"); j.num(M_NAN); j.ch(','); j.key("src"); j.num(M_SRC); j.ch(','); j.key("eff"); j.num(M_EFF); j.ch(',');
     j.key("mod"); j.num(M_MOD); j.ch(','); j.key("srcm"); j.num(M_SRCM); j.ch(','); j.key("len"); j.num(M_LEN); j.ch(',');
-    j.key("perMod"); j.num(MAXMODMETERS); j.ch(','); j.key("perSrc"); j.num(MAXSRCMETERS); j.ch(',');
+    j.key("perMod"); j.num(MAXMODMETERS); j.ch(','); j.key("perSrc"); j.num(MAXSRCMETERS); j.ch(','); j.key("seff"); j.num(M_SEFF); j.ch(',');
     j.key("tun"); j.num(M_TUN); j.ch(','); j.key("tunLen"); j.num(T_LEN); j.ch(','); j.key("tunBands"); j.num(TUN_BANDS);
     j.raw("},");
     j.key("modules"); j.ch('[');
@@ -220,16 +230,19 @@ struct Engine {
       j.ch('}');
     }
     j.raw("],");
-    j.key("sources"); j.ch('[');
-    for (int k = 0; k < NSRC; k++) {
-      const SourceDesc& d = src.list[k]->desc();
-      if (k) j.ch(',');
-      j.ch('{'); j.key("id"); j.str(d.id); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
+    j.key("maxSources"); j.num(MAXSRC); j.ch(',');
+    j.key("sourceTypes"); j.ch('[');                         // every kind of source the rack can hold
+    for (int t = 0; t < NSRCTYPES; t++) {
+      const SourceDesc& d = sourceTypeDesc(t);
+      if (t) j.ch(',');
+      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
       j.key("ext"); j.str(d.ext); j.ch(','); j.key("params"); params(j, d.nparams, d.params); j.ch(','); j.key("meters"); j.ch('[');
       for (int q = 0; q < d.nmeters; q++) { if (q) j.ch(','); j.str(d.meters[q]); }
       j.raw("]}");
     }
-    j.raw("]}");
+    j.raw("],");
+    j.key("sources"); rackList(j, rack);                     // the rack as it starts: one of each type
+    j.ch('}');
   }
 };
 

@@ -13,7 +13,7 @@ export async function loadUi() {
     matchMedia: () => ({ matches: false }), document: { getElementById: () => stubEl, createElement: () => ({}) },
     RIG_WASM_B64: fs.readFileSync('build/rig.wasm').toString('base64'),
   });
-  const code = FILES.map((f) => fs.readFileSync('ui/js/' + f, 'utf8')).join('\n') + `\nglobalThis.__x = { ${EXPORTS.map((n) => `${n}: typeof ${n} === 'undefined' ? undefined : ${n}`).join(', ')}, get MODS() { return MODS; }, get PARAMS() { return PARAMS; }, get SRCMAP() { return SRCMAP; }, get SRC() { return SRC; } };`;
+  const code = FILES.map((f) => fs.readFileSync('ui/js/' + f, 'utf8')).join('\n') + `\nglobalThis.__x = { ${EXPORTS.map((n) => `${n}: typeof ${n} === 'undefined' ? undefined : ${n}`).join(', ')}, get MODS() { return MODS; }, get PARAMS() { return PARAMS; }, get SRCMAP() { return SRCMAP; }, get SRC() { return SRC; }, get SPARAMS() { return SPARAMS; }, get TYPES() { return TYPES; }, setRack, makeSource, nextSourceId, reindexSources };`;
   vm.runInContext(code, ctx, { filename: 'ui-bundle.js' });
   return ctx.__x;
 }

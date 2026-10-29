@@ -3,7 +3,7 @@ function snapshot() { return currentSnapshot(); }
 function applySnapshot(s) {
   MODS.forEach((m) => m.params.forEach((p) => { if (s.params && s.params[p.id] !== undefined) p.v = s.params[p.id]; }));
   state.bypass = { ...(s.bypass || {}) };
-  state.conns = Object.fromEntries(Object.entries(s.conns || {}).filter(([pid, sid]) => PARAMS[pid] && SRCMAP[sid]));
+  state.conns = Object.fromEntries(Object.entries(s.conns || {}).filter(([pid, sid]) => knobOf(pid) && SRCMAP[sid]));
   state.depths = { ...(s.depths || {}) };
   SRC.forEach((src) => src.params.forEach((q) => { q.v = s.srcParams && s.srcParams[q.id] !== undefined ? s.srcParams[q.id] : q.def; }));
   if (s.bpm) { state.bpm = s.bpm; $('bpm').textContent = Math.round(s.bpm); }
@@ -30,6 +30,7 @@ async function loadPresetFile(file) {
   let json; try { json = JSON.parse(await (await library.core.file('presets', file)).text()); } catch (e) { presetNote(`Couldn't read ${file}: ${e.message}`, true); return null; }
   const r = readPreset(json);
   if (r.error) { presetNote(`${file}: ${r.error}`, true); return r; }
+  applyRack(r.rack); state.sourceExtras = r.sourceExtras;
   applySnapshot(r.snap);
   if (r.master !== undefined) setMaster(r.master);
   state.scenes = r.scenes; state.scene = null; state.presetExtras = r.extras;

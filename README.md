@@ -52,19 +52,21 @@ engine/
   core/        dsp.h (filters, delays, smoothing) · module.h · source.h   ← the contracts
                nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps) · tuner.h (strobe tuner)
   modules/     gate.h amp.h cab.h holo.h tess.h + registry.h (chain order)
-  sources/     lfo.h env.h adsr.h orbit.h heart.h ctrl.h + registry.h
+  sources/     lfo.h env.h adsr.h orbit.h heart.h ctrl.h + registry.h   (source types)
+  mod_rack.h   the modulation rack: instances added/removed live, cross-modulation
   engine.h     the chain: routing, modulation, bypass, master, meters, self-description
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  js/          00-core 04-skin-core 10-model 20-bridge 30-audio 40-stage 45-faces 50-hud 51-source-panel
+  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 30-audio 40-stage 45-faces 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
                60-controllers 70-presets 72-preset-format 90-main
   screens/     one face display (and card colour) per module: gate.js amp.js cab.js holo.js tess.js
   assets/      images of the built-in skins: hall background, card frames (embedded into the page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
-  native/      framework.h + one test file per area (chain, gate, amp, cab, holo, tess, sources, tuner)
+  native/      framework.h + one test file per area (chain, gate, amp, cab, holo, tess, sources, tuner, rack)
+               + test_conformance.cpp: the format and safety of every module and source type
   parity/      native vs WebAssembly comparison
   ui/          Node unit tests: library and preset format
   fixtures/    golden preset file (must keep loading forever)
@@ -108,7 +110,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs` and `tuner.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs` and `rack.cjs`.
 
 ## Current effects and sources
 
@@ -120,15 +122,33 @@ Browser tests (need `playwright-core` and three.js r128 locally):
 | 3 | Hologram | feedback 0..95 %, halo | dotted 8th from tap tempo, stereo shimmer |
 | 4 | Tesseract | size → RT60 0.5..7.5 s, 4D fold | 8-line FDN, rotating 4-D matrix |
 
-Sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate (simulated,
-or a Bluetooth strap), controller (gamepad stick or slider). Each has its own knobs (LFO rate and
-shape, envelope attack/release/floor, ADSR times, orbit speed, heart rest rate, controller
-smoothing and dead zone): click a source's orb or name to open them, along with every patch it
-feeds and its depth. **P** (or the tab beside it) hides the side panel.
+Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate
+(simulated, or a Bluetooth strap), controller (gamepad stick or slider). Each has its own knobs (LFO
+rate and shape, envelope attack/release/floor, ADSR times, orbit speed, heart rest rate, controller
+smoothing and dead zone): click a source's orb or name to open them, along with everything it moves
+and the depths. **P** (or the tab beside it) hides the side panel.
+
+### The modulation rack
+
+- **Add and remove sources while it plays.** The **+ ADD** orb at the end of the source row (or
+  **+ Add source** in the Mod Matrix) lists every kind of source. Add as many as you like, up to 16
+  in all; several of one kind is fine (LFO, LFO 2, LFO 3). A source's panel has **Duplicate** (same
+  settings) and **Remove** (asks twice; its patches go with it).
+- **Cross-modulation.** A source's knobs can be moved by another source, or by itself:
+  - **Moved by** on any of its knobs, in its panel.
+  - Carry a cable from one orb and click another orb, then pick the knob.
+  - The matrix's **Source knobs** columns.
+
+  An envelope can speed up an LFO while you dig in; an orbit can wander an LFO's shape; two LFOs can
+  chase each other. The knob shows its setting and where modulation has it right now (`8.0 beats → 3.2 beats`).
+- Presets save the rack and every patch; scenes switch knobs and patches within it.
+- New kinds of source follow one format ([ADDING_A_SOURCE.md](docs/ADDING_A_SOURCE.md), with a
+  working template), and growing an existing one keeps old presets sounding the same
+  ([EXPANDING.md](docs/EXPANDING.md)). Every registered type is checked automatically.
 
 ## Test results (this build)
 
-- **Native:** 32 test groups pass. The full chain uses ~4% of one core on this build machine.
+- **Native:** 44 test groups pass. The full chain uses ~4% of one core on this build machine.
   - **NAM:** all 11 test captures play (A1 standard, A2 slimmable, A2 features, slimmable WaveNet and
     container, small WaveNet, condition-DSP WaveNet, LSTM, ConvNet, Linear, Sequential), sample-identical
     to NAM core run directly.
@@ -136,7 +156,18 @@ feeds and its depth. **P** (or the tab beside it) hides the side panel.
     keeps playing.
   - **Swaps:** capture swaps are no steppier than steady playing.
   - **Real-time safety:** zero heap calls inside `process()` over 14 s with 5 loads and swaps and the tuner switching on and off.
-  - **Tuner:** every note from B1 to C7, each 3–45 cents off, reads the right note and cents to within 0.004 cent; plucked strings read the model's own pitch to 0.2 cent; low E gives a reading after 56 ms; a held note bent 30 cents follows it; the strobe bands turn at exactly harmonic × the tuning error; mute silences the output, and off is bit-identical to no tuner. It costs 0.1–1% of one core.
+  - **Modulation rack:** the default rack's output is byte-identical to the fixed sources it replaced
+    (42 s rendered both ways), at the same CPU (4.1–4.5% vs 4.1–4.7%). Adding sources nobody listens
+    to changes nothing. Ids, limits (16) and clean-up on remove are checked. Two LFOs at the same
+    settings match exactly, and at 1 vs 2 beats run at double the rate. An envelope patched to an LFO's
+    rate takes it from 3.75 Hz in silence to 0.03 Hz while a note plays. Loops and self-patches stay
+    bounded for 10 minutes. There are zero heap calls in `process()` through 103 adds, 93 removes and 353
+    cross patches. A full rack of 16, all cross-patched, adds 0.35% of one core.
+  - **Conformance (every type, automatically):** each source's description, output in −1..1 and
+    finite for 6 knob settings × 5 inputs (silence to full-scale noise) × 3 block sizes × 2 rates,
+    no shared state between instances, no allocation; each module's format, finite output and no
+    allocation.
+  - **Tuner:** every note from B1 to C7, each 3–45 cents off, reads the right note and cents to within 0.004 cent; plucked strings read the model's own pitch to 0.2 cent; low E gives a reading after 56 ms; a held note bent 30 cents follows it; the strobe bands turn at exactly harmonic × the tuning error; mute silences the output, and off is bit-identical to no tuner. Re-picking a held note every 0.7 s moves the reading at most 0.35 cent (it was up to 5 cents before the hold fix). It costs 0.1–1% of one core.
   - **IRs** from 21 ms to 20 s stereo match the exact convolution to −134 dB with no latency.
   - **Other checks:** amp aliasing is 55 dB below the harmonics at the worst case; 24/24 picks are
     detected; delay and reverb stay stable at maximum settings; no clicks on bypass or tempo jumps.
@@ -153,6 +184,9 @@ feeds and its depth. **P** (or the tab beside it) hides the side panel.
   are kept. `.rigskin` zips are read stored or deflated, or with `skin.json` inside a folder.
 - **Headless Chromium:** 25/25 main checks (including opening and editing sources, depth, patching
   from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks.
+  The 14/14 rack checks add an LFO from the “+” orb, set its knob, patch the envelope to its rate
+  from the panel and an orbit to its shape by carrying a cable orb to orb, patch from the matrix's
+  source-knob columns, duplicate and remove, fill the rack to 16, and reload a preset's rack.
   The 19/19 tuner checks play a steady A2 6 cents sharp into the fake microphone: the mini card opens
   the sideways card, the note and cents read right, the output mutes, the bands turn at the right rate,
   the A4 reference, collapsing with T, Off, the Classic skin and a reload.

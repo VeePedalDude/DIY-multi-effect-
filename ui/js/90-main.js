@@ -1,6 +1,10 @@
 // 90-main.js - boot sequence and the render loop.
 function resize() {
-  const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+  const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h;
+  // with the side panel open, centre the stage in the space to its left (the panel hides below 900 px)
+  const pw = !panelHidden && w > 900 ? $('panel').offsetWidth + 16 : 0;
+  if (pw) camera.setViewOffset(w, h, pw / 2, 0, w, h); else camera.clearViewOffset();
+  camera.updateProjectionMatrix();
   document.documentElement.style.setProperty('--topH', $('top').offsetHeight + 'px');
   document.documentElement.style.setProperty('--botH', $('bottom').offsetHeight + 'px');
 }
@@ -26,15 +30,15 @@ function loop() {
   const level = meters ? clamp((20 * Math.log10(meters.outPk + 1e-9) + 50) / 50, 0, 1) : 0;
   flowMat.opacity = .25 + .75 * level; flowMat.size = .14 + .2 * level;
   MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });
-  SRC.forEach((s) => { const v = srcVal(s.idx), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
+  SRC.forEach((s) => { if (!s.orb) return; const v = srcVal(s), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
   moveBackdrop();
-  if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach(drawLabel); drawSourceScope(); }
+  if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(); drawSourceScope(); }
   for (let i = 0; i < NP; i++) { const u = ((i / NP) + T * (RM ? .01 : .05 + .1 * level)) % 1; flowCurve.getPointAt(u, tmpV); flowPos[i * 3] = tmpV.x; flowPos[i * 3 + 1] = tmpV.y + .06; flowPos[i * 3 + 2] = tmpV.z; }
   flowGeo.attributes.position.needsUpdate = true;
   cables.forEach((c) => {
-    const curve = bez(c.s.orb.position.clone(), knobWorld(PARAMS[c.pid]));
+    const curve = cableCurve(c.s, c.pid);
     fillCurve(curve, c.line.geometry.attributes.position);
-    c.ph += dt * (RM ? .05 : .2 + .5 * Math.abs(srcVal(c.s.idx)));
+    c.ph += dt * (RM ? .05 : .2 + .5 * Math.abs(srcVal(c.s)));
     c.pulses.forEach((p, k) => curve.getPoint((c.ph + k / 3) % 1, p.position));
   });
   if (state.carrying) {

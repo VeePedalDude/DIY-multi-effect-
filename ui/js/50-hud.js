@@ -1,6 +1,7 @@
 // 50-hud.js - focus panel, mod matrix, hint line, view switch, bottom bar and settings drawer.
 const panel = $('panel'), matrix = $('matrix'), hint = $('hint');
 function renderPanel() {
+  if (state.focus === 'add') { renderAddPanel(); return; }
   const s = srcFocus(); if (s) { renderSourcePanel(s); return; }
   const m = MODS.find((x) => x.id === state.focus); if (!m) return;
   const byp = !!state.bypass[m.id];
@@ -24,23 +25,26 @@ function renderPanel() {
 let panelPending = false;
 function renderPanelSoon() { if (panelPending) return; panelPending = true; requestAnimationFrame(() => { panelPending = false; renderPanel(); }); }
 function renderMatrix() {
+  // columns: every module knob, then every source knob (cross-modulation); rows: the rack
   const cols = []; MODS.forEach((m) => m.params.forEach((p) => cols.push(p)));
-  let h = `<div class="eyebrow" style="margin-bottom:12px">Source → target</div><div style="overflow-x:auto"><table><thead><tr><th></th>`;
-  cols.forEach((p) => h += `<th scope="col"><small>${p.mod.name}</small>${p.label}</th>`);
+  const nMod = cols.length; SRC.forEach((s) => s.params.forEach((q) => cols.push(q)));
+  let h = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><span class="eyebrow">Source → target · rack ${SRC.length}/${DESC.maxSources}</span><button class="btn mini" data-matrix-add ${rackFull() ? 'disabled' : ''}>+ Add source</button></div><div style="overflow-x:auto"><table><thead>`;
+  h += `<tr><th></th><th scope="colgroup" colspan="${nMod}" class="grp">Module knobs</th>${cols.length > nMod ? `<th scope="colgroup" colspan="${cols.length - nMod}" class="grp">Source knobs · cross-modulation</th>` : ''}</tr><tr><th></th>`;
+  cols.forEach((p) => h += `<th scope="col"><small${p.src ? ` style="color:${p.src.color}"` : ''}>${p.mod ? p.mod.name : p.src.name}</small>${p.label}</th>`);
   h += `</tr></thead><tbody>`;
   SRC.forEach((s) => {
     h += `<tr><th scope="row"><button class="linkbtn" data-edit-src="${s.id}" title="Edit ${s.name}"><b style="color:${s.color}">${s.name}</b></button><small>${s.sub}${s.params.length ? ` · ${s.params.length} knob${s.params.length > 1 ? 's' : ''}` : ''}</small></th>`;
     cols.forEach((p) => { const on = state.conns[p.id] === s.id;
-      h += `<td><button class="cell" data-pid="${p.id}" data-sid="${s.id}" aria-pressed="${on}" aria-label="${s.name} to ${p.mod.name} ${p.label}${on ? ', patched' : ''}" style="${on ? `background:${s.color};border-color:${s.color};box-shadow:0 0 16px ${s.color}88` : ''}"></button></td>`; });
+      h += `<td><button class="cell" data-pid="${p.id}" data-sid="${s.id}" aria-pressed="${on}" aria-label="${s.name} to ${p.mod ? p.mod.name : p.src.name} ${p.label}${on ? ', patched' : ''}" style="${on ? `background:${s.color};border-color:${s.color};box-shadow:0 0 16px ${s.color}88` : ''}"></button></td>`; });
     h += `</tr>`;
   });
-  h += `</tbody></table></div><p class="note" style="margin-top:14px">Each knob takes one source; new patches swing ±${Math.round(DEPTH * 100)}%. Click a dot to patch or unpatch, or a source's name to edit it and its depths.</p>`;
+  h += `</tbody></table></div><p class="note" style="margin-top:14px">Each knob takes one source; new patches swing ±${Math.round(DEPTH * 100)}%. Click a dot to patch or unpatch, or a source's name to edit it and its depths. Source knobs are cross-modulation: one source moving another (or itself).</p>`;
   matrix.innerHTML = h;
 }
 function setHint() {
   if (state.storing) { hint.className = 'hint carry'; hint.textContent = 'Store mode: click a scene letter to save the current settings into it'; return; }
-  if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it · Esc to drop`; return; }
-  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · P hides the panel · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
+  if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it, or another source's orb to move one of its knobs · Esc to drop`; return; }
+  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · + adds a source · P hides the panel · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
 }
 // The side panel can be hidden (button or P) and remembers that per browser.
 let panelHidden = false;
@@ -57,7 +61,7 @@ function updatePanelToggle() {
   b.title = panelHidden ? `Show the ${name} panel (P)` : 'Hide the panel (P)';
   b.setAttribute('aria-label', b.title);
 }
-function update() { renderPanel(); updatePanelToggle(); if (state.view === 'matrix') renderMatrix(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); }
+function update() { renderPanel(); updatePanelToggle(); if (state.view === 'matrix') renderMatrix(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); drawAddLabel(); }
 function setView(v) { state.view = v; state.carrying = null; $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vMatrix').setAttribute('aria-pressed', v === 'matrix'); matrix.hidden = v !== 'matrix'; update(); }
 
 function wireHud() {

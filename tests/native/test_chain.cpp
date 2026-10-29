@@ -51,6 +51,6 @@ TEST("03 chain: self-description matches the registries") {
     for (int p = 0; p < d.nparams; p++) { std::string s = std::string("\"symbol\":\"") + d.params[p].symbol + "\""; if (!strstr(j, s.c_str())) all = false;
       if (d.params[p].def < 0 || d.params[p].def > 1) all = false;
       if (d.params[p].curve == Curve::Log && d.params[p].min <= 0) all = false; } }
-  for (int k = 0; k < NSRC; k++) { std::string s = std::string("\"id\":\"") + e.src.list[k]->desc().id + "\""; if (!strstr(j, s.c_str())) all = false; }
-  CHECK(all, "all %d modules and %d sources listed with valid parameter ranges", NMOD, NSRC);
+  for (int k = 0; k < NSRCTYPES; k++) { std::string s = std::string("\"id\":\"") + sourceTypeDesc(k).id + "\""; if (!strstr(j, s.c_str())) all = false; }
+  CHECK(all, "all %d modules and %d source types listed with valid parameter ranges", NMOD, NSRCTYPES);
 }

@@ -1,6 +1,6 @@
 // 20-bridge.js - the only path from UI to engine: rig.cmd("text line").
 // In the browser the transport is the AudioWorklet port; on the Linux rig it becomes a WebSocket.
-const rig = { node: null, ctx: null, cmdId: 0, log: [] };
+const rig = { node: null, ctx: null, cmdId: 0, log: [], afterSend: [] };   // afterSend: features that resend their own state after sendAll()
 window.__rig = rig;
 rig.cmd = function (line) {
   rig.log.push(line);
@@ -42,6 +42,7 @@ function sendAll() {
   });
   SRC.forEach((s) => s.params.forEach((q) => rig.cmd(`src_set ${s.id} ${q.sym} ${q.v.toFixed(6)}`)));
   rig.cmd(`set_bpm ${state.bpm}`); rig.cmd(`master ${state.master}`);
+  rig.afterSend.forEach((f) => f());
 }
 function setSrcParam(q, v) { q.v = clamp(v, 0, 1); rig.cmd(`src_set ${q.src.id} ${q.sym} ${q.v.toFixed(6)}`); }
 function setDepth(pid, d) {                     // swing of one patch, 0..1 either side of the knob

@@ -7,6 +7,7 @@
 //   mod_disconnect <inst> <symbol>            set_bpm <bpm>
 //   master <dB>                               ext <source> <value>
 //   input_channel <0|1>                       src_set <source> <symbol> <0..1>
+//   tuner <0|1> [mute 0|1]                    tuner_ref <A4 Hz, 400..480>
 // File slots arrive as {type:'asset', inst, data, ref} messages (binary: a .nam file's text, or an
 // IR as RIR1 header + float samples, see engine/core/nam.h) and are answered with the engine's
 // status line; the Linux host takes the text form `asset_load <inst> <kind>/<file name>` and reads
@@ -69,6 +70,11 @@ class RigEngine extends AudioWorkletProcessor {
       if (s < 0 || !(d >= 0 && d <= 1)) return ERR.VALUE_OUT_OF_RANGE;
       X.rig_mod(m, p, s, d); return 0;
     }
+    if (c === 'tuner') {                         // tuner <0|1> [mute 0|1]: strobe tuner on the dry input
+      if (t[1] !== '0' && t[1] !== '1') return ERR.VALUE_OUT_OF_RANGE;
+      X.rig_tuner(t[1] === '1' ? 1 : 0, t[2] === '0' ? 0 : 1); return 0;
+    }
+    if (c === 'tuner_ref') { const v = Number(t[1]); if (!(v >= 400 && v <= 480)) return ERR.VALUE_OUT_OF_RANGE; X.rig_tuner_ref(v); return 0; }
     if (c === 'src_set') {                       // src_set <source> <symbol> <0..1>
       const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
       const p = (this.desc.sources[k].params || []).findIndex((q) => q.symbol === t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
@@ -121,7 +127,7 @@ class RigEngine extends AudioWorkletProcessor {
     this.busyMs += Date.now() - t0;          // 1 ms clock, but the average is unbiased over many blocks
     if (++this.blocks % 12 === 0) {           // ~31 Hz meter stream at 48 kHz
       const wall = Date.now() - this.wallStart;
-      this.port.postMessage({ type: 'meters', m: Array.from(this.vM), inPk: this.inPk, outPk: this.outPk, load: wall > 0 ? this.busyMs / wall : 0 });
+      this.port.postMessage({ type: 'meters', t: currentTime, m: Array.from(this.vM), inPk: this.inPk, outPk: this.outPk, load: wall > 0 ? this.busyMs / wall : 0 });
       this.inPk = 0; this.outPk = 0;
       if (wall > 2000) { this.busyMs = 0; this.wallStart = Date.now(); }
     }

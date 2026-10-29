@@ -1,7 +1,7 @@
 // browser.cjs - drive dist/rig-test.html in headless Chromium with a fake mic playing the riff
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const path = require('path'), fs = require('fs');
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(__dirname, '../..');
 const THREE = process.env.THREE_JS;
 const shots = process.env.SHOTS || path.join(root, 'build');
 let fails = 0;
@@ -20,7 +20,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.route('**/cdnjs.cloudflare.com/**three.min.js', (r) => r.fulfill({ body: fs.readFileSync(THREE), contentType: 'text/javascript' }));
   await page.route('**/fonts.googleapis.com/**', (r) => r.fulfill({ body: '', contentType: 'text/css' }));
   await page.goto('file://' + path.join(root, 'dist/rig-test.html'));
-  await page.waitForTimeout(800);
+  await page.waitForFunction(() => window.__rig && window.__rig.ready, null, { timeout: 8000 });
+  await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(shots, 'shot-start.png') });
 
   console.log('1. Start with the audio-interface source (fake mic = riff)');
@@ -30,7 +31,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let m = await page.evaluate(() => window.__rig.meters);
   check(m.inPk > 0.01, `input reaches the engine (peak ${(20 * Math.log10(m.inPk)).toFixed(1)} dBFS)`);
   check(m.outPk > 0.01 && m.outPk <= 0.98, `engine output (peak ${(20 * Math.log10(m.outPk)).toFixed(1)} dBFS at master -12 dB)`);
-  check(m.m[17] === 0, `no NaN resets (${m.m[17]})`);
+  const nan = await page.evaluate(() => window.__rig.nanResets());
+  check(nan === 0, `no NaN resets (${nan})`);
   check(m.load > 0 && m.load < 0.5, `DSP load reported ${(m.load * 100).toFixed(1)}% of the audio thread`);
   const info = await page.evaluate(() => ({ sr: window.__rig.ctx.sampleRate, base: window.__rig.ctx.baseLatency, hidden: document.getElementById('startOverlay').hidden }));
   check(info.hidden, `start overlay closed; context ${info.sr} Hz, base latency ${(info.base * 1000).toFixed(1)} ms`);
@@ -46,19 +48,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(r.status === -103, `bad symbol -> resp ${r.status}`);
   await page.evaluate(() => window.__rig.cmd('param_set 4 size 0.95'));
   await sleep(300);
-  m = await page.evaluate(() => window.__rig.meters);
-  check(Math.abs(m.m[7 + 8] - 0.95) < 0.01, `param_set 4 size 0.95 -> engine reports ${m.m[15].toFixed(3)}`);
+  let v = await page.evaluate(() => window.__rig.eff('tess', 'size'));
+  check(Math.abs(v - 0.95) < 0.01, `param_set 4 size 0.95 -> engine reports ${v.toFixed(3)}`);
+  await page.evaluate(() => window.__rig.cmd('param_set tess fold 0.6'));
+  await sleep(300);
+  r = await page.evaluate(() => window.__rig.lastResp);
+  v = await page.evaluate(() => window.__rig.eff('tess', 'fold'));
+  check(r.status === 0 && Math.abs(v - 0.6) < 0.15, `instance by id: param_set tess fold 0.6 -> resp ${r.status}, engine ${v.toFixed(3)} (heart-modulated)`);
 
   console.log('3. UI: patch CONTROLLER -> CAB MIX in the matrix, then sweep the controller slider');
   await page.click('#vMatrix');
   await page.click('button.cell[data-pid="cab.mix"][data-sid="ctrl"]');
   const setSlider = (v) => page.evaluate((v) => { const s = document.getElementById('ctrlSlider'); s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); }, v);
   await setSlider(-1); await sleep(500);
-  m = await page.evaluate(() => window.__rig.meters);
-  check(Math.abs(m.m[12] - 0.68) < 0.02, `controller -1 -> cab mix ${m.m[12].toFixed(3)} (expect 0.68)`);
+  v = await page.evaluate(() => window.__rig.eff('cab', 'mix'));
+  check(Math.abs(v - 0.68) < 0.02, `controller -1 -> cab mix ${v.toFixed(3)} (expect 0.68)`);
   await setSlider(1); await sleep(500);
-  m = await page.evaluate(() => window.__rig.meters);
-  check(m.m[12] > 0.99, `controller +1 -> cab mix ${m.m[12].toFixed(3)} (expect 1.00, clamped)`);
+  v = await page.evaluate(() => window.__rig.eff('cab', 'mix'));
+  check(v > 0.99, `controller +1 -> cab mix ${v.toFixed(3)} (expect 1.00, clamped)`);
   await page.screenshot({ path: path.join(shots, 'shot-matrix.png') });
   await page.click('#vStage');
 
@@ -68,10 +75,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const log = await page.evaluate(() => window.__rig.log.slice(-3));
   check(log.some((l) => l === 'bypass 3 1'), `panel sent "${log[log.length - 1]}"`);
   const fb = [];
-  for (let i = 0; i < 12; i++) { fb.push(await page.evaluate(() => window.__rig.meters.m[13])); await sleep(250); }
+  for (let i = 0; i < 12; i++) { fb.push(await page.evaluate(() => window.__rig.eff('holo', 'feedback'))); await sleep(250); }
   const span = Math.max(...fb) - Math.min(...fb);
   check(span > 0.02, `LFO-modulated delay feedback moves over 3 s (span ${span.toFixed(3)})`);
-  const onsets = await page.evaluate(() => window.__rig.meters.m[18]);
+  const onsets = await page.evaluate(() => window.__rig.srcMeter('adsr', 'onsets'));
   check(onsets > 3, `pick detector firing on the fake-mic riff (${onsets} onsets so far)`);
 
   console.log('5. Built-in riff source + 3D render');

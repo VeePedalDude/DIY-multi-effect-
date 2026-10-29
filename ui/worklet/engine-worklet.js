@@ -6,7 +6,7 @@
 //   mod_connect <inst> <symbol> <source> <depth>
 //   mod_disconnect <inst> <symbol>            set_bpm <bpm>
 //   master <dB>                               ext <source> <value>
-//   input_channel <0|1>
+//   input_channel <0|1>                       src_set <source> <symbol> <0..1>
 // File slots arrive as {type:'asset', inst, data, ref} messages (binary: a .nam file's text, or an
 // IR as RIR1 header + float samples, see engine/core/nam.h) and are answered with the engine's
 // status line; the Linux host takes the text form `asset_load <inst> <kind>/<file name>` and reads
@@ -68,6 +68,12 @@ class RigEngine extends AudioWorkletProcessor {
       const s = this.source(t[3]), d = Number(t[4]);
       if (s < 0 || !(d >= 0 && d <= 1)) return ERR.VALUE_OUT_OF_RANGE;
       X.rig_mod(m, p, s, d); return 0;
+    }
+    if (c === 'src_set') {                       // src_set <source> <symbol> <0..1>
+      const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
+      const p = (this.desc.sources[k].params || []).findIndex((q) => q.symbol === t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
+      const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE;
+      X.rig_src_param(k, p, v); return 0;
     }
     if (c === 'bypass') { const m = this.inst(t[1]); if (m < 0) return ERR.INSTANCE_INVALID; X.rig_bypass(m, t[2] === '1' ? 1 : 0); return 0; }
     if (c === 'set_bpm') { const v = Number(t[1]); if (!(v >= 30 && v <= 300)) return ERR.VALUE_OUT_OF_RANGE; X.rig_tempo(v); return 0; }

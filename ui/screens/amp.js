@@ -35,3 +35,4 @@ screen('amp', (c, b, m, h) => {
   c.stroke(); c.fillStyle = '#94A3BD'; c.fillText('built-in amp · drop a .nam here', b.x + 20, b.y + 26);
 });
 NOTES.amp = 'Plays any .nam capture: WaveNet (A1, A2, slimmable), LSTM, ConvNet, Linear, Sequential. INPUT is the gain into the capture (0 dB = as captured); captures with loudness data are levelled like the NAM plugin. Without a capture, a built-in waveshaper plays (it adds its own +18 dB).';
+TILE.amp = 'gold';   // card colour (ui/assets/tile-gold.webp)

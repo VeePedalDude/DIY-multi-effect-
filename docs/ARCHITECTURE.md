@@ -24,7 +24,9 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `engine/api/` | flat C API used by WebAssembly and future hosts | `engine.h` |
 | `ui/worklet/` | runs `rig.wasm` in the browser, parses the text protocol | the engine's description |
 | `ui/js/` | page logic, one file per job (model, bridge, audio, stage, faces, HUD, controllers, presets, main) | the engine's description |
-| `ui/screens/` | the small display on each module's face, one file per module id | its own module |
+| `ui/screens/` | the small display on each module's face, and its card colour (`TILE.<id>`), one file per module id | its own module |
+| `ui/assets/` | images embedded into the page: the hall background, the three card frames | nothing |
+| `ui/js/51-source-panel.js` | the side panel for a modulation source: knobs, live trace, patches and depths | the engine's description |
 | `ui/js/52–56`, `72` | library storage backends, file helpers, library, file-slot UI, preset format ([LIBRARY.md](LIBRARY.md)) | the engine's description |
 | `tests/ui/` | Node unit tests for the library and preset format; `tests/fixtures/` holds the golden preset | `ui/js` pure files |
 | `tests/native/` | engine tests, one file per area | `engine/` |

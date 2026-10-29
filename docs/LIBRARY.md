@@ -63,13 +63,14 @@ a click-free crossfade. The Linux host loads on a background thread instead.
 Presets are `.rig.json` files in `presets/`. They are versioned and built to keep working as the rig changes:
 
 ```json
-{ "format": "rig-preset", "version": 1, "name": "Ambient Drive",
+{ "format": "rig-preset", "version": 2, "name": "Ambient Drive",
   "chain": [ { "id": "holo", "bypass": false, "params": { "feedback": 42.75, "halo": 60 } },
              { "id": "cab",  "bypass": false, "params": { "locut": 42.27, "mix": 90 },
                "asset": { "kind": "ir", "name": "V30 SM57.wav", "size": 8236, "hash": "1a2b3c4d" } } ],
   "mods": [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 } ],
+  "sources": [ { "id": "lfo", "params": { "rate": 8, "shape": 0 } } ],
   "tempo": 120, "master": -12,
-  "scenes": { "A": { "chain": [ ... ], "mods": [ ... ], "tempo": 120 } } }
+  "scenes": { "A": { "chain": [ ... ], "mods": [ ... ], "sources": [ ... ], "tempo": 120 } } }
 ```
 
 - **Matched by name, not position:** modules by `id`, knobs by `symbol`. Reordering or adding
@@ -82,8 +83,11 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
 - **Modules this build doesn't have** are kept in the file and written back when you re-save.
 - **Renamed knobs or modules** go in `PRESET_RENAMES` (`ui/js/72-preset-format.js`), so older files keep loading.
 - **Changes to the file layout itself** bump `PRESET_VERSION` and add a `PRESET_MIGRATIONS` step.
-- `tests/fixtures/ambient-drive.v1.rig.json` is a hand-written version-1 file. The build fails if it
-  ever stops loading cleanly, so a change that would break existing presets can't slip through.
+- **Version 2** added `sources` (the modulation sources' knobs, in real units). Version 1 files
+  migrate to it with every source at its default, which is exactly how they sounded.
+- `tests/fixtures/ambient-drive.v1.rig.json` (version 1) and `source-knobs.v2.rig.json` (version 2)
+  are hand-written. The build fails if either ever stops loading cleanly, so a change that would
+  break existing presets can't slip through.
 
 ## On the iMac
 

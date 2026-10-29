@@ -39,10 +39,11 @@ engine/
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  js/          00-core 10-model 20-bridge 30-audio 40-stage 45-faces 50-hud
+  js/          00-core 10-model 20-bridge 30-audio 40-stage 45-faces 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library)
                60-controllers 70-presets 72-preset-format 90-main
-  screens/     one face display per module: gate.js amp.js cab.js holo.js tess.js
+  screens/     one face display (and card colour) per module: gate.js amp.js cab.js holo.js tess.js
+  assets/      hall background and card frames (embedded into the built page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
   native/      framework.h + one test file per area (chain, gate, amp, cab, holo, tess, sources)
@@ -102,11 +103,14 @@ Browser tests (need `playwright-core` and three.js r128 locally):
 | 4 | Tesseract | size → RT60 0.5..7.5 s, 4D fold | 8-line FDN, rotating 4-D matrix |
 
 Sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate (simulated,
-or a Bluetooth strap), controller (gamepad stick or slider).
+or a Bluetooth strap), controller (gamepad stick or slider). Each has its own knobs (LFO rate and
+shape, envelope attack/release/floor, ADSR times, orbit speed, heart rest rate, controller
+smoothing and dead zone): click a source's orb or name to open them, along with every patch it
+feeds and its depth. **P** (or the tab beside it) hides the side panel.
 
 ## Test results (this build)
 
-- **Native:** 25 test groups pass. The full chain uses ~4% of one core on this build machine.
+- **Native:** 28 test groups pass. The full chain uses ~4% of one core on this build machine.
   - **NAM:** all 11 test captures play (A1 standard, A2 slimmable, A2 features, slimmable WaveNet and
     container, small WaveNet, condition-DSP WaveNet, LSTM, ConvNet, Linear, Sequential), sample-identical
     to NAM core run directly.
@@ -122,7 +126,11 @@ or a Bluetooth strap), controller (gamepad stick or slider).
   save and load round trip, renamed knobs, unknown modules, out-of-range values and newer files.
 - **WebAssembly vs native:** difference 83 dB below the signal, with and without a capture and a 3 s
   stereo IR loaded. The engine has no imports.
-- **Headless Chromium:** 16/16 main checks, 4/4 with gamepads blocked, and 22/22 library checks. The
+- **Source knobs:** each knob measurably does its job (LFO rate and shape, envelope release, ADSR
+  attack, orbit speed, heart rest rate, controller dead zone). At their defaults the sources'
+  output is bit-identical to the fixed sources they replaced.
+- **Headless Chromium:** 25/25 main checks (including opening and editing sources, depth, patching
+  from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks. The
   library checks cover dropping files on a panel and on the stage, search, saving a preset file,
   reloading the page and loading it back, and removing a file the preset uses. They also play four
   real captures (A2, LSTM, A1, ConvNet), refuse a fake one with its reason, and run a 3 s stereo IR.

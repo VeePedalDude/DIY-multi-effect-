@@ -1,11 +1,14 @@
 // engine/sources/heart.h - heartbeat (QRS-shaped). Uses a strap's bpm from `ext heart <bpm>`
-// while fresh (< 5 s old), otherwise a simulated 72 bpm.
+// while fresh (< 5 s old), otherwise a simulated rate (REST, default 72 bpm).
 #pragma once
 #include "../core/source.h"
 
 namespace rig {
 
-inline constexpr SourceDesc HEART_DESC = {"heart", "HEART RATE", "simulated 72 bpm", "beats per minute from a strap", 1, {"bpm", nullptr}};
+inline constexpr ParamDesc HEART_PARAMS[] = {
+  {"rest", "REST", 36.f, 144.f, 0.5f, "bpm", Curve::Log, 0, false},   // 72 bpm, used without a strap
+};
+inline constexpr SourceDesc HEART_DESC = {"heart", "HEART RATE", "simulated 72 bpm", "beats per minute from a strap", 1, {"bpm", nullptr}, 1, HEART_PARAMS};
 
 struct Heart : Source {
   float ph = 0, extBpm = 0, extAge = 99, bpm = 72;
@@ -19,7 +22,7 @@ struct Heart : Source {
   }
   float update(const SourceContext& c) override {
     extAge += c.dt;
-    bpm = (extAge < 5.f && extBpm > 30.f) ? extBpm : 72.f;
+    bpm = (extAge < 5.f && extBpm > 30.f) ? extBpm : knob(c, 0);
     ph += c.dt * bpm / 60.f; ph -= floorf(ph);
     return shape(ph);
   }

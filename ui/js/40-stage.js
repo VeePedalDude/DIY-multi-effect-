@@ -1,21 +1,25 @@
 // 40-stage.js - three.js stage: module faces on an arc, source orbs above, patch cables, camera, picking.
 // Layout adapts to however many modules, sources and knobs the engine describes.
 const canvas = $('stage');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x05070c);
-scene.fog = new THREE.FogExp2(0x05070c, 0.026);
+scene.fog = new THREE.FogExp2(0x0b0716, 0.014);
+// The hall (ui/assets/hall.webp) is the page background behind the transparent 3D canvas, so it
+// always fills the window at its own proportions.
+if (typeof UI_ASSETS !== 'undefined' && UI_ASSETS['hall.webp']) canvas.style.backgroundImage = `url(${UI_ASSETS['hall.webp']})`;
 const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 300);
 function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 function mkTex(cv) { const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; return t; }
 
-// Face geometry: canvas pixels. One knob row per two params.
-const FW = 512, PW = 3.4, ROW_H = 170, KNOB_Y0 = 400;
-const faceH = (m) => 432 + ROW_H * Math.ceil(m.params.length / 2);
+// Face geometry, in canvas pixels: the card art's own size (518 x 754). One knob row per two params;
+// cards with more than one row grow by stretching a plain strip of the side rails (45-faces.js drawCard).
+const FW = 518, CARD_H = 754, PW = 3.4, ROW_H = 150, KNOB_Y0 = 492;
+const faceH = (m) => CARD_H + ROW_H * Math.max(0, Math.ceil(m.params.length / 2) - 1);
 function knobXY(p) {
   const n = p.mod.params.length, row = Math.floor(p.pi / 2), inRow = Math.min(2, n - row * 2);
-  return [inRow === 2 ? (p.pi % 2 ? 384 : 128) : 256, KNOB_Y0 + row * ROW_H];
+  return [inRow === 2 ? (p.pi % 2 ? 372 : 146) : FW / 2, KNOB_Y0 + row * ROW_H];
 }
 const SPACING = 4;
 const pickables = [];
@@ -24,30 +28,35 @@ const NP = 70, CN = 48;
 let cables = [];
 const pointerWorld = new THREE.Vector3(0, 4, 0);
 
+// Soft rounded-rectangle glow (white; tinted by the material colour), shared by every card.
+let glowTexCache = null;
+function glowTex() {
+  if (glowTexCache) return glowTexCache;
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256; const c = cv.getContext('2d');
+  c.shadowColor = '#fff'; c.shadowBlur = 34; c.fillStyle = '#fff';
+  for (let k = 0; k < 3; k++) { rr(c, 40, 40, 176, 176, 26); c.fill(); }
+  c.globalCompositeOperation = 'destination-out'; c.shadowBlur = 18; rr(c, 52, 52, 152, 152, 18); c.fill();
+  return (glowTexCache = mkTex(cv));
+}
 function pill(txt) { const cv = document.createElement('canvas'); cv.width = 128; cv.height = 64; const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: mkTex(cv), transparent: true })); s.scale.set(1.4, .7, 1); return { s, cv, txt }; }
 function drawPill(l) { const c = l.cv.getContext('2d'); c.clearRect(0, 0, 128, 64); rr(c, 4, 4, 120, 56, 28); c.fillStyle = 'rgba(15,21,36,.9)'; c.fill(); c.strokeStyle = '#2A3550'; c.lineWidth = 3; c.stroke(); c.fillStyle = '#E6ECF5'; c.font = '600 26px "IBM Plex Mono", monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(l.txt, 64, 33); l.s.material.map.needsUpdate = true; }
 
 function buildStage() {
-  const grid = new THREE.GridHelper(140, 140, 0x1d6a73, 0x122f3a); grid.material.transparent = true; grid.material.opacity = .55; scene.add(grid);
-  { const n = 700, pos = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { const r = 60 + Math.random() * 40, th = Math.random() * Math.PI * 2, ph = Math.random() * Math.PI * .5;
-      pos[i * 3] = r * Math.cos(th) * Math.sin(ph); pos[i * 3 + 1] = r * Math.cos(ph) + 4; pos[i * 3 + 2] = r * Math.sin(th) * Math.sin(ph); }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0x6f86b0, size: .18, fog: false }))); }
-
   const half = (MODS.length - 1) / 2;
   MODS.forEach((m, i) => {
     const k = i - half, x = k * SPACING, z = 0.9 - 0.65 * k * k;
-    const FH = faceH(m), PH = 4.0 * FH / 602;
+    const FH = faceH(m), PH = PW * FH / FW, tileGlow = TILE_STYLE[tileOf(m)].glow;
     const g = new THREE.Group(); g.position.set(x, 0.8 + PH / 2, z); g.lookAt(0, g.position.y, 22);
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, .18), new THREE.MeshBasicMaterial({ color: 0x0a0e17 })); g.add(slab);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(slab.geometry), new THREE.LineBasicMaterial({ color: 0x2a3550 })); g.add(edges);
+    // the card's thickness (inset so its rounded corners stay clear) and a glow behind it when focused
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: 0x1a1528 })); slab.position.z = .02; g.add(slab);
+    const halo = new THREE.Mesh(new THREE.PlaneGeometry(PW * 1.3, PH * 1.2), new THREE.MeshBasicMaterial({ map: glowTex(), color: tileGlow, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    halo.position.z = -.06; g.add(halo);
     const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH; const tex = mkTex(cv);
     const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); face.position.z = .1; g.add(face);
-    const glow = new THREE.Mesh(new THREE.RingGeometry(1.2, 2.2, 48), new THREE.MeshBasicMaterial({ color: ACC, transparent: true, opacity: .08, side: THREE.DoubleSide, depthWrite: false }));
+    const glow = new THREE.Mesh(new THREE.RingGeometry(1.2, 2.2, 48), new THREE.MeshBasicMaterial({ color: tileGlow, transparent: true, opacity: .08, side: THREE.DoubleSide, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.set(x, .02, z);
     scene.add(glow, g);
-    Object.assign(m, { group: g, baseY: g.position.y, face, edges, glow, ctx: cv.getContext('2d'), tex, FH, PH });
+    Object.assign(m, { group: g, baseY: g.position.y, face, halo, glow, ctx: cv.getContext('2d'), tex, FH, PH });
     face.userData = { type: 'face', mod: m }; pickables.push(face);
   });
 
@@ -69,7 +78,7 @@ function buildStage() {
     const lbl = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true })); lbl.scale.set(3.2, 1.6, 1); lbl.position.set(x, 9.3, -4.2);
     scene.add(orb, ring, halo, lbl);
     Object.assign(s, { orb, ring, halo, lbl, ctx: cv.getContext('2d'), tex, hist: [] });
-    orb.userData = lbl.userData = halo.userData = { type: 'src', src: s }; pickables.push(orb, halo, lbl);
+    orb.userData = halo.userData = { type: 'src', src: s }; lbl.userData = { type: 'srclabel', src: s }; pickables.push(orb, halo, lbl);
   });
 
   carryGeo = new THREE.BufferGeometry(); carryGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(CN * 3), 3));
@@ -101,9 +110,9 @@ function setNdc(e) { const r = canvas.getBoundingClientRect(); ndc.x = ((e.clien
 function pick(e) {
   setNdc(e); ray.setFromCamera(ndc, camera);
   const hit = ray.intersectObjects(pickables, false)[0]; if (!hit) return null;
-  const u = hit.object.userData; if (u.type === 'src') return { type: 'src', src: u.src };
+  const u = hit.object.userData; if (u.type === 'src' || u.type === 'srclabel') return { type: u.type, src: u.src };
   const m = u.mod, px = hit.uv.x * FW, py = (1 - hit.uv.y) * m.FH; let knob = null;
-  m.params.forEach((p) => { const [kx, ky] = knobXY(p); if (Math.hypot(px - kx, py - ky) < 100) knob = p; });
+  m.params.forEach((p) => { const [kx, ky] = knobXY(p); if (Math.hypot(px - kx, py - ky) < 84) knob = p; });
   return { type: 'face', mod: m, knob };
 }
 let drag = null;
@@ -130,9 +139,12 @@ function wireStageInput() {
 }
 function stageClick(h) {
   if (!h) { if (state.carrying) { state.carrying = null; update(); } return; }
-  if (h.type === 'src') { state.carrying = state.carrying === h.src.id ? null : h.src.id; update(); return; }
+  // an orb opens the source's panel and picks up a cable; its name label just opens the panel
+  if (h.type === 'src') { state.carrying = state.carrying === h.src.id ? null : h.src.id; state.focus = 'src:' + h.src.id; update(); return; }
+  if (h.type === 'srclabel') { state.focus = 'src:' + h.src.id; update(); return; }
   if (h.knob && state.carrying) { connect(h.knob.id, state.conns[h.knob.id] === state.carrying ? null : state.carrying); state.carrying = null; state.focus = h.mod.id; update(); return; }
   state.focus = h.mod.id; flyTo(h.mod); update();
 }
-// Test helper: where a module's face is on screen (client px), e.g. to drop a file onto it.
+// Test helpers: where a module's face, or a source's orb or name label, is on screen (client px).
+rig.srcScreen = (id, part = 'lbl') => { const s = SRCMAP[id]; if (!s) return null; const v = s[part].position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
 rig.modScreen = (id) => { const m = MODS.find((x) => x.id === id); if (!m) return null; const v = m.group.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };

@@ -1,12 +1,19 @@
 // engine/sources/adsr.h - pick-triggered ADSR. Onsets are detected in the >1.8 kHz band,
 // where pick transients live and ringing strings do not (24/24 on the test riff).
-// A 40 ms, D 300 ms to S 0.4, R 600 ms once the input drops below -45 dBFS.
+// ATTACK, DECAY to SUSTAIN, then RELEASE once the input drops below -45 dBFS
+// (defaults A 40 ms, D 300 ms, S 40%, R 600 ms).
 #pragma once
 #include "../core/source.h"
 
 namespace rig {
 
-inline constexpr SourceDesc ADSR_DESC = {"adsr", "PICK ADSR", "per-note swell", nullptr, 1, {"onsets", nullptr}};
+inline constexpr ParamDesc ADSR_PARAMS[] = {
+  {"attack",  "ATTACK",  2.f,  800.f,  0.5f, "ms", Curve::Log, 0, false},   // 40 ms
+  {"decay",   "DECAY",   30.f, 3000.f, 0.5f, "ms", Curve::Log, 0, false},   // 300 ms
+  {"sustain", "SUSTAIN", 0.f,  100.f,  0.4f, "%",  Curve::Lin, 0, false},   // 40 %
+  {"release", "RELEASE", 60.f, 6000.f, 0.5f, "ms", Curve::Log, 0, false},   // 600 ms
+};
+inline constexpr SourceDesc ADSR_DESC = {"adsr", "PICK ADSR", "per-note swell", nullptr, 1, {"onsets", nullptr}, 4, ADSR_PARAMS};
 
 struct PickAdsr : Source {
   float fast = 0, refr = 0, adsr = 0; int stage = 0; int onsets = 0;
@@ -29,12 +36,12 @@ struct PickAdsr : Source {
       else if (hfFast > ONSET_FLOOR && hfFast > ONSET_RATIO * hfSlow) { trig = true; refr = 0.060f * sr; onsets++; }
     }
     hfFast = undenorm(hfFast); hfSlow = undenorm(hfSlow); fast = undenorm(fast);
-    float dt = c.dt;
+    const float dt = c.dt, A = knob(c, 0) / 1000.f, D = knob(c, 1) / 1000.f, S = knob(c, 2) / 100.f, R = knob(c, 3) / 1000.f;   // divisions keep defaults bit-exact
     if (trig) stage = 1;
-    if (stage == 1) { adsr += dt / 0.040f; if (adsr >= 1) { adsr = 1; stage = 2; } }
-    else if (stage == 2) { adsr -= dt / 0.300f * 0.6f; if (adsr <= 0.4f) { adsr = 0.4f; stage = 3; } }
+    if (stage == 1) { adsr += dt / A; if (adsr >= 1) { adsr = 1; stage = 2; } }
+    else if (stage == 2) { adsr -= dt / D * (1.f - S); if (adsr <= S) { adsr = S; stage = 3; } }
     if (stage == 3 && fast < 0.0056f) stage = 4;
-    if (stage == 4) { adsr -= dt / 0.600f; if (adsr <= 0) { adsr = 0; stage = 0; } }
+    if (stage == 4) { adsr -= dt / R; if (adsr <= 0) { adsr = 0; stage = 0; } }
     return 2.f * adsr - 1.f;
   }
   void meters(float* out) const override { out[0] = (float)onsets; }

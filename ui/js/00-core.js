@@ -1,20 +1,16 @@
 // 00-core.js - shared constants, helpers and UI state.
 // All ui/js files and ui/screens files are concatenated into one scope by tools/build_web.py
 // (ui/js in name order, ui/screens inserted before 50-*), so top-level names must be unique.
-const ACC = '#4FE3F0';
+let ACC = '#4FE3F0';                      // face-screen accent; set by the active skin (04-skin-core.js, 57-skins.js)
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const $ = (id) => document.getElementById(id);
 const DEPTH = 0.22;                       // modulation swing per patch, +/- in normalised units
 
-// Orb colours per source id; sources without an entry take the next fallback colour.
-const SOURCE_COLORS = { lfo: '#4FE3F0', env: '#FFB547', adsr: '#FF5FA2', orbit: '#A78BFA', heart: '#FF7A6B', ctrl: '#9BE15D' };
-const FALLBACK_COLORS = ['#7DD3FC', '#F9A8D4', '#FDE68A', '#86EFAC', '#C4B5FD', '#FCA5A5'];
 
 // Per-module face screens: ui/screens/<id>.js calls screen('<id>', fn). Modules without one get a generic screen.
 const SCREENS = {};
 const NOTES = {};                         // optional focus-panel note per module id, set from ui/screens/<id>.js
-const TILE = {};                          // optional card colour per module id ('purple' | 'teal' | 'gold'), set from ui/screens/<id>.js
 const MODDATA = {};                       // per-module UI data shared between panels and screens (e.g. MODDATA.cab.irResp)
 function screen(id, fn) { SCREENS[id] = fn; }
 

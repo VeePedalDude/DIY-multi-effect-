@@ -39,8 +39,8 @@ function renderSourcePanel(s) {
 function drawSourceScope() {
   const s = srcFocus(), cv = s && document.getElementById('srcScope'); if (!cv) return;
   const c = cv.getContext('2d'), W = cv.width, H = cv.height;
-  c.clearRect(0, 0, W, H); c.fillStyle = '#070B14'; c.fillRect(0, 0, W, H);
-  c.strokeStyle = '#1F2A40'; c.lineWidth = 1; c.beginPath(); c.moveTo(0, H / 2); c.lineTo(W, H / 2); c.stroke();
+  c.clearRect(0, 0, W, H); c.fillStyle = SKIN.screen.glass; c.fillRect(0, 0, W, H);
+  c.strokeStyle = SKIN.screen.grid; c.lineWidth = 1; c.beginPath(); c.moveTo(0, H / 2); c.lineTo(W, H / 2); c.stroke();
   c.strokeStyle = s.color; c.lineWidth = 3; c.beginPath();
   s.hist.forEach((v, i) => { const x = W * i / 119, y = H / 2 - v * (H / 2 - 10); i ? c.lineTo(x, y) : c.moveTo(x, y); });
   c.stroke();

@@ -15,14 +15,13 @@ screen('cab', (c, b, m, h) => {
   }
   c.stroke();
   if (long) {                                    // decay over the IR's length, 0 to -60 dB
-    c.save(); c.strokeStyle = '#7C9CFF'; c.lineWidth = 2.5; c.beginPath();
+    c.save(); c.strokeStyle = h.col.alt; c.lineWidth = 2.5; c.beginPath();
     decay.forEach((v, i) => { const px = b.x + 16 + (b.w - 32) * i / (decay.length - 1), py = b.y + 40 + clamp(-v / 60, 0, 1) * (b.h / 2 - 34); i ? c.lineTo(px, py) : c.moveTo(px, py); });
     c.stroke(); c.restore();
   }
-  c.fillStyle = '#94A3BD';
+  c.fillStyle = h.col.text;
   const taps = h.meter('taps', 0), ch = h.meter('chans', 0) || h.data.irCh || 1;
   c.fillText(resp ? `${secs >= 1 ? secs.toFixed(2) + ' s' : (secs * 1000).toFixed(0) + ' ms'} · ${ch > 1 ? 'stereo' : 'mono'}` : 'built-in cab', b.x + 20, b.y + 26);
   if (resp && taps) { c.textAlign = 'right'; c.fillText(`${taps} taps`, b.x + b.w - 20, b.y + 26); c.textAlign = 'left'; }
 });
 NOTES.cab = 'Any IR length, mono or stereo: a speaker cab, a room, or a convolution reverb (up to 20 s). Drop a .wav on this module, or pick one from the library below. Long IRs work best with MIX below 100%.';
-TILE.cab = 'gold';   // card colour (ui/assets/tile-gold.webp)

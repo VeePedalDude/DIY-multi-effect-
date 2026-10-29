@@ -1,14 +1,15 @@
 // tests/ui/load.mjs - load selected ui/js files into a sandbox (no browser) for unit tests.
 import fs from 'fs';
 import vm from 'vm';
-const FILES = ['00-core.js', '10-model.js', '52-vfs.js', '53-assets.js', '54-library-core.js', '72-preset-format.js'];
+const FILES = ['00-core.js', '04-skin-core.js', '10-model.js', '52-vfs.js', '53-assets.js', '54-library-core.js', '72-preset-format.js'];
 const EXPORTS = ['state', 'DEPTH', 'MODS', 'PARAMS', 'SRCMAP', 'loadModel', 'extOf', 'kindForName', 'parseWavInfo', 'parseNamMeta', 'metaLine',
   'matchesQuery', 'uniqueName', 'safeFileName', 'fnv1a', 'KvDir', 'memStore', 'LibraryCore', 'buildPreset', 'readPreset', 'currentSnapshot',
-  'PRESET_VERSION', 'PRESET_RENAMES'];
+  'PRESET_VERSION', 'PRESET_RENAMES', 'DEFAULT_SKIN', 'CLASSIC_SKIN', 'readSkinJson', 'mergeSkin', 'tileStyle', 'tileNameFor', 'skinFiles',
+  'zipFiles', 'unzip', 'readSkinPacket', 'crc32'];
 export async function loadUi() {
   const stubEl = { textContent: '', appendChild() {}, removeChild() {}, childNodes: [], scrollTop: 0 };
   const ctx = vm.createContext({
-    console, TextDecoder, TextEncoder, WebAssembly, Blob, File, DOMException, atob, Math, JSON, Date, Number, Object, Array, Map, Set, Promise,
+    console, TextDecoder, TextEncoder, WebAssembly, Blob, Response, DecompressionStream, Uint8Array, DataView, ArrayBuffer, File, DOMException, atob, Math, JSON, Date, Number, Object, Array, Map, Set, Promise,
     matchMedia: () => ({ matches: false }), document: { getElementById: () => stubEl, createElement: () => ({}) },
     RIG_WASM_B64: fs.readFileSync('build/rig.wasm').toString('base64'),
   });

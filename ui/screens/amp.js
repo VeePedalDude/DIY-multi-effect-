@@ -19,10 +19,10 @@ screen('amp', (c, b, m, h) => {
     const ctxRate = rig.ctx ? rig.ctx.sampleRate : rate;
     const lines = [meta.gear || meta.name || 'NAM capture', [meta.architecture, meta.toneType].filter(Boolean).join(' · '),
       `${(rate / 1000).toFixed(1)} kHz${Math.abs(rate - ctxRate) > 1 ? ` capture at ${(ctxRate / 1000).toFixed(1)} kHz` : ''}`];
-    c.fillStyle = '#E6ECF5'; c.fillText(lines[0].length > 22 ? lines[0].slice(0, 21) + '…' : lines[0], b.x + 20, b.y + 34);
-    c.fillStyle = '#94A3BD'; c.fillText(lines[1].slice(0, 24), b.x + 20, b.y + 62);
-    c.fillStyle = Math.abs(rate - ctxRate) > 1 ? '#FFB547' : '#94A3BD'; c.fillText(lines[2], b.x + 20, b.y + 90);
-    if (meta.modeledBy) { c.fillStyle = '#5E6B85'; c.fillText(('by ' + meta.modeledBy).slice(0, 24), b.x + 20, b.y + 118); }
+    c.fillStyle = h.col.bright; c.fillText(lines[0].length > 22 ? lines[0].slice(0, 21) + '…' : lines[0], b.x + 20, b.y + 34);
+    c.fillStyle = h.col.text; c.fillText(lines[1].slice(0, 24), b.x + 20, b.y + 62);
+    c.fillStyle = Math.abs(rate - ctxRate) > 1 ? h.col.warn : h.col.text; c.fillText(lines[2], b.x + 20, b.y + 90);
+    if (meta.modeledBy) { c.fillStyle = h.col.dim; c.fillText(('by ' + meta.modeledBy).slice(0, 24), b.x + 20, b.y + 118); }
     return;
   }
   const k = Math.pow(10, (18 + h.param(0).real(h.eff(0))) / 20) * 0.08;
@@ -32,7 +32,6 @@ screen('amp', (c, b, m, h) => {
     const px = b.x + 20 + (b.w - 40) * i / 100, py = b.y + b.h / 2 - out * (b.h / 2 - 16) * .9;
     i ? c.lineTo(px, py) : c.moveTo(px, py);
   }
-  c.stroke(); c.fillStyle = '#94A3BD'; c.fillText('built-in amp · drop a .nam here', b.x + 20, b.y + 26);
+  c.stroke(); c.fillStyle = h.col.text; c.fillText('built-in amp · drop a .nam here', b.x + 20, b.y + 26);
 });
 NOTES.amp = 'Plays any .nam capture: WaveNet (A1, A2, slimmable), LSTM, ConvNet, Linear, Sequential. INPUT is the gain into the capture (0 dB = as captured); captures with loudness data are levelled like the NAM plugin. Without a capture, a built-in waveshaper plays (it adds its own +18 dB).';
-TILE.amp = 'gold';   // card colour (ui/assets/tile-gold.webp)

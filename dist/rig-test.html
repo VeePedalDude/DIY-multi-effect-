@@ -9,15 +9,19 @@
 <style>
 /* Layout: full-bleed WebGL stage; glass HUD bars top and bottom; focus panel docked right; settings drawer on the left. */
 :root{
+  /* Every colour and font below is a skin setting (ui/js/04-skin-core.js "ui"; docs/SKINS.md). These are the
+     default skin's values, so the page looks right even before a skin is applied. */
   --bg:#07050D; --glass:rgba(11,9,21,.86); --raise:#0F1524; --line:#1F2A40; --line2:#2A3550;
-  --fg:#E6ECF5; --muted:#94A3BD; --accent:#4FE3F0; --ink:#06080E; --ok:#9BE15D; --warn:#FFB547; --bad:#FF5A6E;
+  --fg:#E6ECF5; --muted:#94A3BD; --soft:#C9D3E6; --accent:#4FE3F0; --ink:#06080E; --ok:#9BE15D; --warn:#FFB547; --bad:#FF5A6E; --off:#3A4766;
+  --item:#0B1120; --selected:#0E2530; --well:#070B14; --overlay:rgba(5,7,12,.78); --dialog:#0A0E17;
+  --onBg:#12301F; --onLine:#2C6B45; --bypBg:#2A1A1F; --bypLine:#6B2C3A; --stageBg:#0b0716;
   --display:"Chakra Petch","Rajdhani",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
   --topH:68px; --botH:96px; --panelW:330px; color-scheme:dark;
 }
 html,body{height:100%;margin:0}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--display);overflow:hidden}
-#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:#0b0716 center/cover no-repeat}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:var(--stageBg) center/cover no-repeat}
 .hud{position:fixed;z-index:5}
 button,select,input{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -49,18 +53,18 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .meter .track{flex:1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
 .meter i{display:block;height:6px;border-radius:3px;background:var(--ok);width:0}
 .meter i.hot{background:var(--warn)} .meter i.clip{background:var(--bad)}
-#statusDot{width:10px;height:10px;border-radius:5px;background:var(--off,#3A4766);display:inline-block}
+#statusDot{width:10px;height:10px;border-radius:5px;background:var(--off);display:inline-block}
 
 .panel{right:16px;top:calc(var(--topH) + 14px);bottom:calc(var(--botH) + 14px);width:var(--panelW);box-sizing:border-box;padding:20px;display:flex;flex-direction:column;gap:16px;overflow:auto;background:var(--glass);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(8px)}
 .panel h2{margin:0;font-size:28px;font-weight:700;letter-spacing:.06em}
 .panel .kind{font:400 13px/1.4 var(--mono);color:var(--muted)}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.btn.on{background:#12301F;border-color:#2C6B45} .btn.byp{background:#2A1A1F;border-color:#6B2C3A}
+.btn.on{background:var(--onBg);border-color:var(--onLine)} .btn.byp{background:var(--bypBg);border-color:var(--bypLine)}
 .params{display:flex;flex-direction:column;gap:16px}
 .param{display:flex;flex-direction:column;gap:7px}
 .prow{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .prow b{font-size:14px;letter-spacing:.08em}
-.prow .num{font:500 13px/1 var(--mono);color:#C9D3E6;font-variant-numeric:tabular-nums}
+.prow .num{font:500 13px/1 var(--mono);color:var(--soft);font-variant-numeric:tabular-nums}
 .mod{display:flex;align-items:center;gap:8px;font-size:13px}
 .mod .dot{width:10px;height:10px;border-radius:5px;flex:none}
 .mod .grow{flex:1}
@@ -71,7 +75,7 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .bottom{left:0;right:0;bottom:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;padding:10px 16px;background:var(--glass);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
 .scenes{display:flex;gap:6px;align-items:center}
 .scene{width:52px;min-height:48px;border-radius:10px;border:1px solid var(--line2);background:var(--raise);font-size:19px;font-weight:700}
-.scene.stored{border-color:#4FE3F088}
+.scene.stored{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
 .scene[aria-pressed="true"]{background:var(--accent);color:var(--ink);border-color:var(--accent)}
 .scene.storing{outline:2px dashed var(--warn);outline-offset:2px}
 .slider{display:flex;flex-direction:column;gap:4px;width:150px;font:500 11px/1.2 var(--mono);letter-spacing:.1em;color:var(--muted)}
@@ -97,23 +101,23 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .asset .cur b{display:block;word-break:break-word}
 .asset input[type=search]{min-height:36px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px;font:400 13px var(--mono)}
 .asset ul{list-style:none;margin:0;padding:0;max-height:190px;overflow:auto;display:flex;flex-direction:column;gap:4px}
-.asset li button{width:100%;text-align:left;padding:8px 10px;border:1px solid transparent;border-radius:8px;background:#0B1120;display:flex;flex-direction:column;gap:2px}
+.asset li button{width:100%;text-align:left;padding:8px 10px;border:1px solid transparent;border-radius:8px;background:var(--item);display:flex;flex-direction:column;gap:2px}
 .asset li button:hover{border-color:var(--accent)}
-.asset li button[aria-current="true"]{border-color:var(--accent);background:#0E2530}
+.asset li button[aria-current="true"]{border-color:var(--accent);background:var(--selected)}
 .asset li .meta{font:400 11px/1.3 var(--mono);color:var(--muted)}
 .drop{border:1px dashed var(--line2);border-radius:10px;padding:10px;text-align:center;font-size:13px;color:var(--muted)}
-.drop.over,.stage-drop{border-color:var(--accent);color:var(--fg);background:#0E2530}
+.drop.over,.stage-drop{border-color:var(--accent);color:var(--fg);background:var(--selected)}
 .warnline{color:var(--warn)}
-#dropHint{position:fixed;left:50%;top:calc(var(--topH) + 18px);transform:translateX(-50%);z-index:8;padding:10px 16px;border-radius:10px;background:#0E2530;border:1px solid var(--accent);font-size:15px;pointer-events:none}
-.log{font:400 12px/1.5 var(--mono);color:var(--muted);background:#070B14;border:1px solid var(--line);border-radius:8px;padding:8px;height:150px;overflow:auto;white-space:pre-wrap}
+#dropHint{position:fixed;left:50%;top:calc(var(--topH) + 18px);transform:translateX(-50%);z-index:8;padding:10px 16px;border-radius:10px;background:var(--selected);border:1px solid var(--accent);font-size:15px;pointer-events:none}
+.log{font:400 12px/1.5 var(--mono);color:var(--muted);background:var(--well);border:1px solid var(--line);border-radius:8px;padding:8px;height:150px;overflow:auto;white-space:pre-wrap}
 .log .err{color:var(--bad)}
 .cmdrow{display:flex;gap:6px}
 .cmdrow input{flex:1;min-height:36px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 8px;font:400 12px var(--mono)}
 
-.overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:rgba(5,7,12,.78);backdrop-filter:blur(6px);padding:16px}
-.card{width:min(560px,100%);box-sizing:border-box;background:#0A0E17;border:1px solid var(--line2);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:18px}
+.overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:var(--overlay);backdrop-filter:blur(6px);padding:16px}
+.card{width:min(560px,100%);box-sizing:border-box;background:var(--dialog);border:1px solid var(--line2);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:18px}
 .card h1{margin:0;font-size:30px;letter-spacing:.1em}
-.card p{margin:0;line-height:1.55;color:#C9D3E6;max-width:62ch}
+.card p{margin:0;line-height:1.55;color:var(--soft);max-width:62ch}
 .choice{display:flex;flex-direction:column;gap:8px}
 .choice label{flex-direction:row;align-items:flex-start;gap:10px;color:var(--fg);font-size:15px;padding:12px;border:1px solid var(--line2);border-radius:10px;cursor:pointer}
 .choice label small{display:block;color:var(--muted);font-size:13px;margin-top:3px}
@@ -137,8 +141,17 @@ body.panel-hidden .matrix{right:16px}
 .depth .mono{min-width:46px;text-align:right;color:var(--fg)}
 .scope{width:100%;height:auto;border-radius:10px;border:1px solid var(--line)}
 .patches{display:flex;flex-direction:column;gap:12px}
-.patch{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(15,21,36,.6)}
+.patch{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--item)}
 .patch .prow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
+/* skins menu */
+.skins{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.skinrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--item)}
+.skinrow.on{border-color:var(--accent);background:var(--selected)}
+.skinrow .grow{flex:1;min-width:0}
+.skinrow b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skinrow small{display:block;font:400 11px/1.4 var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skinrow .star{width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--warn);font-size:20px;line-height:1}
+.skinrow .inuse{font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
 @media (max-width:900px){.readouts{display:none}.panel{display:none}.ptoggle{display:none}.matrix{right:16px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -193,7 +206,15 @@ body.panel-hidden .matrix{right:16px}
     <div class="row"><button class="btn" id="libImport">Import files…</button><button class="btn" id="libImportDir">Import a folder…</button></div>
     <input type="file" id="libFiles" multiple hidden>
     <p class="note" id="libCounts"></p>
-    <p class="note">Drop .wav IRs, .nam captures or .rig.json presets onto a module or anywhere on the stage.</p>
+    <p class="note">Drop .wav IRs, .nam captures, .rig.json presets or .rigskin skins onto a module or anywhere on the stage.</p>
+  </section>
+  <section>
+    <h3>Skins</h3>
+    <p class="note" id="skinNote">The look of the rig: colours, images and fonts. The layout stays the same.</p>
+    <ul class="skins" id="skinList" aria-label="Skins"></ul>
+    <div class="row"><button class="btn" id="skinImport">Import skin…</button><button class="btn" id="skinExport">Export as template</button></div>
+    <input type="file" id="skinFiles" accept=".rigskin" multiple hidden>
+    <p class="note">★ marks favourites; <b>K</b> steps through them. A skin is a .rigskin file (a zip with skin.json, images and fonts): drop one anywhere on the stage.</p>
   </section>
   <section>
     <h3>Controllers</h3>
@@ -387,20 +408,16 @@ const UI_ASSETS = {'hall.webp':'data:image/webp;base64,UklGRmjvAwBXRUJQVlA4IFzvA
 // 00-core.js - shared constants, helpers and UI state.
 // All ui/js files and ui/screens files are concatenated into one scope by tools/build_web.py
 // (ui/js in name order, ui/screens inserted before 50-*), so top-level names must be unique.
-const ACC = '#4FE3F0';
+let ACC = '#4FE3F0';                      // face-screen accent; set by the active skin (04-skin-core.js, 57-skins.js)
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const $ = (id) => document.getElementById(id);
 const DEPTH = 0.22;                       // modulation swing per patch, +/- in normalised units
 
-// Orb colours per source id; sources without an entry take the next fallback colour.
-const SOURCE_COLORS = { lfo: '#4FE3F0', env: '#FFB547', adsr: '#FF5FA2', orbit: '#A78BFA', heart: '#FF7A6B', ctrl: '#9BE15D' };
-const FALLBACK_COLORS = ['#7DD3FC', '#F9A8D4', '#FDE68A', '#86EFAC', '#C4B5FD', '#FCA5A5'];
 
 // Per-module face screens: ui/screens/<id>.js calls screen('<id>', fn). Modules without one get a generic screen.
 const SCREENS = {};
 const NOTES = {};                         // optional focus-panel note per module id, set from ui/screens/<id>.js
-const TILE = {};                          // optional card colour per module id ('purple' | 'teal' | 'gold'), set from ui/screens/<id>.js
 const MODDATA = {};                       // per-module UI data shared between panels and screens (e.g. MODDATA.cab.irResp)
 function screen(id, fn) { SCREENS[id] = fn; }
 
@@ -421,6 +438,237 @@ function logLine(text, err) {
   el.appendChild(d); while (el.childNodes.length > 200) el.removeChild(el.firstChild); el.scrollTop = el.scrollHeight;
 }
 function b64ToBytes(b64) { const s = atob(b64); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+
+// ===== ui/js/04-skin-core.js =====
+// 04-skin-core.js - skins: the look of the rig, separate from its layout (Winamp style).
+// A skin is a `.rigskin` file: a zip holding `skin.json` plus any images, fonts and an optional
+// skin.css it names. It can change every colour, font and image (background, card frames, knobs,
+// face screens, source orbs, menus, panels, tables), never where things are. Anything a skin leaves
+// out comes from DEFAULT_SKIN, so a skin can be as small as one colour. Format: docs/SKINS.md.
+// No DOM here (zip reading, validation, merging), so it is unit-tested in Node; 57-skins.js applies it.
+const SKIN_FORMAT = 'rig-skin', SKIN_VERSION = 1;
+const SKIN_MAX_BYTES = 25 << 20;
+
+const DEFAULT_SKIN = {
+  format: SKIN_FORMAT, version: SKIN_VERSION,
+  name: 'Astral Hall', author: 'KC', description: 'A crystal hall under a dark sky; modules on silver cards in purple, teal and gold.',
+  // menus, panels, tables, bars, dialogs: CSS variables (see the --names in ui/index.html)
+  ui: {
+    bg: '#07050D', glass: 'rgba(11,9,21,.86)', raise: '#0F1524', line: '#1F2A40', line2: '#2A3550',
+    fg: '#E6ECF5', muted: '#94A3BD', soft: '#C9D3E6', accent: '#4FE3F0', ink: '#06080E',
+    ok: '#9BE15D', warn: '#FFB547', bad: '#FF5A6E', off: '#3A4766',
+    item: '#0B1120', selected: '#0E2530', well: '#070B14', overlay: 'rgba(5,7,12,.78)', dialog: '#0A0E17',
+    onBg: '#12301F', onLine: '#2C6B45', bypBg: '#2A1A1F', bypLine: '#6B2C3A',
+    fontDisplay: '"Chakra Petch","Rajdhani",system-ui,sans-serif', fontMono: '"IBM Plex Mono",ui-monospace,Consolas,monospace',
+  },
+  // the 3D stage
+  stage: {
+    background: 'hall.webp', backgroundColor: '#0b0716', fog: '#0b0716', fogDensity: 0.014,
+    flow: '#4FE3F0', slab: '#1a1528', carry: '#ffffff',
+    pillBg: 'rgba(15,21,36,.9)', pillLine: '#2A3550', pillText: '#E6ECF5',
+  },
+  // the dark display on every module face (ui/screens/*.js draw with these)
+  screen: { glass: '#070A14', accent: '#4FE3F0', text: '#94A3BD', bright: '#E6ECF5', dim: '#5E6B85', warn: '#FFB547', ok: '#9BE15D', track: '#1C2538', off: '#3A4766', alt: '#7C9CFF', grid: '#1F2A40' },
+  // text and plain parts of a module card (a tile can override any of these)
+  card: { title: '#20253A', text: '#596079', powerOn: '#3FBF6A', powerOff: '#9AA0AE', bypassed: '#9A5260', plain: '#ECEDF1', plainLine: '#B9BECB' },
+  knob: { track: '#D3D7E0', bodyLight: '#FFFFFF', bodyMid: '#E3E6EC', bodyDark: '#AEB4C2', rim: '#8D94A4', pointer: '#20253A', label: '#20253A', value: '#596079' },
+  // card frames: image (518 x 754, transparent corners) or none for a plain card, plus colours
+  tiles: {
+    purple: { image: 'tile-purple.webp', accent: '#7B5BD6', rim: '#B9A6F2', glow: '#9D7CFF' },
+    teal:   { image: 'tile-teal.webp',   accent: '#159BAA', rim: '#7FD6DF', glow: '#3FD6E6' },
+    gold:   { image: 'tile-gold.webp',   accent: '#A9822A', rim: '#E2C98A', glow: '#E0B85A' },
+  },
+  tileOrder: ['teal', 'gold', 'purple'],                 // modules not listed in `modules` cycle through these
+  modules: { gate: 'teal', amp: 'gold', cab: 'gold', holo: 'purple', tess: 'purple' },
+  sources: { lfo: '#4FE3F0', env: '#FFB547', adsr: '#FF5FA2', orbit: '#A78BFA', heart: '#FF7A6B', ctrl: '#9BE15D' },
+  sourceFallback: ['#7DD3FC', '#F9A8D4', '#FDE68A', '#86EFAC', '#C4B5FD', '#FCA5A5'],
+  labels: { bg: 'rgba(12,9,22,.88)', text: '#A9B3C9' },
+  fonts: [],                                              // [{ family, file, weight?, style? }]
+  css: null,                                              // optional stylesheet file in the packet
+};
+// The original look: dark navy faces, no images. Written the way a skin file is: only what differs.
+const CLASSIC_SKIN = {
+  format: SKIN_FORMAT, version: SKIN_VERSION, name: 'Classic', author: 'RIG/01', description: 'The original dark console: navy faces, cyan accents, no images.',
+  ui: { bg: '#05070C', glass: 'rgba(9,13,22,.86)' },
+  stage: { background: null, backgroundColor: '#05070c', fog: '#05070c', fogDensity: 0.026, slab: '#0a0e17' },
+  card: { title: '#E6ECF5', text: '#94A3BD', powerOn: '#9BE15D', powerOff: '#3A4766', bypassed: '#FF5A6E', plain: '#0C1220', plainLine: '#2A3550' },
+  knob: { track: '#263149', bodyLight: '#1E2740', bodyMid: '#151C2E', bodyDark: '#0F1524', rim: '#2A3550', pointer: '#E6ECF5', label: '#E6ECF5', value: '#94A3BD' },
+  tiles: { console: { image: null, accent: '#4FE3F0', rim: '#1F2A40', glow: '#4FE3F0' } },
+  tileOrder: ['console'], modules: {},
+  labels: { bg: 'rgba(10,14,23,.88)', text: '#94A3BD' },
+};
+
+// ------------------------------------------------------------------ validation and merging
+// Sections whose value replaces the default's outright instead of merging key by key.
+const SKIN_REPLACE = ['tiles', 'tileOrder', 'modules', 'fonts', 'sourceFallback'];
+const isColor = (v) => typeof v === 'string' && /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([^()]{3,60}\)|[a-z]{3,20}|transparent)$/i.test(v.trim());
+const IMAGE_EXT = /\.(webp|png|jpe?g|svg|gif|avif)$/i, FONT_EXT = /\.(woff2?|ttf|otf)$/i;
+const TEXT_KEYS = new Set(['name', 'author', 'description']);
+
+// skin.json -> { skin (only valid parts), warnings }. `has(name)` says whether the packet holds a file.
+function readSkinJson(j, has = () => true) {
+  const warnings = [], warn = (w) => { if (!warnings.includes(w)) warnings.push(w); };
+  if (!j || typeof j !== 'object' || j.format !== SKIN_FORMAT) return { error: 'not a RIG skin (skin.json needs "format": "rig-skin")' };
+  if (Number.isInteger(j.version) && j.version > SKIN_VERSION) warn(`made for a newer skin format (${j.version}); using what this build understands`);
+  const out = { format: SKIN_FORMAT, version: SKIN_VERSION };
+  const image = (path, v) => {
+    if (v === null) return null;
+    if (typeof v !== 'string' || !IMAGE_EXT.test(v)) { warn(`${path}: “${v}” isn't an image file name`); return undefined; }
+    if (!has(v)) { warn(`${path}: ${v} isn't in the skin`); return undefined; }
+    return v;
+  };
+  const colorOr = (path, v) => { if (isColor(v)) return v.trim(); warn(`${path}: “${v}” isn't a colour`); return undefined; };
+  for (const [k, v] of Object.entries(j)) {
+    if (k === 'format' || k === 'version') continue;
+    if (TEXT_KEYS.has(k)) { if (typeof v === 'string') out[k] = v.slice(0, 200); continue; }
+    if (!(k in DEFAULT_SKIN)) { warn(`“${k}” isn't a skin setting; ignored`); continue; }
+    const base = DEFAULT_SKIN[k];
+    if (k === 'css') { if (v === null || (typeof v === 'string' && /\.css$/i.test(v) && has(v))) out.css = v; else warn(`css: ${v} isn't a stylesheet in the skin`); continue; }
+    if (k === 'fonts') {
+      if (!Array.isArray(v)) { warn('fonts: should be a list'); continue; }
+      out.fonts = v.filter((f) => {
+        const ok = f && typeof f.family === 'string' && /^[\w \-]{1,60}$/.test(f.family) && typeof f.file === 'string' && FONT_EXT.test(f.file) && has(f.file);
+        if (!ok) warn(`fonts: ${JSON.stringify(f).slice(0, 60)} needs a family name and a .woff2/.woff/.ttf/.otf file in the skin`);
+        return ok;
+      }).map((f) => ({ family: f.family, file: f.file, weight: String(f.weight || '400'), style: f.style === 'italic' ? 'italic' : 'normal' }));
+      continue;
+    }
+    if (k === 'tileOrder') { if (Array.isArray(v) && v.every((x) => typeof x === 'string')) out.tileOrder = v.slice(0, 32); else warn('tileOrder: should be a list of tile names'); continue; }
+    if (k === 'sourceFallback') { if (Array.isArray(v)) out.sourceFallback = v.filter((c, i) => colorOr(`sourceFallback[${i}]`, c) !== undefined); continue; }
+    if (k === 'modules') {
+      if (!v || typeof v !== 'object') { warn('modules: should map module ids to tile names'); continue; }
+      out.modules = Object.fromEntries(Object.entries(v).filter(([, t]) => typeof t === 'string')); continue;
+    }
+    if (k === 'tiles') {
+      if (!v || typeof v !== 'object') { warn('tiles: should map tile names to settings'); continue; }
+      out.tiles = {};
+      for (const [name, t] of Object.entries(v)) {
+        if (!t || typeof t !== 'object') { warn(`tiles.${name}: should be an object`); continue; }
+        const tile = {};
+        for (const [tk, tv] of Object.entries(t)) {
+          const p = `tiles.${name}.${tk}`;
+          if (tk === 'image') { const im = image(p, tv); if (im !== undefined) tile.image = im; }
+          else if (tk === 'card' || tk === 'knob') { const sec = {}; for (const [sk, sv] of Object.entries(tv || {})) { if (!(sk in DEFAULT_SKIN[tk])) { warn(`${p}.${sk}: not a ${tk} setting`); continue; } const c = colorOr(`${p}.${sk}`, sv); if (c !== undefined) sec[sk] = c; } tile[tk] = sec; }
+          else if (['accent', 'rim', 'glow'].includes(tk)) { const c = colorOr(p, tv); if (c !== undefined) tile[tk] = c; }
+          else warn(`${p}: not a tile setting; ignored`);
+        }
+        if (!('image' in tile)) tile.image = null;
+        out.tiles[name] = tile;
+      }
+      continue;
+    }
+    if (!v || typeof v !== 'object' || Array.isArray(v)) { warn(`${k}: should be an object`); continue; }
+    const sec = {};
+    for (const [sk, sv] of Object.entries(v)) {
+      const p = `${k}.${sk}`;
+      if (k !== 'sources' && !(sk in base)) { warn(`${p}: not a setting; ignored`); continue; }
+      if (k === 'stage' && sk === 'background') { const im = image(p, sv); if (im !== undefined) sec[sk] = im; continue; }
+      if (k === 'stage' && sk === 'fogDensity') { if (typeof sv === 'number' && sv >= 0 && sv <= 0.2) sec[sk] = sv; else warn(`${p}: should be a number from 0 to 0.2`); continue; }
+      if (k === 'ui' && (sk === 'fontDisplay' || sk === 'fontMono')) { if (typeof sv === 'string' && sv.length < 200 && !/[;{}<>]/.test(sv)) sec[sk] = sv; else warn(`${p}: not a usable font list`); continue; }
+      const c = colorOr(p, sv); if (c !== undefined) sec[sk] = c;
+    }
+    out[k] = sec;
+  }
+  return { skin: out, warnings };
+}
+// Default + skin: objects merge key by key, SKIN_REPLACE sections are taken whole.
+function mergeSkin(base, over) {
+  const out = JSON.parse(JSON.stringify(base));
+  for (const [k, v] of Object.entries(over || {})) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && !SKIN_REPLACE.includes(k) && out[k] && typeof out[k] === 'object') out[k] = { ...out[k], ...v };
+    else out[k] = JSON.parse(JSON.stringify(v));
+  }
+  return out;
+}
+// The colours a module's card is drawn with: the skin's card and knob colours, then its tile's.
+function tileStyle(skin, name) {
+  const t = skin.tiles[name] || Object.values(skin.tiles)[0] || { image: null, accent: skin.ui.accent, rim: skin.card.plainLine, glow: skin.ui.accent };
+  return { name, image: t.image || null, accent: t.accent || skin.ui.accent, rim: t.rim || skin.card.plainLine, glow: t.glow || t.accent || skin.ui.accent,
+    card: { ...skin.card, ...(t.card || {}) }, knob: { ...skin.knob, ...(t.knob || {}) } };
+}
+function tileNameFor(skin, moduleId, index) {
+  const named = skin.modules[moduleId];
+  if (named && skin.tiles[named]) return named;
+  const order = skin.tileOrder.filter((n) => skin.tiles[n]);
+  return order.length ? order[index % order.length] : Object.keys(skin.tiles)[0];
+}
+// Every file a skin uses (to pack it, or to check a packet is complete).
+function skinFiles(skin) {
+  const f = new Set();
+  if (skin.stage && skin.stage.background) f.add(skin.stage.background);
+  Object.values(skin.tiles || {}).forEach((t) => { if (t.image) f.add(t.image); });
+  (skin.fonts || []).forEach((x) => f.add(x.file));
+  if (skin.css) f.add(skin.css);
+  return [...f];
+}
+
+// ------------------------------------------------------------------ .rigskin packets (zip)
+const CRC_TABLE = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(b) { let c = 0xffffffff; for (let i = 0; i < b.length; i++) c = CRC_TABLE[(c ^ b[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+// files: [[name, Uint8Array]] -> zip bytes (stored: images are already compressed)
+function zipFiles(files) {
+  const enc = new TextEncoder(), local = [], central = []; let off = 0;
+  for (const [name, data] of files) {
+    const nm = enc.encode(name), crc = crc32(data), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true);
+    local.push(new Uint8Array(h.buffer), nm, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true);
+    c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    central.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + data.length;
+  }
+  const cdSize = central.reduce((a, b) => a + b.length, 0), end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, cdSize, true); end.setUint32(16, off, true);
+  const parts = [...local, ...central, new Uint8Array(end.buffer)], out = new Uint8Array(parts.reduce((a, b) => a + b.length, 0));
+  let p = 0; for (const x of parts) { out.set(x, p); p += x.length; }
+  return out;
+}
+async function inflateRaw(data) {
+  const s = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+// zip bytes -> Map(name -> Uint8Array). Stored and deflated entries (what every zip tool writes).
+async function unzip(bytes) {
+  const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), v = new DataView(u.buffer, u.byteOffset, u.byteLength);
+  let e = -1; for (let i = u.length - 22; i >= Math.max(0, u.length - 65557); i--) if (v.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error('not a zip file');
+  const n = v.getUint16(e + 10, true); let p = v.getUint32(e + 16, true);
+  const dec = new TextDecoder(), out = new Map();
+  for (let k = 0; k < n; k++) {
+    if (v.getUint32(p, true) !== 0x02014b50) throw new Error('damaged zip directory');
+    const method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true), size = v.getUint32(p + 24, true);
+    const nl = v.getUint16(p + 28, true), xl = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true), lo = v.getUint32(p + 42, true);
+    const name = dec.decode(u.subarray(p + 46, p + 46 + nl)); p += 46 + nl + xl + cl;
+    if (name.endsWith('/')) continue;
+    if (size > SKIN_MAX_BYTES) throw new Error(`${name} is too large`);
+    const start = lo + 30 + v.getUint16(lo + 26, true) + v.getUint16(lo + 28, true), raw = u.subarray(start, start + csize);
+    if (method === 0) out.set(name, raw.slice());
+    else if (method === 8) out.set(name, await inflateRaw(raw));
+    else throw new Error(`${name}: unsupported zip compression (${method})`);
+  }
+  return out;
+}
+// .rigskin bytes -> { json, files: Map(name -> bytes), skin, warnings } or { error }.
+// skin.json may sit at the top or inside one folder (how most zip tools pack a folder).
+async function readSkinPacket(bytes) {
+  if (bytes.byteLength > SKIN_MAX_BYTES) return { error: `larger than ${SKIN_MAX_BYTES >> 20} MB` };
+  let all; try { all = await unzip(bytes); } catch (e) { return { error: e.message }; }
+  const top = [...all.keys()].find((k) => /(^|\/)skin\.json$/i.test(k) && k.split('/').length <= 2);
+  if (!top) return { error: 'no skin.json inside' };
+  const prefix = top.slice(0, top.length - 'skin.json'.length), files = new Map();
+  for (const [k, b] of all) if (k.startsWith(prefix) && k !== top) files.set(k.slice(prefix.length), b);
+  let json; try { json = JSON.parse(new TextDecoder().decode(all.get(top))); } catch (e) { return { error: 'skin.json isn’t valid JSON: ' + e.message }; }
+  const r = readSkinJson(json, (name) => files.has(name));
+  if (r.error) return r;
+  return { json, files, skin: r.skin, warnings: r.warnings };
+}
+
+// The skin in use (fully merged); 57-skins.js replaces it when the viewer picks another.
+let SKIN = mergeSkin(DEFAULT_SKIN, {});
+// Colour of a source's orb, cable and label: the skin's colour for its id, else the next fallback.
+function sourceColor(id, i) { return SKIN.sources[id] || SKIN.sourceFallback[i % Math.max(1, SKIN.sourceFallback.length)] || SKIN.ui.accent; }
 
 // ===== ui/js/10-model.js =====
 // 10-model.js - builds MODS / SRC / PARAMS from the engine's self-description (rig_describe).
@@ -453,9 +701,8 @@ async function loadModel() {
     return m;
   });
   PARAMS = {}; MODS.forEach((m) => m.params.forEach((p) => { PARAMS[p.id] = p; }));
-  let fb = 0;
   SRC = DESC.sources.map((d, i) => {
-    const s = { id: d.id, name: d.name, sub: d.sub, ext: d.ext, meterNames: d.meters, idx: i, color: SOURCE_COLORS[d.id] || FALLBACK_COLORS[fb++ % FALLBACK_COLORS.length], params: [] };
+    const s = { id: d.id, name: d.name, sub: d.sub, ext: d.ext, meterNames: d.meters, idx: i, color: sourceColor(d.id, i), params: [] };
     s.params = (d.params || []).map((q, pi) => {           // the source's own knobs (src_set), same shape as module params
       const f = formatter(q);
       return { id: `${d.id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, src: s, pi };
@@ -646,10 +893,9 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0b0716, 0.014);
-// The hall (ui/assets/hall.webp) is the page background behind the transparent 3D canvas, so it
-// always fills the window at its own proportions.
-if (typeof UI_ASSETS !== 'undefined' && UI_ASSETS['hall.webp']) canvas.style.backgroundImage = `url(${UI_ASSETS['hall.webp']})`;
+scene.fog = new THREE.FogExp2(SKIN.stage.fog, SKIN.stage.fogDensity);
+// The skin's background image is the page background behind the transparent 3D canvas (57-skins.js),
+// so it always fills the window at its own proportions.
 const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 300);
 function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 function mkTex(cv) { const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; return t; }
@@ -664,7 +910,7 @@ function knobXY(p) {
 }
 const SPACING = 4;
 const pickables = [];
-let flowCurve, flowGeo, flowMat, flowPos, inLbl, outLbl, carryLine, carryGeo;
+let flowCurve, flowTube, flowGeo, flowMat, flowPos, inLbl, outLbl, carryLine, carryGeo;
 const NP = 70, CN = 48;
 let cables = [];
 const pointerWorld = new THREE.Vector3(0, 4, 0);
@@ -680,16 +926,16 @@ function glowTex() {
   return (glowTexCache = mkTex(cv));
 }
 function pill(txt) { const cv = document.createElement('canvas'); cv.width = 128; cv.height = 64; const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: mkTex(cv), transparent: true })); s.scale.set(1.4, .7, 1); return { s, cv, txt }; }
-function drawPill(l) { const c = l.cv.getContext('2d'); c.clearRect(0, 0, 128, 64); rr(c, 4, 4, 120, 56, 28); c.fillStyle = 'rgba(15,21,36,.9)'; c.fill(); c.strokeStyle = '#2A3550'; c.lineWidth = 3; c.stroke(); c.fillStyle = '#E6ECF5'; c.font = '600 26px "IBM Plex Mono", monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(l.txt, 64, 33); l.s.material.map.needsUpdate = true; }
+function drawPill(l) { const c = l.cv.getContext('2d'); c.clearRect(0, 0, 128, 64); rr(c, 4, 4, 120, 56, 28); c.fillStyle = SKIN.stage.pillBg; c.fill(); c.strokeStyle = SKIN.stage.pillLine; c.lineWidth = 3; c.stroke(); c.fillStyle = SKIN.stage.pillText; c.font = `600 26px ${SKIN.ui.fontMono}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(l.txt, 64, 33); l.s.material.map.needsUpdate = true; }
 
 function buildStage() {
   const half = (MODS.length - 1) / 2;
   MODS.forEach((m, i) => {
     const k = i - half, x = k * SPACING, z = 0.9 - 0.65 * k * k;
-    const FH = faceH(m), PH = PW * FH / FW, tileGlow = TILE_STYLE[tileOf(m)].glow;
+    const FH = faceH(m), PH = PW * FH / FW, tileGlow = styleOf(m).glow;
     const g = new THREE.Group(); g.position.set(x, 0.8 + PH / 2, z); g.lookAt(0, g.position.y, 22);
     // the card's thickness (inset so its rounded corners stay clear) and a glow behind it when focused
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: 0x1a1528 })); slab.position.z = .02; g.add(slab);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: SKIN.stage.slab })); slab.position.z = .02; g.add(slab);
     const halo = new THREE.Mesh(new THREE.PlaneGeometry(PW * 1.3, PH * 1.2), new THREE.MeshBasicMaterial({ map: glowTex(), color: tileGlow, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     halo.position.z = -.06; g.add(halo);
     const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH; const tex = mkTex(cv);
@@ -697,15 +943,15 @@ function buildStage() {
     const glow = new THREE.Mesh(new THREE.RingGeometry(1.2, 2.2, 48), new THREE.MeshBasicMaterial({ color: tileGlow, transparent: true, opacity: .08, side: THREE.DoubleSide, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.set(x, .02, z);
     scene.add(glow, g);
-    Object.assign(m, { group: g, baseY: g.position.y, face, halo, glow, ctx: cv.getContext('2d'), tex, FH, PH });
+    Object.assign(m, { group: g, baseY: g.position.y, face, slab, halo, glow, ctx: cv.getContext('2d'), tex, FH, PH });
     face.userData = { type: 'face', mod: m }; pickables.push(face);
   });
 
   const endX = half * SPACING + 4.5;
   flowCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(-endX, 1.0, -3.2), ...MODS.map((m) => new THREE.Vector3(m.group.position.x, .55, m.group.position.z + .6)), new THREE.Vector3(endX, 1.0, -3.2)]);
-  scene.add(new THREE.Mesh(new THREE.TubeGeometry(flowCurve, 160, .05, 8, false), new THREE.MeshBasicMaterial({ color: ACC, transparent: true, opacity: .35 })));
+  flowTube = new THREE.Mesh(new THREE.TubeGeometry(flowCurve, 160, .05, 8, false), new THREE.MeshBasicMaterial({ color: SKIN.stage.flow, transparent: true, opacity: .35 })); scene.add(flowTube);
   flowPos = new Float32Array(NP * 3); flowGeo = new THREE.BufferGeometry(); flowGeo.setAttribute('position', new THREE.BufferAttribute(flowPos, 3));
-  flowMat = new THREE.PointsMaterial({ color: ACC, size: .22, transparent: true, opacity: .95 });
+  flowMat = new THREE.PointsMaterial({ color: SKIN.stage.flow, size: .22, transparent: true, opacity: .95 });
   const flowDots = new THREE.Points(flowGeo, flowMat); flowDots.frustumCulled = false; scene.add(flowDots);
   inLbl = pill('IN'); outLbl = pill('OUT'); inLbl.s.position.set(-endX, 1.9, -3.2); outLbl.s.position.set(endX, 1.9, -3.2); scene.add(inLbl.s, outLbl.s);
 
@@ -723,7 +969,7 @@ function buildStage() {
   });
 
   carryGeo = new THREE.BufferGeometry(); carryGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(CN * 3), 3));
-  carryLine = new THREE.Line(carryGeo, new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: .25, gapSize: .18 })); carryLine.frustumCulled = false; carryLine.visible = false; scene.add(carryLine);
+  carryLine = new THREE.Line(carryGeo, new THREE.LineDashedMaterial({ color: SKIN.stage.carry, dashSize: .25, gapSize: .18 })); carryLine.frustumCulled = false; carryLine.visible = false; scene.add(carryLine);
   syncCables();
 }
 function knobWorld(p) { const m = p.mod, [kx, ky] = knobXY(p); return m.face.localToWorld(new THREE.Vector3((kx / FW - .5) * PW, (.5 - ky / m.FH) * m.PH, .12)); }
@@ -792,59 +1038,49 @@ rig.modScreen = (id) => { const m = MODS.find((x) => x.id === id); if (!m) retur
 
 // ===== ui/js/45-faces.js =====
 // 45-faces.js - draws module faces (card, title, screen, knobs) and source labels onto canvas textures.
-// Each module sits on a card from ui/assets (tile-<colour>.webp); TILE[id] (set in ui/screens/<id>.js)
-// picks the colour, otherwise they cycle. The screen area is delegated to SCREENS[module id]
-// (ui/screens/*.js); otherwise genericScreen.
-const TILE_STYLE = {
-  purple: { acc: '#7B5BD6', soft: '#B9A6F2', glow: 0x9d7cff },
-  teal:   { acc: '#159BAA', soft: '#7FD6DF', glow: 0x3fd6e6 },
-  gold:   { acc: '#A9822A', soft: '#E2C98A', glow: 0xe0b85a },
-};
-const TILE_ORDER = ['teal', 'gold', 'purple'];
-const INK = '#20253A', INK2 = '#596079';
-const tileOf = (m) => TILE_STYLE[TILE[m.id]] ? TILE[m.id] : TILE_ORDER[m.idx % TILE_ORDER.length];
-// Card images, decoded once; faces fall back to a plain light card until they arrive.
-const TILE_IMG = {};
-Object.keys(TILE_STYLE).forEach((k) => {
-  const src = typeof UI_ASSETS !== 'undefined' && UI_ASSETS[`tile-${k}.webp`]; if (!src) return;
-  const im = new Image(); im.onload = () => { TILE_IMG[k] = im; }; im.src = src;
-});
-// The card at FW x H. Taller faces (more than four knobs) stretch a plain strip of the side rails.
-function drawCard(c, tile, H) {
-  const im = TILE_IMG[tile];
-  if (!im) { rr(c, 6, 6, FW - 12, H - 12, 34); c.fillStyle = '#ECEDF1'; c.fill(); c.strokeStyle = '#B9BECB'; c.lineWidth = 3; c.stroke(); return; }
+// Every colour and image comes from the active skin (SKIN, 04-skin-core.js): each module gets a tile
+// (card frame + colours) from the skin's module map or its tile order. The screen area is delegated
+// to SCREENS[module id] (ui/screens/*.js); otherwise genericScreen.
+const SKIN_IMG = {};                      // decoded images of the active skin, by file name (57-skins.js fills it)
+const tileOf = (m) => tileNameFor(SKIN, m.id, m.idx);
+const styleOf = (m) => tileStyle(SKIN, tileOf(m));
+// The card at FW x H: the tile's frame image, or a plain rounded card in the tile's colours.
+// Taller faces (more than four knobs) stretch a plain strip of the side rails.
+function drawCard(c, st, H) {
+  const im = st.image && SKIN_IMG[st.image];
+  if (!im) { rr(c, 6, 6, FW - 12, H - 12, 30); c.fillStyle = st.card.plain; c.fill(); c.strokeStyle = st.rim; c.lineWidth = 3; c.stroke(); return; }
   if (H <= CARD_H) { c.drawImage(im, 0, 0, FW, H); return; }
-  const a = 400, b = 470, extra = H - CARD_H;                // rails between the side diamonds and the lower bars
-  c.drawImage(im, 0, 0, FW, a, 0, 0, FW, a);
-  c.drawImage(im, 0, a, FW, b - a, 0, a, FW, b - a + extra);
-  c.drawImage(im, 0, b, FW, CARD_H - b, 0, b + extra, FW, CARD_H - b);
+  const ih = im.naturalHeight || im.height, k = ih / CARD_H, a = 400, b = 470, extra = H - CARD_H;   // source rows scaled to the image
+  c.drawImage(im, 0, 0, im.naturalWidth || im.width, a * k, 0, 0, FW, a);
+  c.drawImage(im, 0, a * k, im.naturalWidth || im.width, (b - a) * k, 0, a, FW, b - a + extra);
+  c.drawImage(im, 0, b * k, im.naturalWidth || im.width, (CARD_H - b) * k, 0, b + extra, FW, CARD_H - b);
 }
 
 function arcDeg(c, cx, cy, r, a0, a1, col, w) { c.beginPath(); c.arc(cx, cy, r, (a0 - 90) * Math.PI / 180, (Math.max(a1, a0 + .5) - 90) * Math.PI / 180); c.strokeStyle = col; c.lineWidth = w; c.lineCap = 'round'; c.stroke(); }
 function drawKnob(c, cx, cy, p, st) {
-  const R = 56, a = -135 + 270 * p.v, e = effOf(p), sid = state.conns[p.id], S = sid && SRCMAP[sid];
+  const K = st.knob, R = 56, a = -135 + 270 * p.v, e = effOf(p), sid = state.conns[p.id], S = sid && SRCMAP[sid];
   if (state.carrying) { c.save(); c.setLineDash([10, 10]); c.beginPath(); c.arc(cx, cy, 88, 0, Math.PI * 2); c.strokeStyle = SRCMAP[state.carrying].color; c.lineWidth = 4; c.stroke(); c.restore(); }
-  arcDeg(c, cx, cy, R, -135, 135, '#D3D7E0', 9);
-  arcDeg(c, cx, cy, R, -135, a, st.acc, 9);
+  arcDeg(c, cx, cy, R, -135, 135, K.track, 9);
+  arcDeg(c, cx, cy, R, -135, a, st.accent, 9);
   if (S) {
     const dp = depthOf(p.id), lo = clamp(p.v - dp, 0, 1), hi = clamp(p.v + dp, 0, 1);
     const ga = c.globalAlpha; c.globalAlpha = ga * .7; arcDeg(c, cx, cy, R + 16, -135 + 270 * lo, -135 + 270 * hi, S.color, 6); c.globalAlpha = ga;
     const ea = (-135 + 270 * e - 90) * Math.PI / 180;
-    c.beginPath(); c.arc(cx + (R + 16) * Math.cos(ea), cy + (R + 16) * Math.sin(ea), 8, 0, Math.PI * 2); c.fillStyle = S.color; c.fill(); c.strokeStyle = INK; c.lineWidth = 2; c.stroke();
+    c.beginPath(); c.arc(cx + (R + 16) * Math.cos(ea), cy + (R + 16) * Math.sin(ea), 8, 0, Math.PI * 2); c.fillStyle = S.color; c.fill(); c.strokeStyle = K.pointer; c.lineWidth = 2; c.stroke();
   }
-  const g = c.createRadialGradient(cx - 12, cy - 14, 4, cx, cy, 40); g.addColorStop(0, '#FFFFFF'); g.addColorStop(.55, '#E3E6EC'); g.addColorStop(1, '#AEB4C2');
-  c.beginPath(); c.arc(cx, cy, 39, 0, Math.PI * 2); c.fillStyle = g; c.fill(); c.strokeStyle = '#8D94A4'; c.lineWidth = 2; c.stroke();
+  const g = c.createRadialGradient(cx - 12, cy - 14, 4, cx, cy, 40); g.addColorStop(0, K.bodyLight); g.addColorStop(.55, K.bodyMid); g.addColorStop(1, K.bodyDark);
+  c.beginPath(); c.arc(cx, cy, 39, 0, Math.PI * 2); c.fillStyle = g; c.fill(); c.strokeStyle = K.rim; c.lineWidth = 2; c.stroke();
   const pa = (-135 + 270 * e - 90) * Math.PI / 180;
-  c.beginPath(); c.moveTo(cx + 12 * Math.cos(pa), cy + 12 * Math.sin(pa)); c.lineTo(cx + 34 * Math.cos(pa), cy + 34 * Math.sin(pa)); c.strokeStyle = INK; c.lineWidth = 6; c.lineCap = 'round'; c.stroke();
-  c.textAlign = 'center'; c.fillStyle = INK; c.font = '700 23px "Chakra Petch", sans-serif'; c.fillText(p.label, cx, cy + 92);
-  c.fillStyle = INK2; c.font = '500 19px "IBM Plex Mono", monospace'; c.fillText(p.fmt(e), cx, cy + 120);
+  c.beginPath(); c.moveTo(cx + 12 * Math.cos(pa), cy + 12 * Math.sin(pa)); c.lineTo(cx + 34 * Math.cos(pa), cy + 34 * Math.sin(pa)); c.strokeStyle = K.pointer; c.lineWidth = 6; c.lineCap = 'round'; c.stroke();
+  c.textAlign = 'center'; c.fillStyle = K.label; c.font = `700 23px ${SKIN.ui.fontDisplay}`; c.fillText(p.label, cx, cy + 92);
+  c.fillStyle = K.value; c.font = `500 19px ${SKIN.ui.fontMono}`; c.fillText(p.fmt(e), cx, cy + 120);
   if (S) { c.beginPath(); c.arc(cx - c.measureText(p.fmt(e)).width / 2 - 12, cy + 114, 5, 0, Math.PI * 2); c.fillStyle = S.color; c.fill(); }
   c.textAlign = 'left';
 }
 // Helper handed to every screen: live values for this module, by index or meter name.
 function screenHelper(m) {
   return { eff: (i) => effOf(m.params[i]), param: (i) => m.params[i], meter: (name, fb) => modMeter(m, name, fb),
-    inPk: meters ? meters.inPk : null, T, ACC, data: MODDATA[m.id] || (MODDATA[m.id] = {}) };
+    inPk: meters ? meters.inPk : null, T, ACC, col: SKIN.screen, data: MODDATA[m.id] || (MODDATA[m.id] = {}) };
 }
 function genericScreen(c, b, m, h) {               // bars of each effective parameter value
   const n = m.params.length, bw = (b.w - 40) / n;
@@ -852,39 +1088,39 @@ function genericScreen(c, b, m, h) {               // bars of each effective par
     const v = h.eff(i), bh = (b.h - 50) * v;
     c.globalAlpha = .9; c.fillRect(b.x + 20 + i * bw + 6, b.y + b.h - 14 - bh, bw - 12, bh);
   });
-  c.globalAlpha = 1; c.fillStyle = '#94A3BD'; c.fillText('live parameters', b.x + 20, b.y + 26);
+  c.globalAlpha = 1; c.fillStyle = h.col.text; c.fillText('live parameters', b.x + 20, b.y + 26);
 }
 // The face's dark glass display, set into the card.
 function drawScreen(m, c, st) {
   const b = { x: 50, y: 206, w: 418, h: 168 };
-  c.save(); rr(c, b.x - 4, b.y - 4, b.w + 8, b.h + 8, 16); c.fillStyle = st.soft; c.fill();
-  rr(c, b.x, b.y, b.w, b.h, 13); c.fillStyle = '#070A14'; c.fill(); c.clip();
+  c.save(); rr(c, b.x - 4, b.y - 4, b.w + 8, b.h + 8, 16); c.fillStyle = st.rim; c.fill();
+  rr(c, b.x, b.y, b.w, b.h, 13); c.fillStyle = SKIN.screen.glass; c.fill(); c.clip();
   const g = c.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, 'rgba(255,255,255,.07)'); g.addColorStop(.4, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(b.x, b.y, b.w, b.h);
-  c.strokeStyle = ACC; c.fillStyle = ACC; c.lineWidth = 3; c.font = '500 18px "IBM Plex Mono", monospace';
+  c.strokeStyle = ACC; c.fillStyle = ACC; c.lineWidth = 3; c.font = `500 18px ${SKIN.ui.fontMono}`;
   try { (SCREENS[m.id] || genericScreen)(c, b, m, screenHelper(m)); }
-  catch (err) { c.fillStyle = '#FF5A6E'; c.fillText('screen error: ' + err.message.slice(0, 30), b.x + 20, b.y + 26); }
+  catch (err) { c.fillStyle = SKIN.ui.bad; c.fillText('screen error: ' + err.message.slice(0, 30), b.x + 20, b.y + 26); }
   c.restore();
 }
 // Subtitle under a module's name: the loaded file if there is one, otherwise the module's kind.
 function moduleSubtitle(m) { const an = MODDATA[m.id] && MODDATA[m.id].assetName; return an ? `${m.asset.kind.toUpperCase()} · ${an}` : m.kind; }
 function drawFace(m) {
-  const c = m.ctx, byp = !!state.bypass[m.id], tile = tileOf(m), st = TILE_STYLE[tile];
+  const c = m.ctx, byp = !!state.bypass[m.id], st = styleOf(m), C = st.card;
   c.globalAlpha = 1; c.clearRect(0, 0, FW, m.FH);
-  drawCard(c, tile, m.FH);
+  drawCard(c, st, m.FH);
   c.textBaseline = 'alphabetic';
-  c.beginPath(); c.arc(64, 146, 9, 0, Math.PI * 2); c.fillStyle = byp ? '#9AA0AE' : '#3FBF6A'; c.fill(); c.strokeStyle = INK; c.lineWidth = 2; c.stroke();
-  c.fillStyle = INK; c.font = '700 36px "Chakra Petch", sans-serif'; c.fillText(m.name, 84, 158);
+  c.beginPath(); c.arc(64, 146, 9, 0, Math.PI * 2); c.fillStyle = byp ? C.powerOff : C.powerOn; c.fill(); c.strokeStyle = C.title; c.lineWidth = 2; c.stroke();
+  c.fillStyle = C.title; c.font = `700 36px ${SKIN.ui.fontDisplay}`; c.fillText(m.name, 84, 158);
   const sub = byp ? 'bypassed' : moduleSubtitle(m);
-  c.fillStyle = byp ? '#9A5260' : INK2; c.font = '400 18px "IBM Plex Mono", monospace'; c.fillText(sub.length > 36 ? sub.slice(0, 35) + '…' : sub, 58, 190);
+  c.fillStyle = byp ? C.bypassed : C.text; c.font = `400 18px ${SKIN.ui.fontMono}`; c.fillText(sub.length > 36 ? sub.slice(0, 35) + '…' : sub, 58, 190);
   c.globalAlpha = byp ? .45 : 1;
   drawScreen(m, c, st); m.params.forEach((p) => { const [kx, ky] = knobXY(p); drawKnob(c, kx, ky, p, st); });
   c.globalAlpha = 1; m.tex.needsUpdate = true;
 }
 function drawLabel(s) {
   const c = s.ctx, on = state.carrying === s.id, open = state.focus === 'src:' + s.id;
-  c.clearRect(0, 0, 256, 128); rr(c, 3, 3, 250, 122, 16); c.fillStyle = 'rgba(12,9,22,.88)'; c.fill(); c.strokeStyle = s.color; c.lineWidth = on || open ? 5 : 2; c.stroke();
-  c.fillStyle = s.color; c.font = '700 26px "Chakra Petch", sans-serif'; c.fillText(s.name, 16, 34);
-  c.fillStyle = '#A9B3C9'; c.font = '400 16px "IBM Plex Mono", monospace'; c.fillText(on ? 'carrying · pick a knob' : open ? 'editing · see panel' : s.sub, 16, 58);
+  c.clearRect(0, 0, 256, 128); rr(c, 3, 3, 250, 122, 16); c.fillStyle = SKIN.labels.bg; c.fill(); c.strokeStyle = s.color; c.lineWidth = on || open ? 5 : 2; c.stroke();
+  c.fillStyle = s.color; c.font = `700 26px ${SKIN.ui.fontDisplay}`; c.fillText(s.name, 16, 34);
+  c.fillStyle = SKIN.labels.text; c.font = `400 16px ${SKIN.ui.fontMono}`; c.fillText(on ? 'carrying · pick a knob' : open ? 'editing · see panel' : s.sub, 16, 58);
   c.beginPath(); s.hist.forEach((v, i) => { const px = 16 + i * (224 / 119), py = 96 - v * 20; i ? c.lineTo(px, py) : c.moveTo(px, py); }); c.strokeStyle = s.color; c.lineWidth = 2.5; c.stroke();
   s.tex.needsUpdate = true;
 }
@@ -913,10 +1149,10 @@ screen('amp', (c, b, m, h) => {
     const ctxRate = rig.ctx ? rig.ctx.sampleRate : rate;
     const lines = [meta.gear || meta.name || 'NAM capture', [meta.architecture, meta.toneType].filter(Boolean).join(' · '),
       `${(rate / 1000).toFixed(1)} kHz${Math.abs(rate - ctxRate) > 1 ? ` capture at ${(ctxRate / 1000).toFixed(1)} kHz` : ''}`];
-    c.fillStyle = '#E6ECF5'; c.fillText(lines[0].length > 22 ? lines[0].slice(0, 21) + '…' : lines[0], b.x + 20, b.y + 34);
-    c.fillStyle = '#94A3BD'; c.fillText(lines[1].slice(0, 24), b.x + 20, b.y + 62);
-    c.fillStyle = Math.abs(rate - ctxRate) > 1 ? '#FFB547' : '#94A3BD'; c.fillText(lines[2], b.x + 20, b.y + 90);
-    if (meta.modeledBy) { c.fillStyle = '#5E6B85'; c.fillText(('by ' + meta.modeledBy).slice(0, 24), b.x + 20, b.y + 118); }
+    c.fillStyle = h.col.bright; c.fillText(lines[0].length > 22 ? lines[0].slice(0, 21) + '…' : lines[0], b.x + 20, b.y + 34);
+    c.fillStyle = h.col.text; c.fillText(lines[1].slice(0, 24), b.x + 20, b.y + 62);
+    c.fillStyle = Math.abs(rate - ctxRate) > 1 ? h.col.warn : h.col.text; c.fillText(lines[2], b.x + 20, b.y + 90);
+    if (meta.modeledBy) { c.fillStyle = h.col.dim; c.fillText(('by ' + meta.modeledBy).slice(0, 24), b.x + 20, b.y + 118); }
     return;
   }
   const k = Math.pow(10, (18 + h.param(0).real(h.eff(0))) / 20) * 0.08;
@@ -926,10 +1162,9 @@ screen('amp', (c, b, m, h) => {
     const px = b.x + 20 + (b.w - 40) * i / 100, py = b.y + b.h / 2 - out * (b.h / 2 - 16) * .9;
     i ? c.lineTo(px, py) : c.moveTo(px, py);
   }
-  c.stroke(); c.fillStyle = '#94A3BD'; c.fillText('built-in amp · drop a .nam here', b.x + 20, b.y + 26);
+  c.stroke(); c.fillStyle = h.col.text; c.fillText('built-in amp · drop a .nam here', b.x + 20, b.y + 26);
 });
 NOTES.amp = 'Plays any .nam capture: WaveNet (A1, A2, slimmable), LSTM, ConvNet, Linear, Sequential. INPUT is the gain into the capture (0 dB = as captured); captures with loudness data are levelled like the NAM plugin. Without a capture, a built-in waveshaper plays (it adds its own +18 dB).';
-TILE.amp = 'gold';   // card colour (ui/assets/tile-gold.webp)
 
 // ===== ui/screens/cab.js =====
 // screens/cab.js - the loaded IR's frequency response, its energy decay for long IRs (reverbs), or
@@ -949,17 +1184,16 @@ screen('cab', (c, b, m, h) => {
   }
   c.stroke();
   if (long) {                                    // decay over the IR's length, 0 to -60 dB
-    c.save(); c.strokeStyle = '#7C9CFF'; c.lineWidth = 2.5; c.beginPath();
+    c.save(); c.strokeStyle = h.col.alt; c.lineWidth = 2.5; c.beginPath();
     decay.forEach((v, i) => { const px = b.x + 16 + (b.w - 32) * i / (decay.length - 1), py = b.y + 40 + clamp(-v / 60, 0, 1) * (b.h / 2 - 34); i ? c.lineTo(px, py) : c.moveTo(px, py); });
     c.stroke(); c.restore();
   }
-  c.fillStyle = '#94A3BD';
+  c.fillStyle = h.col.text;
   const taps = h.meter('taps', 0), ch = h.meter('chans', 0) || h.data.irCh || 1;
   c.fillText(resp ? `${secs >= 1 ? secs.toFixed(2) + ' s' : (secs * 1000).toFixed(0) + ' ms'} · ${ch > 1 ? 'stereo' : 'mono'}` : 'built-in cab', b.x + 20, b.y + 26);
   if (resp && taps) { c.textAlign = 'right'; c.fillText(`${taps} taps`, b.x + b.w - 20, b.y + 26); c.textAlign = 'left'; }
 });
 NOTES.cab = 'Any IR length, mono or stereo: a speaker cab, a room, or a convolution reverb (up to 20 s). Drop a .wav on this module, or pick one from the library below. Long IRs work best with MIX below 100%.';
-TILE.cab = 'gold';   // card colour (ui/assets/tile-gold.webp)
 
 // ===== ui/screens/gate.js =====
 // screens/gate.js - input level against the threshold, gate state.
@@ -967,13 +1201,12 @@ screen('gate', (c, b, m, h) => {
   const inDb = h.inPk != null ? 20 * Math.log10(h.inPk + 1e-9) : -100;
   const lvl = clamp((inDb + 80) / 80, 0, 1), thDb = h.param(0).real(h.eff(0)), th = clamp((thDb + 80) / 80, 0, 1);
   const open = h.meter('open', 0) > .5;
-  c.fillStyle = '#1C2538'; c.fillRect(b.x + 20, b.y + 54, b.w - 40, 30);
-  c.fillStyle = open ? h.ACC : '#3A4766'; c.fillRect(b.x + 20, b.y + 54, (b.w - 40) * lvl, 30);
-  c.fillStyle = '#FFB547'; c.fillRect(b.x + 20 + (b.w - 40) * th - 2, b.y + 36, 4, 66);
-  c.fillStyle = open ? '#9BE15D' : '#94A3BD'; c.fillText(open ? 'OPEN' : 'CLOSED', b.x + 20, b.y + 128);
-  c.fillStyle = '#94A3BD'; c.textAlign = 'right'; c.fillText(h.inPk != null ? inDb.toFixed(0) + ' dBFS in' : 'no signal', b.x + b.w - 20, b.y + 128); c.textAlign = 'left';
+  c.fillStyle = h.col.track; c.fillRect(b.x + 20, b.y + 54, b.w - 40, 30);
+  c.fillStyle = open ? h.ACC : h.col.off; c.fillRect(b.x + 20, b.y + 54, (b.w - 40) * lvl, 30);
+  c.fillStyle = h.col.warn; c.fillRect(b.x + 20 + (b.w - 40) * th - 2, b.y + 36, 4, 66);
+  c.fillStyle = open ? h.col.ok : h.col.text; c.fillText(open ? 'OPEN' : 'CLOSED', b.x + 20, b.y + 128);
+  c.fillStyle = h.col.text; c.textAlign = 'right'; c.fillText(h.inPk != null ? inDb.toFixed(0) + ' dBFS in' : 'no signal', b.x + b.w - 20, b.y + 128); c.textAlign = 'left';
 });
-TILE.gate = 'teal';   // card colour (ui/assets/tile-teal.webp)
 
 // ===== ui/screens/holo.js =====
 // screens/holo.js - decaying repeats shimmered by HALO, plus the live delay time.
@@ -984,9 +1217,8 @@ screen('holo', (c, b, m, h) => {
     const bx = b.x + 18 + k * ((b.w - 36) / n), bh = (b.h - 44) * amp * (1 + sh);
     c.globalAlpha = .35 + .65 * amp; c.fillRect(bx, b.y + b.h - 12 - bh, 16, bh);
   }
-  c.globalAlpha = 1; c.fillStyle = '#94A3BD'; c.fillText(h.meter('delay_ms', 375).toFixed(0) + ' ms', b.x + 20, b.y + 26);
+  c.globalAlpha = 1; c.fillStyle = h.col.text; c.fillText(h.meter('delay_ms', 375).toFixed(0) + ' ms', b.x + 20, b.y + 26);
 });
-TILE.holo = 'purple';   // card colour (ui/assets/tile-purple.webp)
 
 // ===== ui/screens/tess.js =====
 // screens/tess.js - a rotating tesseract; SIZE scales it, 4D FOLD speeds the 4-D rotation.
@@ -1005,7 +1237,6 @@ screen('tess', (c, b, m, h) => {
   for (let i = 0; i < 16; i++) for (let j = 0; j < 4; j++) { const k = i ^ (1 << j); if (k > i) { c.moveTo(P[i][0], P[i][1]); c.lineTo(P[k][0], P[k][1]); } }
   c.stroke();
 });
-TILE.tess = 'purple';   // card colour (ui/assets/tile-purple.webp)
 
 // ===== ui/js/50-hud.js =====
 // 50-hud.js - focus panel, mod matrix, hint line, view switch, bottom bar and settings drawer.
@@ -1050,7 +1281,7 @@ function renderMatrix() {
 function setHint() {
   if (state.storing) { hint.className = 'hint carry'; hint.textContent = 'Store mode: click a scene letter to save the current settings into it'; return; }
   if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it · Esc to drop`; return; }
-  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · P hides the panel · keys 1–${Math.min(9, MODS.length)}`;
+  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · P hides the panel · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
 }
 // The side panel can be hidden (button or P) and remembers that per browser.
 let panelHidden = false;
@@ -1164,8 +1395,8 @@ function renderSourcePanel(s) {
 function drawSourceScope() {
   const s = srcFocus(), cv = s && document.getElementById('srcScope'); if (!cv) return;
   const c = cv.getContext('2d'), W = cv.width, H = cv.height;
-  c.clearRect(0, 0, W, H); c.fillStyle = '#070B14'; c.fillRect(0, 0, W, H);
-  c.strokeStyle = '#1F2A40'; c.lineWidth = 1; c.beginPath(); c.moveTo(0, H / 2); c.lineTo(W, H / 2); c.stroke();
+  c.clearRect(0, 0, W, H); c.fillStyle = SKIN.screen.glass; c.fillRect(0, 0, W, H);
+  c.strokeStyle = SKIN.screen.grid; c.lineWidth = 1; c.beginPath(); c.moveTo(0, H / 2); c.lineTo(W, H / 2); c.stroke();
   c.strokeStyle = s.color; c.lineWidth = 3; c.beginPath();
   s.hist.forEach((v, i) => { const x = W * i / 119, y = H / 2 - v * (H / 2 - 10); i ? c.lineTo(x, y) : c.moveTo(x, y); });
   c.stroke();
@@ -1334,7 +1565,7 @@ function fnv1a(bytes) { let h = 0x811c9dc5; for (let i = 0; i < bytes.length; i+
 
 // ===== ui/js/54-library-core.js =====
 // 54-library-core.js - the library over any root directory handle (see 52-vfs.js).
-// Layout:  <root>/ir/*.wav   <root>/nam/*.nam   <root>/presets/*.rig.json   (one folder per kind)
+// Layout:  <root>/ir/*.wav   <root>/nam/*.nam   <root>/presets/*.rig.json   <root>/skins/*.rigskin   (one folder per kind)
 // No DOM here, so it is unit-tested in Node against the in-memory backend.
 class LibraryCore {
   constructor(root, kinds) { this.root = root; this.kinds = kinds; this.meta = new Map(); this.hashes = new Map(); }
@@ -1343,6 +1574,7 @@ class LibraryCore {
   async readMeta(kind, file) {
     if (kind === 'ir') return parseWavInfo(await file.arrayBuffer());
     if (kind === 'nam') return parseNamMeta(await file.text());
+    if (kind === 'skins') { const r = await readSkinPacket(new Uint8Array(await file.arrayBuffer())); return r.error ? null : { name: r.skin.name || '', author: r.skin.author || '', description: r.skin.description || '' }; }
     if (kind === 'presets') { try { const j = JSON.parse(await file.text()); return j && j.format === 'rig-preset' ? { name: j.name || '', version: j.version } : null; } catch (e) { return null; } }
     return null;
   }
@@ -1375,9 +1607,11 @@ class LibraryCore {
     if (!kind) return { status: 'skipped', name: file.name, reason: 'not a file type the rig uses' };
     if (wantKind && kind !== wantKind) return { status: 'skipped', name: file.name, reason: `this slot takes ${this.kinds[wantKind].join(', ')} files` };
     const bytes = new Uint8Array(await file.arrayBuffer());
+    let skinErr = '';
     const check = kind === 'ir' ? parseWavInfo(bytes.buffer) : kind === 'nam' ? parseNamMeta(new TextDecoder().decode(bytes))
+      : kind === 'skins' ? await readSkinPacket(bytes).then((r) => { skinErr = r.error || ''; return !r.error; })
       : (() => { try { return JSON.parse(new TextDecoder().decode(bytes)).format === 'rig-preset'; } catch (e) { return false; } })();
-    if (!check) return { status: 'skipped', name: file.name, reason: `couldn't read it as a ${kind === 'ir' ? 'WAV' : kind === 'nam' ? 'NAM capture' : 'RIG preset'}` };
+    if (!check) return { status: 'skipped', name: file.name, reason: kind === 'skins' ? `not a usable skin: ${skinErr}` : `couldn't read it as a ${kind === 'ir' ? 'WAV' : kind === 'nam' ? 'NAM capture' : 'RIG preset'}` };
     const h = fnv1a(bytes), existing = await this.list(kind);
     for (const e of existing) if (e.size === bytes.length && (await this.hash(kind, e.name)) === h) return { status: 'duplicate', kind, name: e.name };
     const name = uniqueName(new Set(existing.map((e) => e.name)), safeFileName(file.name));
@@ -1405,9 +1639,10 @@ function libraryKinds() {
   MODS.forEach((m) => { if (!m.asset) return; const list = k[m.asset.kind] || (k[m.asset.kind] = []);
     m.asset.exts.split(',').map((e) => e.trim().toLowerCase()).forEach((e) => { if (e && !list.includes(e)) list.push(e); }); });
   k.presets = ['.rig.json'];
+  k.skins = ['.rigskin'];
   return k;
 }
-const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets' }[k] || k);
+const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets', skins: 'skins' }[k] || k);
 
 async function initLibrary() {
   library.kinds = libraryKinds();
@@ -1433,13 +1668,14 @@ async function refreshLibrary() {
     try { library.entries[k] = await library.core.list(k); } catch (e) { library.entries[k] = []; logLine(`library: couldn't read ${k}/: ${e.message}`, true); }
   }
   const where = {
-    folder: `Folder “${library.rootName}”. Files you put in its ir, nam and presets folders show up after Rescan.`,
+    folder: `Folder “${library.rootName}”. Files you put in its ir, nam, presets and skins folders show up after Rescan.`,
     browser: 'Stored in this browser. Choose a folder to keep the library as normal files you can open, back up and share.',
     memory: 'Temporary: this page can’t store files where it’s open, so imports are lost on reload.',
   }[library.backend];
   $('libWhere').textContent = library.pendingFolder && library.backend !== 'folder' ? `Your folder “${library.pendingFolder.name}” needs permission again. Until then: ${where}` : where;
   $('libCounts').textContent = Object.keys(library.kinds).map((k) => `${(library.entries[k] || []).length} ${kindLabel(k)}`).join(' · ');
   refreshPresetList();
+  renderSkinList();
   renderPanel();
 }
 async function chooseLibraryFolder() {
@@ -1469,6 +1705,8 @@ async function importFiles(files, target) {
   }
   results.forEach((r) => logLine(r.status === 'skipped' ? `skipped ${r.name}: ${r.reason}` : `${r.status === 'duplicate' ? 'already in library' : r.status === 'renamed' ? 'imported as' : 'imported'} ${r.kind}/${r.name}`, r.status === 'skipped'));
   await refreshLibrary();
+  const skins = results.filter((r) => r.kind === 'skins' && r.status !== 'skipped');
+  if (skins.length) await useSkin('lib:' + skins[skins.length - 1].name);   // a dropped skin is put on straight away
   const ok = results.filter((r) => r.status !== 'skipped');
   if (target && ok.length) await selectAsset(target, ok[0].name);
   const skipped = results.length - ok.length;
@@ -1651,6 +1889,157 @@ function wireAssetUi() {
   window.addEventListener('dragover', (e) => e.preventDefault());
   window.addEventListener('drop', (e) => e.preventDefault());
 }
+
+// ===== ui/js/57-skins.js =====
+// 57-skins.js - puts a skin on the running page, and the Skins menu (settings drawer).
+// Skins come built in (ui/js/04-skin-core.js) or as .rigskin files in the library's skins/
+// folder (drop one on the stage, or Import). The viewer marks favourites; K steps through them.
+// The choice is remembered per browser. Export writes the skin in use out as a complete
+// template: every setting spelled out, plus its images, ready to edit into a new skin.
+const BUILTIN_SKINS = [
+  { id: 'builtin:astral', json: DEFAULT_SKIN },
+  { id: 'builtin:classic', json: CLASSIC_SKIN },
+];
+const skinState = { id: 'builtin:astral', json: DEFAULT_SKIN, files: null, urls: [], warnings: [], busy: false };
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* not remembered in this browser */ } };
+let skinFavs = new Set(); try { skinFavs = new Set(JSON.parse(lsGet('rig01.skinFavs', '[]'))); } catch (e) { /* none */ }
+
+function dataUrlBytes(u) { return b64ToBytes(u.slice(u.indexOf(',') + 1)); }
+const MIME = { webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', avif: 'image/avif', css: 'text/css', woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf' };
+const mimeOf = (n) => MIME[n.split('.').pop().toLowerCase()] || 'application/octet-stream';
+
+// Every skin the viewer can choose: built-ins, then the library's skins/ folder.
+function skinChoices() {
+  const lib = (library.entries.skins || []).map((e) => ({ id: 'lib:' + e.name, name: (e.meta && e.meta.name) || e.name.replace(/\.rigskin$/i, ''), author: e.meta && e.meta.author, file: e.name }));
+  return BUILTIN_SKINS.map((b) => ({ id: b.id, name: b.json.name, author: b.json.author, builtIn: true })).concat(lib);
+}
+// Read a skin by id -> { json, skin (validated), files: Map | null, warnings } or { error }.
+async function loadSkin(id) {
+  const b = BUILTIN_SKINS.find((x) => x.id === id);
+  if (b) { const r = readSkinJson(b.json, (n) => typeof UI_ASSETS !== 'undefined' && n in UI_ASSETS); return { json: b.json, skin: r.skin, files: null, warnings: r.warnings }; }
+  if (!id.startsWith('lib:') || !library.core) return { error: 'not found' };
+  try { return await readSkinPacket(new Uint8Array(await (await library.core.file('skins', id.slice(4))).arrayBuffer())); }
+  catch (e) { return { error: e.message }; }
+}
+// Put a skin on: by id. Returns true if it was applied.
+async function useSkin(id) {
+  if (skinState.busy) return false;
+  skinState.busy = true;
+  try {
+    const r = await loadSkin(id);
+    if (r.error) { skinNote(`Couldn't use that skin: ${r.error}`, true); logLine(`skin ${id}: ${r.error}`, true); return false; }
+    await applySkin(mergeSkin(DEFAULT_SKIN, r.skin), r.files);
+    Object.assign(skinState, { id, json: r.json, files: r.files, warnings: r.warnings });
+    lsSet('rig01.skin', id);
+    skinNote(r.warnings.length ? `${SKIN.name}: ${r.warnings.length} setting${r.warnings.length > 1 ? 's' : ''} skipped (${r.warnings[0]}${r.warnings.length > 1 ? '; rest in Engine log' : ''})` : `${SKIN.name}${SKIN.author ? ' by ' + SKIN.author : ''}`, r.warnings.length > 0);
+    r.warnings.forEach((w) => logLine('skin: ' + w, true));
+    logLine(`skin: ${SKIN.name}`);
+    renderSkinList();
+    return true;
+  } finally { skinState.busy = false; }
+}
+// Apply a fully merged skin to the page, the 3D stage and every face.
+async function applySkin(S, files) {
+  skinState.urls.forEach((u) => URL.revokeObjectURL(u)); skinState.urls = [];
+  const urlOf = (name) => {
+    if (!name) return null;
+    if (files) { const b = files.get(name); if (!b) return null; const u = URL.createObjectURL(new Blob([b], { type: mimeOf(name) })); skinState.urls.push(u); return u; }
+    return typeof UI_ASSETS !== 'undefined' ? UI_ASSETS[name] || null : null;
+  };
+  SKIN = S; ACC = S.screen.accent;
+  // menus, panels, tables, bars: CSS variables
+  const root = document.documentElement.style;
+  for (const [k, v] of Object.entries(S.ui)) root.setProperty(k === 'fontDisplay' ? '--display' : k === 'fontMono' ? '--mono' : '--' + k, v);
+  root.setProperty('--stageBg', S.stage.backgroundColor);
+  // fonts and the optional stylesheet that come with the skin
+  for (const f of S.fonts || []) {
+    const b = files && files.get(f.file); if (!b) continue;
+    try { const ff = new FontFace(f.family, b, { weight: f.weight, style: f.style }); await ff.load(); document.fonts.add(ff); }
+    catch (e) { logLine(`skin font ${f.file}: ${e.message}`, true); }
+  }
+  let css = document.getElementById('skinCss'); if (!css) { css = document.createElement('style'); css.id = 'skinCss'; document.head.appendChild(css); }
+  css.textContent = S.css && files && files.get(S.css) ? new TextDecoder().decode(files.get(S.css)) : '';
+  // the stage
+  const bg = urlOf(S.stage.background); canvas.style.backgroundImage = bg ? `url("${bg}")` : 'none';
+  scene.fog.color.set(S.stage.fog); scene.fog.density = S.stage.fogDensity;
+  flowTube.material.color.set(S.stage.flow); flowMat.color.set(S.stage.flow);
+  MODS.forEach((m) => { const st = styleOf(m); m.slab.material.color.set(S.stage.slab); m.halo.material.color.set(st.glow); m.glow.material.color.set(st.glow); });
+  SRC.forEach((s, i) => { s.color = sourceColor(s.id, i); [s.orb, s.ring, s.halo].forEach((o) => o.material.color.set(s.color)); });
+  syncCables();
+  // card images, decoded before the faces are redrawn
+  Object.keys(SKIN_IMG).forEach((k) => delete SKIN_IMG[k]);
+  await Promise.all(Object.values(S.tiles).map((t) => t.image).filter((n, i, a) => n && a.indexOf(n) === i).map(async (n) => {
+    const u = urlOf(n); if (!u) return;
+    const im = new Image(); im.src = u;
+    try { await im.decode(); SKIN_IMG[n] = im; } catch (e) { logLine(`skin image ${n} couldn't be decoded`, true); }
+  }));
+  drawPill(inLbl); drawPill(outLbl); MODS.forEach(drawFace); SRC.forEach(drawLabel);
+  update();
+}
+
+// ------------------------------------------------------------------ the Skins menu
+function skinNote(text, warn) { const n = $('skinNote'); if (n) { n.textContent = text; n.className = 'note' + (warn ? ' warnline' : ''); } }
+function renderSkinList() {
+  const el = $('skinList'); if (!el) return;
+  const all = skinChoices().sort((a, b) => (skinFavs.has(b.id) - skinFavs.has(a.id)));
+  el.innerHTML = all.map((s) => {
+    const on = s.id === skinState.id, fav = skinFavs.has(s.id), nm = String(s.name).replace(/</g, '&lt;');
+    return `<li class="skinrow${on ? ' on' : ''}">
+      <button class="star" data-skin-fav="${encodeURIComponent(s.id)}" aria-pressed="${fav}" aria-label="${fav ? 'Remove' : 'Add'} ${nm} ${fav ? 'from' : 'to'} favourites" title="Favourite">${fav ? '★' : '☆'}</button>
+      <span class="grow"><b>${nm}</b><small>${s.builtIn ? 'built in' : 'skins/' + String(s.file).replace(/</g, '&lt;')}${s.author ? ' · ' + String(s.author).replace(/</g, '&lt;') : ''}</small></span>
+      ${on ? '<span class="inuse">In use</span>' : `<button class="btn mini" data-skin-use="${encodeURIComponent(s.id)}">Use</button>`}</li>`;
+  }).join('');
+}
+// K: the next favourite (or the next skin, with no favourites)
+function cycleSkin() {
+  const all = skinChoices(), pool = all.filter((s) => skinFavs.has(s.id)), list = pool.length ? pool : all;
+  if (!list.length) return;
+  const i = list.findIndex((s) => s.id === skinState.id);
+  useSkin(list[(i + 1) % list.length].id);
+}
+// The skin in use, written out as a complete, editable template.
+function exportSkin() {
+  const full = JSON.parse(JSON.stringify(SKIN));
+  full.name = SKIN.name + ' (template)'; full.description = `Starting point made from “${SKIN.name}”. Edit skin.json and the images, zip the folder, rename it .rigskin.`;
+  const files = [['skin.json', new TextEncoder().encode(JSON.stringify(full, null, 2))],
+    ['SKIN-README.txt', new TextEncoder().encode('A RIG/01 skin. Change colours, images and fonts in skin.json; every setting is listed.\n' +
+      'Images are referenced by file name. Card frames are drawn at 518 x 754 (keep that shape, with transparent corners).\n' +
+      'Zip this folder (skin.json at the top or in one folder), rename the .zip to .rigskin, and drop it on the RIG/01 stage.\n' +
+      'Full reference: docs/SKINS.md in the project.\n')]];
+  for (const n of skinFiles(full)) {
+    const b = skinState.files ? skinState.files.get(n) : (typeof UI_ASSETS !== 'undefined' && UI_ASSETS[n] ? dataUrlBytes(UI_ASSETS[n]) : null);
+    if (b) files.push([n, b]);
+  }
+  const blob = new Blob([zipFiles(files)], { type: 'application/zip' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = safeFileName(SKIN.name) + ' template.rigskin';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  rig.lastExport = { name: a.download, bytes: blob.size, files: files.map((f) => f[0]) };
+  skinNote(`Exported ${a.download} (${files.length} files)`); logLine(`skin exported: ${a.download}`);
+}
+function wireSkins() {
+  $('skinList').addEventListener('click', (e) => {
+    const u = e.target.closest('[data-skin-use]'), f = e.target.closest('[data-skin-fav]');
+    if (u) useSkin(decodeURIComponent(u.dataset.skinUse));
+    if (f) { const id = decodeURIComponent(f.dataset.skinFav); if (skinFavs.has(id)) skinFavs.delete(id); else skinFavs.add(id); lsSet('rig01.skinFavs', JSON.stringify([...skinFavs])); renderSkinList(); }
+  });
+  $('skinImport').onclick = () => $('skinFiles').click();
+  $('skinFiles').onchange = async (e) => { const files = [...e.target.files]; e.target.value = ''; if (files.length) await importFiles(files, null); };
+  $('skinExport').onclick = exportSkin;
+  window.addEventListener('keydown', (e) => {
+    if (e.target.closest && e.target.closest('input,textarea,select')) return;
+    if ((e.key === 'k' || e.key === 'K') && !e.ctrlKey && !e.metaKey && !e.altKey) cycleSkin();
+  });
+  renderSkinList();
+}
+// At start: the remembered skin (a library skin waits for the library to open).
+async function restoreSkin(libraryReady) {
+  const id = lsGet('rig01.skin', 'builtin:astral');
+  if (id.startsWith('lib:')) { await libraryReady; if (await useSkin(id)) return; }
+  await useSkin(BUILTIN_SKINS.some((b) => b.id === id) ? id : 'builtin:astral');
+}
+rig.useSkin = useSkin; rig.skinState = skinState; rig.exportSkin = exportSkin;
+rig.skinTools = { unzip, zipFiles };          // for tests and the console
 
 // ===== ui/js/60-controllers.js =====
 // 60-controllers.js - outside-world inputs feeding sources: gamepad stick -> `ctrl`, BLE heart strap -> `heart`.
@@ -1921,8 +2310,9 @@ function wireStart() {
 (async function boot() {
   try { await loadModel(); }
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
-  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wireAssetUi(); wireLibrary(); wireControllers(); wirePresets(); wireStart();
-  initLibrary().catch((e) => logLine('library: ' + e.message, true));
+  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wireAssetUi(); wireLibrary(); wireSkins(); wireControllers(); wirePresets(); wireStart();
+  const libraryReady = initLibrary().catch((e) => logLine('library: ' + e.message, true));
+  restoreSkin(libraryReady).catch((e) => logLine('skin: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();
   $('master').value = state.master; canvas.style.cursor = 'grab';
   drawPill(inLbl); drawPill(outLbl);

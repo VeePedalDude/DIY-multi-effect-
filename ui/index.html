@@ -9,15 +9,19 @@
 <style>
 /* Layout: full-bleed WebGL stage; glass HUD bars top and bottom; focus panel docked right; settings drawer on the left. */
 :root{
+  /* Every colour and font below is a skin setting (ui/js/04-skin-core.js "ui"; docs/SKINS.md). These are the
+     default skin's values, so the page looks right even before a skin is applied. */
   --bg:#07050D; --glass:rgba(11,9,21,.86); --raise:#0F1524; --line:#1F2A40; --line2:#2A3550;
-  --fg:#E6ECF5; --muted:#94A3BD; --accent:#4FE3F0; --ink:#06080E; --ok:#9BE15D; --warn:#FFB547; --bad:#FF5A6E;
+  --fg:#E6ECF5; --muted:#94A3BD; --soft:#C9D3E6; --accent:#4FE3F0; --ink:#06080E; --ok:#9BE15D; --warn:#FFB547; --bad:#FF5A6E; --off:#3A4766;
+  --item:#0B1120; --selected:#0E2530; --well:#070B14; --overlay:rgba(5,7,12,.78); --dialog:#0A0E17;
+  --onBg:#12301F; --onLine:#2C6B45; --bypBg:#2A1A1F; --bypLine:#6B2C3A; --stageBg:#0b0716;
   --display:"Chakra Petch","Rajdhani",system-ui,sans-serif; --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
   --topH:68px; --botH:96px; --panelW:330px; color-scheme:dark;
 }
 html,body{height:100%;margin:0}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--display);overflow:hidden}
-#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:#0b0716 center/cover no-repeat}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:var(--stageBg) center/cover no-repeat}
 .hud{position:fixed;z-index:5}
 button,select,input{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -49,18 +53,18 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .meter .track{flex:1;height:6px;border-radius:3px;background:var(--line);overflow:hidden}
 .meter i{display:block;height:6px;border-radius:3px;background:var(--ok);width:0}
 .meter i.hot{background:var(--warn)} .meter i.clip{background:var(--bad)}
-#statusDot{width:10px;height:10px;border-radius:5px;background:var(--off,#3A4766);display:inline-block}
+#statusDot{width:10px;height:10px;border-radius:5px;background:var(--off);display:inline-block}
 
 .panel{right:16px;top:calc(var(--topH) + 14px);bottom:calc(var(--botH) + 14px);width:var(--panelW);box-sizing:border-box;padding:20px;display:flex;flex-direction:column;gap:16px;overflow:auto;background:var(--glass);border:1px solid var(--line);border-radius:16px;backdrop-filter:blur(8px)}
 .panel h2{margin:0;font-size:28px;font-weight:700;letter-spacing:.06em}
 .panel .kind{font:400 13px/1.4 var(--mono);color:var(--muted)}
 .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.btn.on{background:#12301F;border-color:#2C6B45} .btn.byp{background:#2A1A1F;border-color:#6B2C3A}
+.btn.on{background:var(--onBg);border-color:var(--onLine)} .btn.byp{background:var(--bypBg);border-color:var(--bypLine)}
 .params{display:flex;flex-direction:column;gap:16px}
 .param{display:flex;flex-direction:column;gap:7px}
 .prow{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .prow b{font-size:14px;letter-spacing:.08em}
-.prow .num{font:500 13px/1 var(--mono);color:#C9D3E6;font-variant-numeric:tabular-nums}
+.prow .num{font:500 13px/1 var(--mono);color:var(--soft);font-variant-numeric:tabular-nums}
 .mod{display:flex;align-items:center;gap:8px;font-size:13px}
 .mod .dot{width:10px;height:10px;border-radius:5px;flex:none}
 .mod .grow{flex:1}
@@ -71,7 +75,7 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .bottom{left:0;right:0;bottom:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;padding:10px 16px;background:var(--glass);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
 .scenes{display:flex;gap:6px;align-items:center}
 .scene{width:52px;min-height:48px;border-radius:10px;border:1px solid var(--line2);background:var(--raise);font-size:19px;font-weight:700}
-.scene.stored{border-color:#4FE3F088}
+.scene.stored{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
 .scene[aria-pressed="true"]{background:var(--accent);color:var(--ink);border-color:var(--accent)}
 .scene.storing{outline:2px dashed var(--warn);outline-offset:2px}
 .slider{display:flex;flex-direction:column;gap:4px;width:150px;font:500 11px/1.2 var(--mono);letter-spacing:.1em;color:var(--muted)}
@@ -97,23 +101,23 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .asset .cur b{display:block;word-break:break-word}
 .asset input[type=search]{min-height:36px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px;font:400 13px var(--mono)}
 .asset ul{list-style:none;margin:0;padding:0;max-height:190px;overflow:auto;display:flex;flex-direction:column;gap:4px}
-.asset li button{width:100%;text-align:left;padding:8px 10px;border:1px solid transparent;border-radius:8px;background:#0B1120;display:flex;flex-direction:column;gap:2px}
+.asset li button{width:100%;text-align:left;padding:8px 10px;border:1px solid transparent;border-radius:8px;background:var(--item);display:flex;flex-direction:column;gap:2px}
 .asset li button:hover{border-color:var(--accent)}
-.asset li button[aria-current="true"]{border-color:var(--accent);background:#0E2530}
+.asset li button[aria-current="true"]{border-color:var(--accent);background:var(--selected)}
 .asset li .meta{font:400 11px/1.3 var(--mono);color:var(--muted)}
 .drop{border:1px dashed var(--line2);border-radius:10px;padding:10px;text-align:center;font-size:13px;color:var(--muted)}
-.drop.over,.stage-drop{border-color:var(--accent);color:var(--fg);background:#0E2530}
+.drop.over,.stage-drop{border-color:var(--accent);color:var(--fg);background:var(--selected)}
 .warnline{color:var(--warn)}
-#dropHint{position:fixed;left:50%;top:calc(var(--topH) + 18px);transform:translateX(-50%);z-index:8;padding:10px 16px;border-radius:10px;background:#0E2530;border:1px solid var(--accent);font-size:15px;pointer-events:none}
-.log{font:400 12px/1.5 var(--mono);color:var(--muted);background:#070B14;border:1px solid var(--line);border-radius:8px;padding:8px;height:150px;overflow:auto;white-space:pre-wrap}
+#dropHint{position:fixed;left:50%;top:calc(var(--topH) + 18px);transform:translateX(-50%);z-index:8;padding:10px 16px;border-radius:10px;background:var(--selected);border:1px solid var(--accent);font-size:15px;pointer-events:none}
+.log{font:400 12px/1.5 var(--mono);color:var(--muted);background:var(--well);border:1px solid var(--line);border-radius:8px;padding:8px;height:150px;overflow:auto;white-space:pre-wrap}
 .log .err{color:var(--bad)}
 .cmdrow{display:flex;gap:6px}
 .cmdrow input{flex:1;min-height:36px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 8px;font:400 12px var(--mono)}
 
-.overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:rgba(5,7,12,.78);backdrop-filter:blur(6px);padding:16px}
-.card{width:min(560px,100%);box-sizing:border-box;background:#0A0E17;border:1px solid var(--line2);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:18px}
+.overlay{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:var(--overlay);backdrop-filter:blur(6px);padding:16px}
+.card{width:min(560px,100%);box-sizing:border-box;background:var(--dialog);border:1px solid var(--line2);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:18px}
 .card h1{margin:0;font-size:30px;letter-spacing:.1em}
-.card p{margin:0;line-height:1.55;color:#C9D3E6;max-width:62ch}
+.card p{margin:0;line-height:1.55;color:var(--soft);max-width:62ch}
 .choice{display:flex;flex-direction:column;gap:8px}
 .choice label{flex-direction:row;align-items:flex-start;gap:10px;color:var(--fg);font-size:15px;padding:12px;border:1px solid var(--line2);border-radius:10px;cursor:pointer}
 .choice label small{display:block;color:var(--muted);font-size:13px;margin-top:3px}
@@ -137,8 +141,17 @@ body.panel-hidden .matrix{right:16px}
 .depth .mono{min-width:46px;text-align:right;color:var(--fg)}
 .scope{width:100%;height:auto;border-radius:10px;border:1px solid var(--line)}
 .patches{display:flex;flex-direction:column;gap:12px}
-.patch{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(15,21,36,.6)}
+.patch{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--item)}
 .patch .prow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
+/* skins menu */
+.skins{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.skinrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line2);border-radius:10px;background:var(--item)}
+.skinrow.on{border-color:var(--accent);background:var(--selected)}
+.skinrow .grow{flex:1;min-width:0}
+.skinrow b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skinrow small{display:block;font:400 11px/1.4 var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.skinrow .star{width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--warn);font-size:20px;line-height:1}
+.skinrow .inuse{font:600 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
 @media (max-width:900px){.readouts{display:none}.panel{display:none}.ptoggle{display:none}.matrix{right:16px}}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -193,7 +206,15 @@ body.panel-hidden .matrix{right:16px}
     <div class="row"><button class="btn" id="libImport">Import files…</button><button class="btn" id="libImportDir">Import a folder…</button></div>
     <input type="file" id="libFiles" multiple hidden>
     <p class="note" id="libCounts"></p>
-    <p class="note">Drop .wav IRs, .nam captures or .rig.json presets onto a module or anywhere on the stage.</p>
+    <p class="note">Drop .wav IRs, .nam captures, .rig.json presets or .rigskin skins onto a module or anywhere on the stage.</p>
+  </section>
+  <section>
+    <h3>Skins</h3>
+    <p class="note" id="skinNote">The look of the rig: colours, images and fonts. The layout stays the same.</p>
+    <ul class="skins" id="skinList" aria-label="Skins"></ul>
+    <div class="row"><button class="btn" id="skinImport">Import skin…</button><button class="btn" id="skinExport">Export as template</button></div>
+    <input type="file" id="skinFiles" accept=".rigskin" multiple hidden>
+    <p class="note">★ marks favourites; <b>K</b> steps through them. A skin is a .rigskin file (a zip with skin.json, images and fonts): drop one anywhere on the stage.</p>
   </section>
   <section>
     <h3>Controllers</h3>

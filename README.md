@@ -27,6 +27,16 @@ opened from disk, run `python -m http.server` in `dist/` and open `http://localh
 Browser audio on Windows adds roughly 20–40 ms. Fine for building sounds; the Linux host
 (`hosts/linux/`) is where the 5–10 ms target lives.
 
+## Tuner
+
+The small face-down card in the top bar is a strobe tuner: click it or press **T**. It flips open
+into a card turned sideways with the note, cents and three strobe bands that stand still when the
+string is in tune and drift right when sharp, left when flat. The output is muted while it's open
+(**Mute** turns that off). **Collapse** (or **T** again) folds it back into the mini card, which
+keeps showing the note while you play; **Off** stops it. The **A4** reference goes from 400 to
+480 Hz. It reads 8-string F♯1 to C7 to ±0.01 cent, using [Q](https://github.com/cycfi/q)'s
+pitch detector to find the note and the strobe itself for the fine reading.
+
 ## Skins
 
 The look is swappable, Winamp style: **Settings → Skins**. Two are built in (Astral Hall and
@@ -40,7 +50,7 @@ table; the layout never changes. Reference: [docs/SKINS.md](docs/SKINS.md).
 ```
 engine/
   core/        dsp.h (filters, delays, smoothing) · module.h · source.h   ← the contracts
-               nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps)
+               nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps) · tuner.h (strobe tuner)
   modules/     gate.h amp.h cab.h holo.h tess.h + registry.h (chain order)
   sources/     lfo.h env.h adsr.h orbit.h heart.h ctrl.h + registry.h
   engine.h     the chain: routing, modulation, bypass, master, meters, self-description
@@ -48,13 +58,13 @@ engine/
 ui/
   index.html   page shell
   js/          00-core 04-skin-core 10-model 20-bridge 30-audio 40-stage 45-faces 50-hud 51-source-panel
-               52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins
+               52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
                60-controllers 70-presets 72-preset-format 90-main
   screens/     one face display (and card colour) per module: gate.js amp.js cab.js holo.js tess.js
   assets/      images of the built-in skins: hall background, card frames (embedded into the page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
-  native/      framework.h + one test file per area (chain, gate, amp, cab, holo, tess, sources)
+  native/      framework.h + one test file per area (chain, gate, amp, cab, holo, tess, sources, tuner)
   parity/      native vs WebAssembly comparison
   ui/          Node unit tests: library and preset format
   fixtures/    golden preset file (must keep loading forever)
@@ -98,7 +108,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs` and `skins.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs` and `tuner.cjs`.
 
 ## Current effects and sources
 
@@ -118,14 +128,15 @@ feeds and its depth. **P** (or the tab beside it) hides the side panel.
 
 ## Test results (this build)
 
-- **Native:** 28 test groups pass. The full chain uses ~4% of one core on this build machine.
+- **Native:** 32 test groups pass. The full chain uses ~4% of one core on this build machine.
   - **NAM:** all 11 test captures play (A1 standard, A2 slimmable, A2 features, slimmable WaveNet and
     container, small WaveNet, condition-DSP WaveNet, LSTM, ConvNet, Linear, Sequential), sample-identical
     to NAM core run directly.
   - **Bad files:** damaged, unknown or too-wide files are refused with a reason while the old capture
     keeps playing.
   - **Swaps:** capture swaps are no steppier than steady playing.
-  - **Real-time safety:** zero heap calls inside `process()` over 14 s with 5 loads and swaps.
+  - **Real-time safety:** zero heap calls inside `process()` over 14 s with 5 loads and swaps and the tuner switching on and off.
+  - **Tuner:** every note from B1 to C7, each 3–45 cents off, reads the right note and cents to within 0.004 cent; plucked strings read the model's own pitch to 0.2 cent; low E gives a reading after 56 ms; a held note bent 30 cents follows it; the strobe bands turn at exactly harmonic × the tuning error; mute silences the output, and off is bit-identical to no tuner. It costs 0.1–1% of one core.
   - **IRs** from 21 ms to 20 s stereo match the exact convolution to −134 dB with no latency.
   - **Other checks:** amp aliasing is 55 dB below the harmonics at the worst case; 24/24 picks are
     detected; delay and reverb stay stable at maximum settings; no clicks on bypass or tempo jumps.
@@ -142,7 +153,10 @@ feeds and its depth. **P** (or the tab beside it) hides the side panel.
   are kept. `.rigskin` zips are read stored or deflated, or with `skin.json` inside a folder.
 - **Headless Chromium:** 25/25 main checks (including opening and editing sources, depth, patching
   from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks.
-  The 9/9 skin checks cover the built-ins, favourites and K, exporting a template, editing it into
+  The 19/19 tuner checks play a steady A2 6 cents sharp into the fake microphone: the mini card opens
+  the sideways card, the note and cents read right, the output mutes, the bands turn at the right rate,
+  the A4 reference, collapsing with T, Off, the Classic skin and a reload.
+  The 11/11 skin checks cover the built-ins, favourites and K, exporting a template, editing it into
   a new skin and dropping it on the stage, a broken skin, and the choice surviving a reload. The
   library checks cover dropping files on a panel and on the stage, search, saving a preset file,
   reloading the page and loading it back, and removing a file the preset uses. They also play four

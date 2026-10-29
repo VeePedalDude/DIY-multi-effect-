@@ -7,6 +7,7 @@
 #pragma once
 #include "modules/registry.h"
 #include "sources/registry.h"
+#include "core/tuner.h"
 
 namespace rig {
 
@@ -21,7 +22,8 @@ constexpr int M_SRC  = 1;                                   // NSRC source value
 constexpr int M_EFF  = M_SRC + NSRC;                        // NMOD x MAXPAR effective params, 0..1
 constexpr int M_MOD  = M_EFF + NMOD * MAXPAR;               // NMOD x MAXMODMETERS module display values
 constexpr int M_SRCM = M_MOD + NMOD * MAXMODMETERS;         // NSRC x MAXSRCMETERS source display values
-constexpr int M_LEN  = M_SRCM + NSRC * MAXSRCMETERS;
+constexpr int M_TUN  = M_SRCM + NSRC * MAXSRCMETERS;        // the tuner (core/tuner.h TunerMeter)
+constexpr int M_LEN  = M_TUN + T_LEN;
 
 struct Sources {
 #define RIG_DECL(T, m) T m;
@@ -85,6 +87,7 @@ struct Engine {
   float inBuf[MAXBLOCK], outL[MAXBLOCK], outR[MAXBLOCK];
   float aL[MAXBLOCK], aR[MAXBLOCK], bL[MAXBLOCK], bR[MAXBLOCK];
   float masterDb = 0.f; OnePole masterS;
+  Tuner tuner; float muteG = 1.f, muteStep = 0.f;          // tuner on the dry input; output fades out while tuning with mute
   DCBlock dcL, dcR;
   int nanResets = 0;
   float meters[M_LEN];
@@ -95,7 +98,7 @@ struct Engine {
   void init(float s) {
     sr = s; ctx.sr = s;
     for (auto* m : mods) m->init(sr);
-    src.init(sr);
+    src.init(sr); tuner.init(sr); muteG = 1.f; muteStep = 1.f / (0.010f * sr);
     for (int m = 0; m < NMOD; m++) {
       byp[m] = false; wet[m] = 1.f;
       for (int p = 0; p < MAXPAR; p++) {
@@ -136,9 +139,12 @@ struct Engine {
       }
     }
     bool bad = false;
+    tuner.process(inBuf, n);
+    const float muteTarget = tuner.on && tuner.mute ? 0.f : 1.f;
     float g = db2lin(masterDb);
     for (int i = 0; i < n; i++) {
-      float mg = masterS.next(g);
+      muteG += muteG < muteTarget ? fminf(muteStep, muteTarget - muteG) : -fminf(muteStep, muteG - muteTarget);
+      float mg = masterS.next(g) * muteG;
       float l = limit(dcL.tick(aL[i]) * mg), r = limit(dcR.tick(aR[i]) * mg);
       if (!(fabsf(l) <= 1.f) || !(fabsf(r) <= 1.f)) bad = true;   // catches NaN/Inf
       outL[i] = l; outR[i] = r;
@@ -152,6 +158,7 @@ struct Engine {
     publish();
   }
   void publish() {
+    tuner.meters(&meters[M_TUN]);
     meters[M_NAN] = (float)nanResets;
     for (int k = 0; k < NSRC; k++) meters[M_SRC + k] = src.val[k];
     for (int m = 0; m < NMOD; m++) for (int p = 0; p < MAXPAR; p++) meters[M_EFF + m * MAXPAR + p] = eff[m][p];
@@ -192,7 +199,8 @@ struct Engine {
     j.key("meters"); j.ch('{');
     j.key("nan"); j.num(M_NAN); j.ch(','); j.key("src"); j.num(M_SRC); j.ch(','); j.key("eff"); j.num(M_EFF); j.ch(',');
     j.key("mod"); j.num(M_MOD); j.ch(','); j.key("srcm"); j.num(M_SRCM); j.ch(','); j.key("len"); j.num(M_LEN); j.ch(',');
-    j.key("perMod"); j.num(MAXMODMETERS); j.ch(','); j.key("perSrc"); j.num(MAXSRCMETERS);
+    j.key("perMod"); j.num(MAXMODMETERS); j.ch(','); j.key("perSrc"); j.num(MAXSRCMETERS); j.ch(',');
+    j.key("tun"); j.num(M_TUN); j.ch(','); j.key("tunLen"); j.num(T_LEN); j.ch(','); j.key("tunBands"); j.num(TUN_BANDS);
     j.raw("},");
     j.key("modules"); j.ch('[');
     for (int m = 0; m < NMOD; m++) {

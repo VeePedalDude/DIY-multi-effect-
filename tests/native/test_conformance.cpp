@@ -124,6 +124,6 @@ TEST("93 conformance: every module type follows the format, stays finite and nev
 #define RIG_CHECK_MOD(T, member) { std::string p = moduleCheck<T>(heap); if (!p.empty()) { printf("      ! %s:%s\n", #member, p.c_str()); bad++; } }
   RIG_MODULES(RIG_CHECK_MOD)
 #undef RIG_CHECK_MOD
-  CHECK(bad == 0, "%d module types x 4 knob settings on loud and quiet noise: %d with problems", NMOD, bad);
+  CHECK(bad == 0, "%d module types x 4 knob settings on loud and quiet noise: %d with problems", NMODTYPES, bad);
   if (heapCounting()) CHECK(heap == 0, "heap calls inside process(): %ld", heap); else CHECK(true, "heap counting needs glibc; skipped");
 }

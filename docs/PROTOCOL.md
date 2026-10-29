@@ -22,13 +22,19 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `input_channel <0\|1>` | browser only: which interface input to use |
 | `asset_load <inst> <kind>/<file>` | load a library file into a module's slot (`asset_load cab ir/V30 SM57.wav`) |
 | `asset_clear <inst>` | back to the module's built-in (e.g. the built-in cab) |
+| `fx_add <type> [id] [position]` | add an effect to the chain (`fx_add holo holo2 0`: a second HOLOGRAM, first in the chain). Without an id the engine picks the next free one; without a position it goes at the end. It fades in over 10 ms |
+| `fx_remove <inst>` | take an effect out of the chain: it fades out over 10 ms, then is freed; patches to it go with it |
+| `fx_move <inst> <position>` | move an effect (0 = first). The sound dips for 10 ms either side of the swap, so nothing clicks or gets recorded into a delay |
 
-`<inst>` is the chain index (`3`) or the module id (`holo`). `<source>` is the id of an instance in
+`<inst>` is the module's id (`holo`, `holo2`) or its position in the chain (`3`; positions change
+when the chain does, so hosts should use ids). Module ids follow the same rules as source ids, and
+the two never clash. A fresh engine's chain is one of each type in registry order, ids = type ids.
+`<source>` is the id of an instance in
 the modulation rack (`lfo`, `lfo2`, or one chosen with `src_add`: `[a-z][a-z0-9_]*`, up to 15
 characters, never a module's id). A fresh engine's rack holds one of each type, ids = type ids.
 Symbols and types come from the engine's description; the current set:
 
-| inst | id | symbols |
+| fresh position | type (= id) | symbols |
 |---|---|---|
 | 0 | gate | thresh, release |
 | 1 | amp | input, output |
@@ -64,14 +70,26 @@ message: the meter block is laid out by slot. `rig_describe()` lists `sourceType
 its knobs and meters), `sources` (the fresh rack) and the meter offsets: `src` (one value per slot),
 `srcm` (meters per slot), `seff` (each slot's knobs after cross-modulation).
 
+## The effect chain
+
+Up to 12 effect instances (`maxModules` in the description), any mix of types, in any order.
+`rig_describe()` lists `moduleTypes` (every kind, with its knobs, meters and file slot) and `modules`
+(the fresh chain). In the browser every change to the chain is answered with a
+`{ type: 'chain', chain: [{ id, type, slot }] }` message, in chain order: the meter block is laid out
+by slot (`eff`, `mod`).
+
 Replies: `resp <status>`. 0 means OK; negative numbers follow mod-host:
-−1 bad instance (or, for `asset_load`, a file the module refused; for `src_add`, an unknown type),
-−2 source id taken or not allowed, −3 rack full, −103 bad symbol, −207 value
+−1 bad instance (or, for `asset_load`, a file the module refused; for `src_add` / `fx_add`, an unknown type),
+−2 id taken or not allowed, −3 rack or chain full, −103 bad symbol, −207 value
 out of range, −902 unknown command. `asset_load` replies also carry the engine's status line:
 what loaded (`WaveNet · 48 kHz · levelled`, `stereo · 3.00 s`) or why it was refused.
 
-Under the text protocol, hosts use the C API in `engine/api/rig_api.cpp`. Modules by chain index,
-sources by rack slot: `rig_src_param(slot, p, v)`, `rig_ext(slot, v)`, `rig_mod(m, p, slot, depth)`;
+Under the text protocol, hosts use the C API in `engine/api/rig_api.cpp`. Modules by slot (`rig_chain()`
+lists the chain in order with each instance's slot: `{"max":12,"modules":[{"id","type","slot"}]}`;
+a fresh chain uses slots 0.. in order). The chain: write `"<type> [id|-] [position]"` to `rig_text()`,
+then `rig_fx_add()` returns the slot (or −1 unknown type, −2 full, −3 bad id); `rig_fx_remove(slot)`,
+`rig_fx_move(slot, position)`. A removed module is freed by `rig_collect()` (or any other chain call)
+once the audio thread has finished with it; the browser calls it about 30 times a second. Sources by rack slot: `rig_src_param(slot, p, v)`, `rig_ext(slot, v)`, `rig_mod(m, p, slot, depth)`;
 the rack: write `"<type> [id]"` to `rig_text()`, then `rig_src_add()` returns the slot (or −1 unknown
 type, −2 full, −3 bad id); `rig_src_remove(slot)`, `rig_src_mod(slot, p, fromSlot, depth)` (−1
 unpatches), `rig_rack()` (JSON: what's in the rack and where). Adding and removing allocate: call

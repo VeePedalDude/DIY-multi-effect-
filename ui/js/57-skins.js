@@ -83,7 +83,7 @@ async function applySkin(S, files) {
     const im = new Image(); im.src = u;
     try { await im.decode(); SKIN_IMG[n] = im; } catch (e) { logLine(`skin image ${n} couldn't be decoded`, true); }
   }));
-  drawPill(inLbl); drawPill(outLbl); MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(true);
+  drawPill(inLbl); drawPill(outLbl); MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(true); drawAddCard(true);
   rig.skinHooks.forEach((f) => f());
   update();
 }

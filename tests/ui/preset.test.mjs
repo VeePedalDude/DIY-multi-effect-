@@ -52,18 +52,43 @@ const ren = JSON.parse(JSON.stringify(g3)); ren.sources[3].type = 'threebody'; r
 r = u.readPreset(ren, { sourceTypes: { threebody: 'orbit' }, sourceKnobs: { 'orbit.tempo': 'speed' } });
 check(r.warnings.length === 0 && r.rack[3].type === 'orbit' && close(real3(r.snap, 'drift', 'speed'), 0.2, 1e-5), 'a renamed source type and knob load through the rename table');
 
+console.log('golden file (format 4: a chain with no gate, the amp first and a second HOLOGRAM called “echo”)');
+const g4 = JSON.parse(fs.readFileSync('tests/fixtures/fx-chain.v4.rig.json', 'utf8'));
+r = u.readPreset(g4);
+const mreal = (snap, id, sym) => { const t = r.chain.find((x) => x.id === id).type, q = u.MTYPES[t].params.find((x) => x.symbol === sym), v = snap.params[`${id}.${sym}`]; return q.curve === 'log' ? q.min * Math.pow(q.max / q.min, v) : q.min + (q.max - q.min) * v; };
+check(!r.error && r.warnings.length === 0, `loads with no notes${r.warnings && r.warnings.length ? ': ' + r.warnings.join(' | ') : ''}`);
+check(r.chain.map((x) => `${x.id}:${x.type}`).join() === 'amp:amp,holo:holo,echo:holo,cab:cab,tess:tess', `the chain, in order: ${r.chain.map((x) => x.id).join(' → ')}`);
+check(close(mreal(r.snap, 'echo', 'feedback'), 70, 1e-3) && close(mreal(r.snap, 'holo', 'feedback'), 30, 1e-3) && r.snap.bypass.echo === true && r.snap.bypass.holo === false, 'each HOLOGRAM has its own knobs and bypass');
+check(r.snap.conns['echo.feedback'] === 'lfo' && close(r.snap.depths['echo.feedback'], 0.25) && r.snap.conns['holo.halo'] === 'env', 'patches to the second delay');
+check(r.scenes.A.bypass.echo === false && close(mreal(r.scenes.A, 'echo', 'feedback'), 85, 1e-3), 'scene A turns “echo” on with more feedback');
+r = u.readPreset(g3);
+check(r.chain.map((x) => x.id).join() === 'gate,amp,cab,holo,tess' && r.chain.every((x) => x.id === x.type) && r.warnings.length === 0, `format 3 migrates to the five fixed modules it was made with, in order (${r.chain.length})`);
+const odd4 = JSON.parse(JSON.stringify(g4));
+odd4.chain.push({ id: 'flange', type: 'flanger', params: { rate: 2 } }, { id: 'echo', type: 'holo' }, { id: '9x', type: 'holo' });
+odd4.sources.push({ id: 'cab', type: 'lfo' });
+odd4.mods.push({ target: 'flange.rate', source: 'lfo', depth: 0.2 });
+r = u.readPreset(odd4); const w4 = r.warnings.join(' | ');
+check(r.extras.length === 1 && r.extras[0].type === 'flanger' && w4.includes('no “flanger” module') && w4.includes('module echo: listed twice') && w4.includes('module 9x: not a usable id') && w4.includes('source cab: clashes with a module'),
+  'an unknown module type is kept for re-saving; a duplicate, a bad id and a source using a module’s id are noted');
+check(!w4.includes('flange.rate'), 'a patch to the unknown module is kept quietly with it');
+const ren4 = JSON.parse(JSON.stringify(g4)); ren4.chain[2].type = 'delay'; ren4.chain[2].params = { fb: 70 };
+r = u.readPreset(ren4, { modules: { delay: 'holo' }, params: { 'holo.fb': 'holo.feedback' } });
+check(r.warnings.length === 0 && r.chain[2].type === 'holo' && close(mreal(r.snap, 'echo', 'feedback'), 70, 1e-3), 'a renamed module type and knob load through the rename table');
+
 console.log('round trip');
+u.setChain([{ id: 'tess', type: 'tess' }, { id: 'amp', type: 'amp' }, { id: 'holo', type: 'holo' }, { id: 'holo2', type: 'holo' }, { id: 'cab', type: 'cab' }, { id: 'gate', type: 'gate' }]);
 u.setRack([...u.SRC.map((x) => ({ id: x.id, type: x.type })), { id: 'lfo2', type: 'lfo' }, { id: 'wobble', type: 'orbit' }]);
-Object.values(P).forEach((p, i) => { p.v = (i * 0.137) % 1; });
+Object.values(u.PARAMS).forEach((p, i) => { p.v = (i * 0.137) % 1; });
 u.SRC.forEach((s, i) => s.params.forEach((q, j) => { q.v = ((i + 1) * 0.211 + j * 0.37) % 1; }));
 u.state.conns = { 'holo.halo': 'orbit', 'cab.mix': 'ctrl', 'lfo2.rate': 'wobble', 'wobble.speed': 'lfo2', 'lfo.shape': 'lfo' }; u.state.depths = { 'cab.mix': 0.5, 'lfo2.rate': 0.7 }; u.state.bypass = { amp: true };
 u.state.assets = { cab: { kind: 'ir', name: 'x.wav', size: 10, hash: 'abcd1234' } }; u.state.scenes = { B: u.currentSnapshot() }; u.state.bpm = 97; u.state.master = -7;
 const built = JSON.parse(JSON.stringify(u.buildPreset('Round Trip')));
 r = u.readPreset(built);
-const worst = Math.max(...Object.values(P).map((p) => Math.abs(r.snap.params[p.id] - p.v)));
+const worst = Math.max(...Object.values(u.PARAMS).map((p) => Math.abs(r.snap.params[p.id] - p.v)));
 check(r.warnings.length === 0 && worst < 1e-5, `every knob survives save + load (worst error ${worst.toExponential(1)})`);
 const qs = u.SRC.flatMap((s) => s.params), worstSrc = Math.max(...qs.map((q) => Math.abs(r.snap.srcParams[q.id] - q.v)));
 check(qs.length > 0 && worstSrc < 1e-5 && Object.keys(r.scenes.B.srcParams).length === qs.length, `every source knob survives too (${qs.length} knobs, worst error ${worstSrc.toExponential(1)}), scenes included`);
+check(r.chain.map((x) => x.id).join() === 'tess,amp,holo,holo2,cab,gate' && r.chain[3].type === 'holo' && close(r.snap.params['holo2.feedback'], u.PARAMS['holo2.feedback'].v, 1e-5), 'the chain (reordered, with holo2) survives, with holo2’s own knobs');
 check(r.rack.map((x) => x.id).join() === 'lfo,env,adsr,orbit,heart,ctrl,lfo2,wobble' && r.rack[7].type === 'orbit' && r.snap.conns['lfo2.rate'] === 'wobble' && r.snap.conns['wobble.speed'] === 'lfo2' && r.snap.conns['lfo.shape'] === 'lfo' && r.snap.depths['lfo2.rate'] === 0.7,
   'the rack (with lfo2 and an orbit called wobble) and its cross-patches, including a self-patch, survive');
 check(r.snap.bypass.amp === true && r.snap.conns['cab.mix'] === 'ctrl' && r.snap.depths['cab.mix'] === 0.5 && r.snap.bpm === 97 && r.master === -7 && r.assets.cab.hash === 'abcd1234' && !!r.scenes.B, 'bypass, patches, depth, tempo, master, file reference, scene');

@@ -1,9 +1,9 @@
 // 45-faces.js - draws module faces (card, title, screen, knobs) and source labels onto canvas textures.
 // Every colour and image comes from the active skin (SKIN, 04-skin-core.js): each module gets a tile
 // (card frame + colours) from the skin's module map or its tile order. The screen area is delegated
-// to SCREENS[module id] (ui/screens/*.js); otherwise genericScreen.
+// to SCREENS[module type] (ui/screens/*.js); otherwise genericScreen.
 const SKIN_IMG = {};                      // decoded images of the active skin, by file name (57-skins.js fills it)
-const tileOf = (m) => tileNameFor(SKIN, m.id, m.idx);
+const tileOf = (m) => tileNameFor(SKIN, SKIN.modules[m.id] ? m.id : m.type, m.idx);   // the skin can style an instance, or its type
 const styleOf = (m) => tileStyle(SKIN, tileOf(m));
 // The card at FW x H: the tile's frame image, or a plain rounded card in the tile's colours.
 // Taller faces (more than four knobs) stretch a plain strip of the side rails.
@@ -58,7 +58,7 @@ function drawScreen(m, c, st) {
   rr(c, b.x, b.y, b.w, b.h, 13); c.fillStyle = SKIN.screen.glass; c.fill(); c.clip();
   const g = c.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, 'rgba(255,255,255,.07)'); g.addColorStop(.4, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(b.x, b.y, b.w, b.h);
   c.strokeStyle = ACC; c.fillStyle = ACC; c.lineWidth = 3; c.font = `500 18px ${SKIN.ui.fontMono}`;
-  try { (SCREENS[m.id] || genericScreen)(c, b, m, screenHelper(m)); }
+  try { (SCREENS[m.type] || genericScreen)(c, b, m, screenHelper(m)); }
   catch (err) { c.fillStyle = SKIN.ui.bad; c.fillText('screen error: ' + err.message.slice(0, 30), b.x + 20, b.y + 26); }
   c.restore();
 }

@@ -49,7 +49,7 @@ a colour name. Images and fonts are file names inside the `.rigskin`.
 | `card` | text and plain parts of a module card: `title`, `text`, `powerOn`, `powerOff`, `bypassed`; `plain` / `plainLine` for a tile without an image |
 | `knob` | `track`, `bodyLight` / `bodyMid` / `bodyDark` (the knob's shading), `rim`, `pointer`, `label`, `value` |
 | `tiles` | named card styles. Each has `image` (a card frame, or `null` for a plain card), `accent` (knob arcs), `rim` (around the display), `glow` (behind the focused card and on the floor), and optional `card` / `knob` overrides with the same keys as above. **Replaces** the default's tiles entirely. |
-| `modules` | which tile each module uses, by module id: `{ "amp": "gold" }`. Modules not listed (including future ones) cycle through `tileOrder`. |
+| `modules` | which tile each module uses, by type or by instance id: `{ "amp": "gold", "holo2": "teal" }` (an instance id wins over its type). Modules not listed (including future ones) cycle through `tileOrder`. |
 | `tileOrder` | the tile names to cycle through |
 | `sources` | orb, cable and label colour per modulation source id: `lfo env adsr orbit heart ctrl` |
 | `sourceFallback` | colours for sources that aren't listed (future ones) |

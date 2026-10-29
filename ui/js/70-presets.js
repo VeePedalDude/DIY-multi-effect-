@@ -30,7 +30,7 @@ async function loadPresetFile(file) {
   let json; try { json = JSON.parse(await (await library.core.file('presets', file)).text()); } catch (e) { presetNote(`Couldn't read ${file}: ${e.message}`, true); return null; }
   const r = readPreset(json);
   if (r.error) { presetNote(`${file}: ${r.error}`, true); return r; }
-  applyRack(r.rack); state.sourceExtras = r.sourceExtras;
+  applyChain(r.chain); applyRack(r.rack); state.sourceExtras = r.sourceExtras;
   applySnapshot(r.snap);
   if (r.master !== undefined) setMaster(r.master);
   state.scenes = r.scenes; state.scene = null; state.presetExtras = r.extras;

@@ -3,7 +3,7 @@
 #include <chrono>
 using namespace rigtest;
 
-static void cabFullWet(Engine& e, int c) { only(e, c); e.base[c][0] = 0; e.base[c][1] = 1; e.cab.mixS.y = 1; }
+static void cabFullWet(Engine& e, int c) { only(e, c); e.base[c][0] = 0; e.base[c][1] = 1; fx<Cab>(e, "cab").mixS.y = 1; }
 
 TEST("30 cab: built-in IR response (dB rel 1 kHz)") {
   Engine e; e.init(SR); int c = mod(e, "cab"); cabFullWet(e, c);
@@ -49,11 +49,11 @@ static double irError(Engine& e, const std::vector<std::vector<float>>& ir, size
   std::vector<float> imp(total, 0.f); imp[lead] = 1.f;
   render(e, std::vector<float>(2048, 0.f));               // let the 10 ms swap fades finish
   auto r = render(e, imp);
-  const float g = e.cab.slot.current()->gain;
+  const float g = fx<Cab>(e, "cab").slot.current()->gain;
   double err = 0, sig = 0;
   for (size_t ch = 0; ch < 2; ch++) {
     const auto& h = ir[ch % ir.size()]; const auto& out = ch ? r.R : r.L;
-    Biquad lc; lc.hp(SR, e.cab.map(0, 0.f), 0.707f); DCBlock dc;     // the cab's lo cut, then the engine's output DC blocker
+    Biquad lc; lc.hp(SR, fx<Cab>(e, "cab").map(0, 0.f), 0.707f); DCBlock dc;     // the cab's lo cut, then the engine's output DC blocker
     for (size_t i = 0; i < check; i++) {
       double want = dc.tick(lc.tick(i < h.size() ? h[i] * g : 0.f)), got = out[lead + i];
       err += (got - want) * (got - want); sig += want * want;

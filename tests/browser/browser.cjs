@@ -76,7 +76,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#panel [data-act="bypass"]');
   await sleep(200);
   const log = await page.evaluate(() => window.__rig.log.slice(-3));
-  check(log.some((l) => l === 'bypass 3 1'), `panel sent "${log[log.length - 1]}"`);
+  check(log.some((l) => l === 'bypass holo 1'), `panel sent "${log[log.length - 1]}"`);
   const fb = [];
   for (let i = 0; i < 12; i++) { fb.push(await page.evaluate(() => window.__rig.eff('holo', 'feedback'))); await sleep(250); }
   const span = Math.max(...fb) - Math.min(...fb);
@@ -116,7 +116,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.$eval('[data-depth="holo.feedback"]', (el) => { el.value = '0.05'; el.dispatchEvent(new Event('input', { bubbles: true })); });
   await sleep(200);
   const dlog = await page.evaluate(() => window.__rig.log.slice(-3));
-  check(dlog.includes("mod_connect 3 feedback lfo 0.0500") && (await page.textContent(`[data-ddisp="holo.feedback"]`)) === "±5%", `depth slider: ${dlog[dlog.length - 1]}`);
+  check(dlog.includes("mod_connect holo feedback lfo 0.0500") && (await page.textContent(`[data-ddisp="holo.feedback"]`)) === "±5%", `depth slider: ${dlog[dlog.length - 1]}`);
   await page.selectOption('[data-srcpatch="lfo"]', 'gate.release'); await sleep(300);
   check(await page.evaluate(() => window.__rig.state.conns['gate.release'] === 'lfo' && document.querySelectorAll('#panel .patch').length === 2), 'Patch to: LFO -> GATE RELEASE added; panel lists 2 patches');
   await page.click('[data-act="reset-src"]'); await sleep(200);

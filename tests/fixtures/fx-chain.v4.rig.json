@@ -1,0 +1,24 @@
+{
+  "format": "rig-preset",
+  "version": 4,
+  "name": "Two Delays",
+  "saved": "2026-10-29T20:00:00.000Z",
+  "chain": [
+    { "id": "amp", "type": "amp", "bypass": false, "params": { "input": 6, "output": -3 } },
+    { "id": "holo", "type": "holo", "bypass": false, "params": { "feedback": 30, "halo": 20 } },
+    { "id": "echo", "type": "holo", "bypass": true, "params": { "feedback": 70, "halo": 80 } },
+    { "id": "cab", "type": "cab", "bypass": false, "params": { "locut": 80, "mix": 100 } },
+    { "id": "tess", "type": "tess", "bypass": false, "params": { "size": 3, "fold": 0.5 } }
+  ],
+  "sources": [
+    { "id": "lfo", "type": "lfo", "params": { "rate": 4 } },
+    { "id": "env", "type": "env", "params": {} }
+  ],
+  "mods": [
+    { "target": "echo.feedback", "source": "lfo", "depth": 0.25 },
+    { "target": "holo.halo", "source": "env", "depth": 0.4 }
+  ],
+  "tempo": 96,
+  "master": -8,
+  "scenes": { "A": { "chain": [ { "id": "echo", "bypass": false, "params": { "feedback": 85 } } ], "mods": [], "sources": [], "tempo": 96 } }
+}

@@ -105,7 +105,7 @@ TEST("25 amp: levels (captures with loudness data are levelled to -18 dB, like t
   for (const char* f : {"A2.nam", "wavenet.nam", "lstm.nam", "wavenet_a1_standard.nam"}) {
     Engine x; x.init(SR); only(x, m); loadAsset(x, m, readFile(modelPath(f).c_str()));
     auto r = render(x, in);
-    printf("      %-26s %.1f dBFS RMS (%s)\n", f, dbf(rms(r.L, 0, r.L.size())), x.amp.slot.current()->dsp->HasLoudness() ? "levelled" : "no loudness data");
+    printf("      %-26s %.1f dBFS RMS (%s)\n", f, dbf(rms(r.L, 0, r.L.size())), fx<Amp>(x, "amp").slot.current()->dsp->HasLoudness() ? "levelled" : "no loudness data");
   }
   CHECK(true, "levels printed for reference");
 }

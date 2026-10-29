@@ -53,19 +53,20 @@ engine/
                nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps) · tuner.h (strobe tuner)
   modules/     gate.h amp.h cab.h holo.h tess.h + registry.h (chain order)
   sources/     lfo.h env.h adsr.h orbit.h heart.h ctrl.h + registry.h   (source types)
+  fx_chain.h   the effect chain: module types table, the order as one atomic word
   mod_rack.h   the modulation rack: instances added/removed live, cross-modulation
   engine.h     the chain: routing, modulation, bypass, master, meters, self-description
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 30-audio 40-stage 45-faces 50-hud 51-source-panel
+  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
                60-controllers 70-presets 72-preset-format 90-main
   screens/     one face display (and card colour) per module: gate.js amp.js cab.js holo.js tess.js
   assets/      images of the built-in skins: hall background, card frames (embedded into the page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
-  native/      framework.h + one test file per area (chain, gate, amp, cab, holo, tess, sources, tuner, rack)
+  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, sources, tuner, rack)
                + test_conformance.cpp: the format and safety of every module and source type
   parity/      native vs WebAssembly comparison
   ui/          Node unit tests: library and preset format
@@ -110,7 +111,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs` and `rack.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs` and `chain.cjs`.
 
 ## Current effects and sources
 
@@ -127,6 +128,23 @@ Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbi
 rate and shape, envelope attack/release/floor, ADSR times, orbit speed, heart rest rate, controller
 smoothing and dead zone): click a source's orb or name to open them, along with everything it moves
 and the depths. **P** (or the tab beside it) hides the side panel.
+
+### The effect chain
+
+- **Add, remove and reorder effects while it plays.** The **+ ADD EFFECT** card at the end of the
+  row (or **+ Add effect** in the Mod Matrix) lists every kind of effect. Up to 12 in all, in any
+  order, several of one kind if you like (two delays: HOLOGRAM and HOLOGRAM 2).
+- **In each effect's panel:**
+  - **◀ ▶** moves it earlier or later in the chain.
+  - **Duplicate** puts a copy right after it, with the same knobs, bypass and file.
+  - **Remove** asks twice; patches to it go with it.
+- **No clicks:**
+  - A new effect fades in from dry over 10 ms, and a removed one fades out the same way.
+  - A move dips the sound for 10 ms either side of the swap, inside the chain too, so a delay
+    doesn't record the jump and play it back later.
+- Presets save the chain, in order. Older presets load as the five original modules.
+- Every instance is a patch target for every source, has its own card, file slot and matrix columns,
+  and is addressed by its id in the protocol (`param_set holo2 feedback 0.8`, `fx_move holo2 0`).
 
 ### The modulation rack
 
@@ -148,7 +166,7 @@ and the depths. **P** (or the tab beside it) hides the side panel.
 
 ## Test results (this build)
 
-- **Native:** 44 test groups pass. The full chain uses ~4% of one core on this build machine.
+- **Native:** 50 test groups pass. The full chain uses ~4% of one core on this build machine.
   - **NAM:** all 11 test captures play (A1 standard, A2 slimmable, A2 features, slimmable WaveNet and
     container, small WaveNet, condition-DSP WaveNet, LSTM, ConvNet, Linear, Sequential), sample-identical
     to NAM core run directly.
@@ -156,6 +174,17 @@ and the depths. **P** (or the tab beside it) hides the side panel.
     keeps playing.
   - **Swaps:** capture swaps are no steppier than steady playing.
   - **Real-time safety:** zero heap calls inside `process()` over 14 s with 5 loads and swaps and the tuner switching on and off.
+  - **Effect chain:**
+    - **Default chain:** output byte-identical to the fixed chain it replaces (42 s rendered both
+      ways). CPU median 4.24% vs 4.29% of one core over five interleaved runs.
+    - **Adding a module, bypassed:** output stays bit-identical.
+    - **Ids, positions and limits:** checked, up to 12 modules.
+    - **Removing:** fades out, leaves the audio order, is freed.
+    - **No clicks:** add, remove and two moves on a held 220 Hz tone. The largest step is 1.5× the
+      steady tone's. The fix for moves recording into a delay cut it from 5.2× to 1.5×.
+    - **Two HOLOGRAMs** keep separate state.
+    - **Real-time safety:** zero heap calls in `process()` through 94 adds, 88 removes and 210 moves.
+    - **Cost:** a full chain of 12 runs at about 9% of one core.
   - **Modulation rack:** the default rack's output is byte-identical to the fixed sources it replaced
     (42 s rendered both ways), at the same CPU (4.1–4.5% vs 4.1–4.7%). Adding sources nobody listens
     to changes nothing. Ids, limits (16) and clean-up on remove are checked. Two LFOs at the same
@@ -184,6 +213,9 @@ and the depths. **P** (or the tab beside it) hides the side panel.
   are kept. `.rigskin` zips are read stored or deflated, or with `skin.json` inside a folder.
 - **Headless Chromium:** 25/25 main checks (including opening and editing sources, depth, patching
   from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks.
+  The 13/13 chain checks add a second HOLOGRAM from the “+” card, set its knob, move it to the
+  front with ◀, patch the LFO to it, duplicate the cab, remove the amp, check the matrix, reload a
+  preset's chain in order, fill the chain to 12 and check Overview fits it.
   The 14/14 rack checks add an LFO from the “+” orb, set its knob, patch the envelope to its rate
   from the panel and an orbit to its shape by carrying a cable orb to orb, patch from the matrix's
   source-knob columns, duplicate and remove, fill the rack to 16, and reload a preset's rack.
@@ -222,6 +254,5 @@ Linux host there. In the browser on a recent PC they run comfortably.
 - Slimmable (A2) captures play at full size; a size control comes later.
 - NAM core trusts a capture file's weight count (see `third_party/README.md`); LSTM counts are checked.
 - Reverb decay runs about 18% shorter than its label at large sizes.
-- The chain order is fixed by the registry; reordering it from the UI comes later.
 - Amp INPUT now defaults to 0 dB (unity into a capture). A fresh start of the built-in amp is cleaner and
   about 6 dB quieter than before; saved presets sound the same.

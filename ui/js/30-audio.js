@@ -18,7 +18,7 @@ async function startAudio(source) {
   node.port.onmessage = (e) => onEngineMsg(e.data);
   node.connect(ctx.destination);
   rig.node = node;
-  syncRack(); sendAll();
+  syncChain(); syncRack(); sendAll();
   pushAllAssets();
   await ctx.resume();
   await setSource(source);

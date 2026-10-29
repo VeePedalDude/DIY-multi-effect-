@@ -1,0 +1,5 @@
+build/
+test/harness
+test/dump
+node_modules/
+*.o

@@ -22,6 +22,7 @@ const DEFAULT_SKIN = {
   // the 3D stage
   stage: {
     background: 'hall.webp', backgroundColor: '#0b0716', fog: '#0b0716', fogDensity: 0.014,
+    parallax: 0.6,                                        // how much the background shifts as you orbit and zoom (0 = fixed, 1 = most)
     flow: '#4FE3F0', slab: '#1a1528', carry: '#ffffff',
     pillBg: 'rgba(15,21,36,.9)', pillLine: '#2A3550', pillText: '#E6ECF5',
   },
@@ -122,6 +123,7 @@ function readSkinJson(j, has = () => true) {
       if (k !== 'sources' && !(sk in base)) { warn(`${p}: not a setting; ignored`); continue; }
       if (k === 'stage' && sk === 'background') { const im = image(p, sv); if (im !== undefined) sec[sk] = im; continue; }
       if (k === 'stage' && sk === 'fogDensity') { if (typeof sv === 'number' && sv >= 0 && sv <= 0.2) sec[sk] = sv; else warn(`${p}: should be a number from 0 to 0.2`); continue; }
+      if (k === 'stage' && sk === 'parallax') { if (typeof sv === 'number' && sv >= 0 && sv <= 1) sec[sk] = sv; else warn(`${p}: should be a number from 0 to 1`); continue; }
       if (k === 'ui' && (sk === 'fontDisplay' || sk === 'fontMono')) { if (typeof sv === 'string' && sv.length < 200 && !/[;{}<>]/.test(sv)) sec[sk] = sv; else warn(`${p}: not a usable font list`); continue; }
       const c = colorOr(p, sv); if (c !== undefined) sec[sk] = c;
     }

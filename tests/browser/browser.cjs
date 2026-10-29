@@ -53,8 +53,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => window.__rig.cmd('param_set tess fold 0.6'));
   await sleep(300);
   r = await page.evaluate(() => window.__rig.lastResp);
-  v = await page.evaluate(() => window.__rig.eff('tess', 'fold'));
-  check(r.status === 0 && Math.abs(v - 0.6) < 0.15, `instance by id: param_set tess fold 0.6 -> resp ${r.status}, engine ${v.toFixed(3)} (heart-modulated)`);
+  // the heart moves this knob by up to +/-0.22 around 0.6, so read its centre over two beats
+  v = await page.evaluate(async () => { const xs = []; for (let i = 0; i < 40; i++) { xs.push(window.__rig.eff('tess', 'fold')); await new Promise((r) => setTimeout(r, 50)); } xs.sort((a, b) => a - b); return (xs[0] + xs[xs.length - 1]) / 2; });
+  check(r.status === 0 && Math.abs(v - 0.6) < 0.12, `instance by id: param_set tess fold 0.6 -> resp ${r.status}, engine centre ${v.toFixed(3)} (heart-modulated)`);
 
   console.log('3. UI: patch CONTROLLER -> CAB MIX in the matrix, then sweep the controller slider');
   await page.click('#vMatrix');
@@ -128,7 +129,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(await page.evaluate(() => getComputedStyle(document.getElementById('panel')).visibility === 'visible' && localStorage.getItem('rig01.panelHidden') === '0'), 'P brings it back');
 
   console.log('8. Hall background and card faces');
-  const bg = await page.evaluate(() => document.getElementById('stage').style.backgroundImage.slice(0, 30));
+  const bg = await page.evaluate(() => document.getElementById('backdrop').style.backgroundImage.slice(0, 30));
   const card = await page.evaluate(() => window.__rig.facePixel('cab', 259, 440)), glass = await page.evaluate(() => window.__rig.facePixel('cab', 100, 300));
   check(bg.startsWith('url("data:image/webp') && card[0] > 200 && card[1] > 200 && card[2] > 200 && glass[0] < 60, `background is the hall image; cab face: card ${card.slice(0, 3)}, screen ${glass.slice(0, 3)}`);
 

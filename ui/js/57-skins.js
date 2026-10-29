@@ -68,7 +68,7 @@ async function applySkin(S, files) {
   let css = document.getElementById('skinCss'); if (!css) { css = document.createElement('style'); css.id = 'skinCss'; document.head.appendChild(css); }
   css.textContent = S.css && files && files.get(S.css) ? new TextDecoder().decode(files.get(S.css)) : '';
   // the stage
-  const bg = urlOf(S.stage.background); canvas.style.backgroundImage = bg ? `url("${bg}")` : 'none';
+  const bg = urlOf(S.stage.background); $('backdrop').style.backgroundImage = bg ? `url("${bg}")` : 'none';
   scene.fog.color.set(S.stage.fog); scene.fog.density = S.stage.fogDensity;
   flowTube.material.color.set(S.stage.flow); flowMat.color.set(S.stage.flow);
   MODS.forEach((m) => { const st = styleOf(m); m.slab.material.color.set(S.stage.slab); m.halo.material.color.set(st.glow); m.glow.material.color.set(st.glow); });

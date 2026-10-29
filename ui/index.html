@@ -21,7 +21,9 @@
 html,body{height:100%;margin:0}
 [hidden]{display:none!important}
 body{background:var(--bg);color:var(--fg);font-family:var(--display);overflow:hidden}
-#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:var(--stageBg) center/cover no-repeat}
+/* the skin's backdrop is its own layer behind the transparent 3D canvas */
+#backdrop{position:fixed;inset:0;will-change:transform;background-color:var(--stageBg);background-position:center;background-size:cover;background-repeat:no-repeat;pointer-events:none}
+#stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:transparent}
 .hud{position:fixed;z-index:5}
 button,select,input{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -157,6 +159,7 @@ body.panel-hidden .matrix{right:16px}
 </style>
 </head>
 <body>
+<div id="backdrop" aria-hidden="true"></div>
 <canvas id="stage" tabindex="0" role="img" aria-label="3D stage: five effect modules in an arc, six modulation sources above, and cables showing which source moves which knob. The Mod Matrix view shows the same routing as a table."></canvas>
 
 <header class="hud top" id="top">

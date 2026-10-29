@@ -24,20 +24,34 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.waitForFunction(() => window.__rig.meters, null, { timeout: 10000 }); await sleep(1500);
   };
   const look = () => page.evaluate(() => ({ id: window.__rig.skinState.id, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(),
-    bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(), stageImg: document.getElementById('stage').style.backgroundImage.slice(0, 22),
+    bg: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(), stageImg: document.getElementById('backdrop').style.backgroundImage.slice(0, 22),
     card: window.__rig.facePixel('cab', 259, 440), saved: localStorage.getItem('rig01.skin') }));
   const light = (p) => p[0] > 200 && p[1] > 200 && p[2] > 200, dark = (p) => p[0] < 40 && p[1] < 40 && p[2] < 50;
+  // What is really on screen at a point of empty stage (left edge, mid height): checks the background
+  // is painted, not just set.
+  const screenPx = async (x = 30, y = 420) => {
+    const b = await page.screenshot({ clip: { x, y, width: 1, height: 1 } });
+    return page.evaluate(async (b64) => { const i = new Image(); i.src = 'data:image/png;base64,' + b64; await i.decode(); const c = document.createElement('canvas'); c.width = c.height = 1; const x = c.getContext('2d'); x.drawImage(i, 0, 0); return Array.from(x.getImageData(0, 0, 1, 1).data).slice(0, 3); }, b.toString('base64'));
+  };
 
   console.log('1. Starts in the default skin, Astral Hall');
   await open();
   let L = await look();
-  check(L.id === 'builtin:astral' && L.stageImg.startsWith('url("data:image/webp') && light(L.card), `hall background, light cards (${L.card.slice(0, 3)})`);
+  const hallPx = await screenPx();
+  check(L.id === 'builtin:astral' && L.stageImg.startsWith('url("data:image/webp') && light(L.card), `hall background set, light cards (${L.card.slice(0, 3)})`);
+  check(!(hallPx[0] === 11 && hallPx[1] === 7 && hallPx[2] === 22) && hallPx.some((v) => v > 30), `the hall is really painted on screen (pixel ${hallPx}; the plain background colour would be 11,7,22)`);
+  const t0 = await page.evaluate(() => document.getElementById('backdrop').style.transform);
+  await page.mouse.move(700, 600); await page.mouse.down(); await page.mouse.move(400, 520, { steps: 8 }); await page.mouse.up(); await sleep(400);
+  const t1 = await page.evaluate(() => document.getElementById('backdrop').style.transform);
+  check(t0 !== t1 && /translate\(/.test(t1), `orbiting shifts the background against the cards (parallax): “${t0}” -> “${t1}”`);
 
   console.log('2. Classic from the Skins menu: dark cards, no image, remembered');
   await page.click('#settingsBtn'); await sleep(300);
   await page.click('[data-skin-use="builtin%3Aclassic"]'); await sleep(800);
   L = await look();
-  check(L.id === 'builtin:classic' && L.stageImg === 'none' && L.bg === '#05070C' && dark(L.card) && L.saved === 'builtin:classic', `classic: --bg ${L.bg}, card ${L.card.slice(0, 3)}, saved “${L.saved}”`);
+  const classicPx = await screenPx();
+  check(L.id === 'builtin:classic' && L.stageImg === 'none' && L.bg === '#05070C' && dark(L.card) && L.saved === 'builtin:classic' && classicPx.every((v) => v < 30),
+    `classic: --bg ${L.bg}, card ${L.card.slice(0, 3)}, plain dark stage on screen (${classicPx}), saved “${L.saved}”`);
   await page.screenshot({ path: path.join(shots, 'shot-skin-classic.png') });
 
   console.log('3. Favourites and K');

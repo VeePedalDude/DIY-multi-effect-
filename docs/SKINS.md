@@ -44,7 +44,7 @@ a colour name. Images and fonts are file names inside the `.rigskin`.
 |---|---|
 | `name`, `author`, `description` | shown in the Skins menu |
 | `ui` | menus, panels, tables, bars, dialogs, buttons. These become the page's CSS variables: `bg`, `glass` (panel and bar background, usually translucent), `raise` (buttons, inputs), `line` / `line2` (borders), `fg` / `muted` / `soft` (text), `accent`, `ink` (text on accent), `ok` / `warn` / `bad`, `off`, `item` (list rows), `selected`, `well` (log, wells), `overlay`, `dialog`, `onBg` / `onLine` (Active button), `bypBg` / `bypLine` (Bypassed button), `fontDisplay`, `fontMono` (CSS font lists) |
-| `stage` | the 3D stage: `background` (an image filling the window, or `null`), `backgroundColor`, `fog` and `fogDensity` (0–0.2), `flow` (the signal line), `slab` (card backs), `carry` (the cable you're carrying), `pillBg` / `pillLine` / `pillText` (IN/OUT labels) |
+| `stage` | the 3D stage: `background` (an image filling the window, or `null`), `backgroundColor`, `parallax` (0–1: how much the background shifts as you orbit and zoom, so a flat picture sits in the scene; 0 keeps it still), `fog` and `fogDensity` (0–0.2), `flow` (the signal line), `slab` (card backs), `carry` (the cable you're carrying), `pillBg` / `pillLine` / `pillText` (IN/OUT labels) |
 | `screen` | the dark display on every module face: `glass`, `accent`, `text`, `bright`, `dim`, `warn`, `ok`, `track`, `off`, `alt`, `grid` |
 | `card` | text and plain parts of a module card: `title`, `text`, `powerOn`, `powerOff`, `bypassed`; `plain` / `plainLine` for a tile without an image |
 | `knob` | `track`, `bodyLight` / `bodyMid` / `bodyDark` (the knob's shading), `rim`, `pointer`, `label`, `value` |

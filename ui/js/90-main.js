@@ -4,6 +4,17 @@ function resize() {
   document.documentElement.style.setProperty('--topH', $('top').offsetHeight + 'px');
   document.documentElement.style.setProperty('--botH', $('bottom').offsetHeight + 'px');
 }
+// The skin's background image is a flat picture behind the 3D canvas. To sit in the scene it shifts
+// a little against the cards as the camera orbits, tilts and zooms (SKIN.stage.parallax; off for
+// reduced motion). It's drawn a little larger than the window so its edges never show.
+let lastBackdrop = '';
+function moveBackdrop() {
+  const k = RM ? 0 : SKIN.stage.parallax, el = $('backdrop');
+  const x = clamp(-cam.theta * 9 * k, -4.5 * k, 4.5 * k), y = clamp((cam.phi - 1.12) * 10 * k, -3.5 * k, 3.5 * k);
+  const z = 1 + 0.1 * k + clamp((overviewR() / cam.r - 1) * 0.04 * k, -0.02, 0.06 * k);
+  const t = k ? `translate(${x.toFixed(2)}%, ${y.toFixed(2)}%) scale(${z.toFixed(4)})` : '';
+  if (t !== lastBackdrop) { el.style.transform = t; lastBackdrop = t; }
+}
 function meterBar(el, pk) { const db = 20 * Math.log10(pk + 1e-9), f = clamp((db + 60) / 60, 0, 1); el.style.width = (f * 100) + '%'; el.className = db > -1 ? 'clip' : db > -9 ? 'hot' : ''; }
 const clock = new THREE.Clock(); let frame = 0; const tmpV = new THREE.Vector3();
 function fillCurve(curve, attr) { const arr = attr.array; for (let i = 0; i < CN; i++) { curve.getPoint(i / (CN - 1), tmpV); arr[i * 3] = tmpV.x; arr[i * 3 + 1] = tmpV.y; arr[i * 3 + 2] = tmpV.z; } attr.needsUpdate = true; }
@@ -16,6 +27,7 @@ function loop() {
   flowMat.opacity = .25 + .75 * level; flowMat.size = .14 + .2 * level;
   MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });
   SRC.forEach((s) => { const v = srcVal(s.idx), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
+  moveBackdrop();
   if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach(drawLabel); drawSourceScope(); }
   for (let i = 0; i < NP; i++) { const u = ((i / NP) + T * (RM ? .01 : .05 + .1 * level)) % 1; flowCurve.getPointAt(u, tmpV); flowPos[i * 3] = tmpV.x; flowPos[i * 3 + 1] = tmpV.y + .06; flowPos[i * 3 + 2] = tmpV.z; }
   flowGeo.attributes.position.needsUpdate = true;

@@ -1,0 +1,9 @@
+# The tabs of the "Add a source" panel, in order. Each is a folder in engine/sources/: put a new
+# source's file in the folder it belongs to and run ./build.sh (tools/gen_registry.py makes the
+# registry from the folders). A tab with nothing in it yet still shows, with a note.
+#
+# folder       | tab label        | what goes here
+time           | Time & tempo     | LFOs, sequencers, clocks, tempo-synced shapes
+playing        | Your playing     | envelopes, pick triggers, pitch and dynamics followers
+chaos          | Physics & chaos  | orbits, random walks, simulations
+outside        | Outside world    | controllers, sensors, the body

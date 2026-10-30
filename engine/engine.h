@@ -96,7 +96,8 @@ struct Engine {
     sr = s; ctx.sr = s;
     for (int k = 0; k < MAXMOD; k++) { delete mods[k]; mods[k] = nullptr; mtype[k] = -1; mid[k][0] = 0; dying[k] = 0; }
     order = Order();
-    for (int t = 0; t < NMODTYPES; t++) addModule(moduleTypeDesc(t).id, nullptr, -1, false);
+    int nd = 0; const char* const* ids = defaultChain(nd);    // engine/modules/default_chain.txt
+    for (int i = 0; i < nd; i++) addModule(ids[i], nullptr, -1, false);
     runWord = wantOrder.load(); curOrder.store(runWord); dipG = dipTarget = 1.f; dipStep = 1.f / (0.010f * sr);
     rack.init(sr); tuner.init(sr); muteG = 1.f; muteStep = 1.f / (0.010f * sr);
     masterS.setMs(sr, 30); masterS.y = db2lin(masterDb);
@@ -341,11 +342,14 @@ struct Engine {
     j.key("tun"); j.num(M_TUN); j.ch(','); j.key("tunLen"); j.num(T_LEN); j.ch(','); j.key("tunBands"); j.num(TUN_BANDS);
     j.raw("},");
     j.key("maxModules"); j.num(MAXMOD); j.ch(',');
+    j.key("moduleCategories"); j.ch('[');                   // the tabs of the add panel, in order
+    for (int c = 0; c < NMODCATS; c++) { if (c) j.ch(','); j.ch('{'); j.key("id"); j.str(moduleCategories()[c].id); j.ch(','); j.key("label"); j.str(moduleCategories()[c].label); j.ch(','); j.key("blurb"); j.str(moduleCategories()[c].blurb); j.ch('}'); }
+    j.raw("],");
     j.key("moduleTypes"); j.ch('[');                         // every kind of effect the chain can hold
     for (int t = 0; t < NMODTYPES; t++) {
       const ModuleDesc& d = moduleTypeDesc(t);
       if (t) j.ch(',');
-      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("kind"); j.str(d.kind); j.ch(',');
+      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(moduleTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("kind"); j.str(d.kind); j.ch(',');
       j.key("params"); params(j, d.nparams, d.params);
       j.ch(','); j.key("meters"); j.ch('[');
       for (int k = 0; k < d.nmeters; k++) { if (k) j.ch(','); j.str(d.meters[k]); }
@@ -361,11 +365,14 @@ struct Engine {
     j.raw("],");
     j.key("modules"); chainList(j, *this); j.ch(',');      // the chain as it starts: one of each type
     j.key("maxSources"); j.num(MAXSRC); j.ch(',');
+    j.key("sourceCategories"); j.ch('[');
+    for (int c = 0; c < NSRCCATS; c++) { if (c) j.ch(','); j.ch('{'); j.key("id"); j.str(sourceCategories()[c].id); j.ch(','); j.key("label"); j.str(sourceCategories()[c].label); j.ch(','); j.key("blurb"); j.str(sourceCategories()[c].blurb); j.ch('}'); }
+    j.raw("],");
     j.key("sourceTypes"); j.ch('[');                         // every kind of source the rack can hold
     for (int t = 0; t < NSRCTYPES; t++) {
       const SourceDesc& d = sourceTypeDesc(t);
       if (t) j.ch(',');
-      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
+      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(sourceTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
       j.key("ext"); j.str(d.ext); j.ch(','); j.key("params"); params(j, d.nparams, d.params); j.ch(','); j.key("meters"); j.ch('[');
       for (int q = 0; q < d.nmeters; q++) { if (q) j.ch(','); j.str(d.meters[q]); }
       j.raw("]}");

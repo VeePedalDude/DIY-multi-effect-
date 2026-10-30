@@ -46,11 +46,11 @@ TEST("03 chain: self-description matches the registries") {
   CHECK(!inStr && braces == 0 && brackets == 0, "brackets and quotes balance");
   bool all = true;
   for (int m = 0; m < NMODTYPES; m++) { const auto& d = moduleTypeDesc(m);
-    std::string k = std::string("\"id\":\"") + d.id + "\""; if (!strstr(j, k.c_str())) all = false;
+    std::string k = std::string("\"type\":\"") + d.id + "\""; if (!strstr(j, k.c_str())) all = false;
     if (d.nparams < 1 || d.nparams > MAXPAR) all = false;
     for (int p = 0; p < d.nparams; p++) { std::string s = std::string("\"symbol\":\"") + d.params[p].symbol + "\""; if (!strstr(j, s.c_str())) all = false;
       if (d.params[p].def < 0 || d.params[p].def > 1) all = false;
       if (d.params[p].curve == Curve::Log && d.params[p].min <= 0) all = false; } }
-  for (int k = 0; k < NSRCTYPES; k++) { std::string s = std::string("\"id\":\"") + sourceTypeDesc(k).id + "\""; if (!strstr(j, s.c_str())) all = false; }
+  for (int k = 0; k < NSRCTYPES; k++) { std::string s = std::string("\"type\":\"") + sourceTypeDesc(k).id + "\""; if (!strstr(j, s.c_str())) all = false; }
   CHECK(all, "all %d module types and %d source types listed with valid parameter ranges", NMODTYPES, NSRCTYPES);
 }

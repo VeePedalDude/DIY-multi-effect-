@@ -28,19 +28,18 @@ function renderPanel() {
   h += `</div><div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">param_set ${m.inst} ${m.params[0].sym} 0.5<br>bypass ${m.inst} 1<br>fx_move ${m.inst} ${Math.max(0, i - 1)}<br>fx_remove ${m.inst}</span></div>`;
   panel.innerHTML = h;
 }
-// The add panel for effects: every kind the engine has, and where the new one goes.
+// The add panel for effects: a tab per category (engine/modules/<category>/), search across them all.
+PICKERS.fx = {
+  cats: () => DESC.moduleCategories,
+  items: () => MTYPE_ORDER.map((t) => { const d = MTYPES[t]; return { type: t, name: d.name, sub: d.kind, category: d.category, have: MODS.filter((m) => m.type === t).length,
+    detail: d.params.map((q) => q.label.toLowerCase()).join(' · ') + (d.asset ? ` · loads ${d.asset.label.toLowerCase()} files` : '') }; }),
+  full: () => chainFull(), attr: 'data-addfx-type', noun: 'effect', folder: 'engine/modules', doc: 'docs/ADDING_A_MODULE.md',
+};
 function renderAddFxPanel() {
-  const full = chainFull();
-  let h = `<div><div class="eyebrow">Effect chain · ${MODS.length} of ${DESC.maxModules}</div><h2>Add an effect</h2><div class="kind">${full ? 'The chain is full: remove one first.' : 'It goes at the end of the chain (move it with ◀ ▶). Several of one kind is fine.'}</div></div><div class="types">`;
-  MTYPE_ORDER.forEach((t) => {
-    const d = MTYPES[t], have = MODS.filter((m) => m.type === t).length;
-    h += `<div class="patch"><div class="prow"><span><b>${d.name}</b> <small class="muted">${d.kind.replace(/</g, '&lt;')}${have ? ` · ${have} in the chain` : ''}</small></span>
-      <button class="btn mini" data-addfx-type="${t}" ${full ? 'disabled' : ''}>Add</button></div>
-      <small class="muted">${d.params.map((q) => q.label.toLowerCase()).join(' · ')}${d.asset ? ` · loads ${d.asset.label.toLowerCase()} files` : ''}</small></div>`;
-  });
-  h += `</div><p class="note">Effects fade in when added and out when removed, and moving one dips the sound for a moment, so you can change the chain while you play.</p>
+  panel.innerHTML = `<div><div class="eyebrow">Effect chain · ${MODS.length} of ${DESC.maxModules}</div><h2>Add an effect</h2><div class="kind">${chainFull() ? 'The chain is full: remove one first.' : 'It goes at the end of the chain (move it with ◀ ▶). Several of one kind is fine.'}</div></div>
+  ${pickerHtml('fx')}
+  <p class="note">Effects fade in when added and out when removed, and moving one dips the sound for a moment, so you can change the chain while you play.</p>
   <div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">fx_add holo holo2<br>fx_move holo2 0<br>fx_remove holo2</span></div>`;
-  panel.innerHTML = h;
 }
 let panelPending = false;
 function renderPanelSoon() { if (panelPending) return; panelPending = true; requestAnimationFrame(() => { panelPending = false; renderPanel(); }); }

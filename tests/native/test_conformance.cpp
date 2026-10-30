@@ -121,7 +121,7 @@ template <class T> static std::string moduleCheck(long& heap) {
 }
 TEST("93 conformance: every module type follows the format, stays finite and never allocates in process()") {
   int bad = 0; long heap = 0;
-#define RIG_CHECK_MOD(T, member) { std::string p = moduleCheck<T>(heap); if (!p.empty()) { printf("      ! %s:%s\n", #member, p.c_str()); bad++; } }
+#define RIG_CHECK_MOD(T, member, cat) { std::string p = moduleCheck<T>(heap); if (!p.empty()) { printf("      ! %s:%s\n", #member, p.c_str()); bad++; } }
   RIG_MODULES(RIG_CHECK_MOD)
 #undef RIG_CHECK_MOD
   CHECK(bad == 0, "%d module types x 4 knob settings on loud and quiet noise: %d with problems", NMODTYPES, bad);

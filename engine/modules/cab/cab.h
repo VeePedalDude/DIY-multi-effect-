@@ -1,11 +1,11 @@
-// engine/modules/cab.h - impulse responses of any length, mono or stereo: a cabinet, a room, a
+// engine/modules/cab/cab.h - impulse responses of any length, mono or stereo: a cabinet, a room, a
 // convolution reverb. Runs on NeuralAmpModelerCore's zero-latency partitioned FFT convolver
 // (nam::Linear: direct convolution up to 1024 taps, FFT partitions above; see core/nam.h).
 #pragma once
 #include <string>
 #include <vector>
-#include "../core/module.h"
-#include "../core/nam.h"
+#include "../../core/module.h"
+#include "../../core/nam.h"
 
 namespace rig {
 

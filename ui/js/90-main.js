@@ -76,7 +76,7 @@ function wireStart() {
 (async function boot() {
   try { await loadModel(); }
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
-  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireControllers(); wirePresets(); wireStart();
+  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireControllers(); wirePresets(); wireStart();
   const libraryReady = initLibrary().catch((e) => logLine('library: ' + e.message, true));
   restoreSkin(libraryReady).catch((e) => logLine('skin: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();

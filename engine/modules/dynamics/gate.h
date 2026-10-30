@@ -1,6 +1,6 @@
-// engine/modules/gate.h - noise gate with hysteresis and hold.
+// engine/modules/dynamics/gate.h - noise gate with hysteresis and hold.
 #pragma once
-#include "../core/module.h"
+#include "../../core/module.h"
 
 namespace rig {
 

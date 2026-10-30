@@ -1,0 +1,15 @@
+# The tabs of the "Add an effect" panel, in order. Each is a folder in engine/modules/: put a new
+# effect's file in the folder it belongs to and run ./build.sh (tools/gen_registry.py makes the
+# registry from the folders). A tab with nothing in it yet still shows, with a note.
+#
+# folder       | tab label     | what goes here
+dynamics       | Dynamics      | gates, compressors, limiters
+drive          | Amps & drive  | amp captures, overdrive, distortion, fuzz
+cab            | Cabs & IRs    | speaker cabinets, impulse responses
+filter         | Filter & EQ   | EQs, wahs, filters
+modulation     | Modulation    | chorus, flanger, phaser, tremolo, vibrato
+pitch          | Pitch         | octaves, harmonies, pitch shifting
+delay          | Delay         | echoes and repeats
+reverb         | Reverb        | rooms, halls, plates, spaces
+utility        | Utility       | volume, splits, tools
+experimental   | Experimental  | anything that doesn't fit a box

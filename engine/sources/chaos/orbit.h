@@ -1,6 +1,6 @@
-// engine/sources/orbit.h - three-body orbit (perturbed figure-eight); output = distance between bodies 0 and 1.
+// engine/sources/chaos/orbit.h - three-body orbit (perturbed figure-eight); output = distance between bodies 0 and 1.
 #pragma once
-#include "../core/source.h"
+#include "../../core/source.h"
 
 namespace rig {
 

@@ -1,7 +1,7 @@
-// engine/sources/heart.h - heartbeat (QRS-shaped). Uses a strap's bpm from `ext heart <bpm>`
+// engine/sources/outside/heart.h - heartbeat (QRS-shaped). Uses a strap's bpm from `ext heart <bpm>`
 // while fresh (< 5 s old), otherwise a simulated rate (REST, default 72 bpm).
 #pragma once
-#include "../core/source.h"
+#include "../../core/source.h"
 
 namespace rig {
 

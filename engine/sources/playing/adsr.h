@@ -1,9 +1,9 @@
-// engine/sources/adsr.h - pick-triggered ADSR. Onsets are detected in the >1.8 kHz band,
+// engine/sources/playing/adsr.h - pick-triggered ADSR. Onsets are detected in the >1.8 kHz band,
 // where pick transients live and ringing strings do not (24/24 on the test riff).
 // ATTACK, DECAY to SUSTAIN, then RELEASE once the input drops below -45 dBFS
 // (defaults A 40 ms, D 300 ms, S 40%, R 600 ms).
 #pragma once
-#include "../core/source.h"
+#include "../../core/source.h"
 
 namespace rig {
 

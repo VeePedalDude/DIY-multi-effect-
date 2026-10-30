@@ -163,6 +163,16 @@ body.panel-hidden .matrix{right:16px}
 .patch{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--item)}
 .patch .prow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
 .types{display:flex;flex-direction:column;gap:10px}
+/* the add panels' picker: search, a tab per category, the list */
+.pick-search input{width:100%;box-sizing:border-box;min-height:38px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 12px;color:var(--fg);font:400 14px var(--display)}
+.pick-search input::placeholder{color:var(--muted)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tab{min-height:30px;padding:0 10px;border:1px solid var(--line2);border-radius:999px;background:var(--raise);color:var(--soft);font:600 12px/1 var(--display);letter-spacing:.04em}
+.tab small{font:500 10px/1 var(--mono);color:var(--muted);margin-left:2px}
+.tab:hover{border-color:var(--accent)}
+.tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--ink)}
+.tab[aria-selected="true"] small{color:var(--ink)}
+.tab.empty{color:var(--muted);border-style:dashed}
 .matrix thead th.grp{font:500 11px/1.2 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--line);text-align:left}
 /* skins menu */
 .skins{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}

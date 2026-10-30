@@ -8,9 +8,10 @@ static std::vector<float> sine(float hz, float amp, float secs) { std::vector<fl
 static std::string chainIds(const Engine& e) { std::string s; for (int i = 0; i < e.order.n; i++) { if (i) s += ' '; s += e.mid[e.order.s[i]]; } return s; }
 
 TEST("04 fx chain: a fresh chain is one of each type; a module added bypassed changes nothing") {
-  Engine e; e.init(SR); bool ok = e.order.n == NMODTYPES;
-  for (int t = 0; t < NMODTYPES; t++) ok = ok && e.order.s[t] == t && !strcmp(e.mid[t], moduleTypeDesc(t).id) && strstr(e.chainJson, moduleTypeDesc(t).id);
-  CHECK(ok && strstr(e.descJson, "\"moduleTypes\":[") && strstr(e.descJson, "\"maxModules\":12"), "chain: %s (slots 0..%d); describe() lists %d types", chainIds(e).c_str(), NMODTYPES - 1, NMODTYPES);
+  Engine e; e.init(SR); int nd = 0; const char* const* want = defaultChain(nd); bool ok = e.order.n == nd;
+  for (int i = 0; i < nd; i++) ok = ok && e.order.s[i] == i && !strcmp(e.mid[i], want[i]) && e.mtype[i] == moduleTypeIndex(want[i]);
+  CHECK(ok && strstr(e.descJson, "\"moduleTypes\":[") && strstr(e.descJson, "\"maxModules\":12") && strstr(e.descJson, "\"moduleCategories\":["),
+    "chain: %s (default_chain.txt, slots 0..%d); describe() lists %d types in %d categories", chainIds(e).c_str(), nd - 1, NMODTYPES, NMODCATS);
   Engine* a = new Engine(); a->init(SR); Engine* b = new Engine(); b->init(SR);
   const int h = b->addModule("holo", nullptr, 1); b->byp[h] = true;                    // added, but bypassed before it ever sounds
   auto ra = render(*a, riffSignal()), rb = render(*b, riffSignal());

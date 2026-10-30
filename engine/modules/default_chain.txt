@@ -1,0 +1,3 @@
+# What a fresh rig starts with, in signal order (module ids). Adding an effect to a folder does not
+# add it here, so the library can grow without the default chain growing with it.
+gate amp cab holo tess

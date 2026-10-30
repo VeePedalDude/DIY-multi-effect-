@@ -27,6 +27,9 @@ compile() { # compile <out-dir> <flags...> < sources
   stale "$dir" | xargs -r -P "$JOBS" -n 2 sh -c 'echo "   cc $0"; '"$*"' -c "$0" -o "$1"'
 }
 
+echo "== registries (engine/modules and engine/sources category folders -> registry.h)"
+python3 tests/tools/gen_registry.test.py
+python3 tools/gen_registry.py
 echo "== third-party objects (cached in build/obj)"
 echo "$NAM_SRC" | compile build/obj/native "$CXX -O2 -std=c++20 -w $INC"
 # WebAssembly: NAM core minus its file readers (no file system in the browser), plus the C++

@@ -5,8 +5,8 @@
 //    to MAXSRC *instances* of them in slots. Several instances of one type are fine (two LFOs).
 //  - Each instance has an id: the type id for the first ("lfo"), then "lfo2", "lfo3"... or one the
 //    host chooses ([a-z][a-z0-9_]*, up to 15 characters).
-//  - A fresh rack holds one instance of every type, ids = type ids, in registry order, so the
-//    default rig (and every older preset) is exactly what it was before the rack existed.
+//  - A fresh rack holds the types in engine/sources/default_rack.txt, ids = type ids, so the default
+//    rig (and every older preset) is exactly what it was before the rack existed.
 //  - Cross-modulation: any instance's knob can take one source, with a depth, like a module's knob.
 //    All knobs are worked out from the sources' values of the previous block (2.7 ms ago), so any
 //    patch, including loops and a source moving its own knob, is well defined and stable.
@@ -22,18 +22,25 @@
 
 namespace rig {
 
-#define RIG_COUNT(T, m) +1
+#define RIG_COUNT(T, m, c) +1
 constexpr int NSRCTYPES = 0 RIG_SOURCES(RIG_COUNT);
+constexpr int NSRCCATS = 0 RIG_SOURCE_CATEGORIES(RIG_COUNT);
 #undef RIG_COUNT
 constexpr int MAXSRC = 16;                 // instances in the rack
 constexpr int SRC_ID_LEN = 16;             // id, including the terminating zero
 
 // The registry as a table: each type's description and a way to make one.
-struct SourceType { const SourceDesc& (*desc)(); Source* (*make)(); };
-#define RIG_TYPE(T, m) SourceType{ []() -> const SourceDesc& { static T proto; return proto.desc(); }, []() -> Source* { return new T(); } },
+struct SourceType { const SourceDesc& (*desc)(); Source* (*make)(); const char* category; };
+#define RIG_TYPE(T, m, c) SourceType{ []() -> const SourceDesc& { static T proto; return proto.desc(); }, []() -> Source* { return new T(); }, #c },
 inline const SourceType* sourceTypes() { static const SourceType t[NSRCTYPES] = { RIG_SOURCES(RIG_TYPE) }; return t; }
 #undef RIG_TYPE
 inline const SourceDesc& sourceTypeDesc(int t) { return sourceTypes()[t].desc(); }
+// The categories (folders, and the tabs of the add panel), in order, and what a fresh rack holds.
+struct SourceCategory { const char* id; const char* label; const char* blurb; };
+#define RIG_SCAT(c, label, blurb) SourceCategory{ #c, label, blurb },
+inline const SourceCategory* sourceCategories() { static const SourceCategory t[NSRCCATS] = { RIG_SOURCE_CATEGORIES(RIG_SCAT) }; return t; }
+#undef RIG_SCAT
+inline const char* const* defaultRack(int& n) { static const char* const ids[] = { RIG_DEFAULT_RACK }; n = (int)(sizeof ids / sizeof ids[0]); return ids; }
 inline int sourceTypeIndex(const char* type) { for (int t = 0; t < NSRCTYPES; t++) if (!strcmp(sourceTypeDesc(t).id, type)) return t; return -1; }
 
 enum RackError { RACK_BAD_TYPE = -1, RACK_FULL = -2, RACK_BAD_ID = -3, RACK_NO_SUCH = -4 };
@@ -63,7 +70,8 @@ struct ModRack {
   // A fresh rack: one of every type, ids = type ids (control thread; not while audio runs).
   void init(float s) {
     sr = s; clearAll(); collect(true);
-    for (int t = 0; t < NSRCTYPES; t++) add(t, nullptr);
+    int n = 0; const char* const* ids = defaultRack(n);      // engine/sources/default_rack.txt
+    for (int i = 0; i < n; i++) add(sourceTypeIndex(ids[i]), nullptr);
   }
   bool used(int k) const { return k >= 0 && k < MAXSRC && slot[k].type >= 0; }
   int find(const char* id) const { for (int k = 0; k < MAXSRC; k++) if (used(k) && !strcmp(slot[k].id, id)) return k; return -1; }

@@ -1,6 +1,6 @@
-// engine/modules/tess.h - Tesseract reverb: 8-line FDN whose matrix rotates the two 4-D halves.
+// engine/modules/reverb/tess.h - Tesseract reverb: 8-line FDN whose matrix rotates the two 4-D halves.
 #pragma once
-#include "../core/module.h"
+#include "../../core/module.h"
 
 namespace rig {
 

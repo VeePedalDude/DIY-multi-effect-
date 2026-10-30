@@ -1,42 +1,57 @@
 # Adding an effect module
 
-Three steps, all in new files except one line in the registry.
+One new file in the right folder, and a test. There is no list to edit: the folders are the registry.
 
-## 1. Write `engine/modules/<id>.h`
+## Where effects live
 
-This tremolo was built and checked exactly this way (3 knobs, appears in the UI automatically):
+```
+engine/modules/
+  categories.txt        the categories, in tab order: folder | tab label | what goes here
+  default_chain.txt     what a fresh rig starts with, in order (module ids)
+  dynamics/gate.h       one effect per file, in its category's folder
+  drive/amp.h
+  cab/cab.h
+  delay/holo.h
+  reverb/tess.h
+  registry.h            GENERATED from the folders by tools/gen_registry.py (./build.sh runs it)
+```
+
+Each folder is a tab in the **Add an effect** panel: Dynamics, Amps & drive, Cabs & IRs,
+Filter & EQ, Modulation, Pitch, Delay, Reverb, Utility, Experimental. A tab with no effects yet
+still shows, and says which folder new ones go in. A new category is one line in `categories.txt`
+plus its folder.
+
+## 1. Write `engine/modules/<category>/<id>.h`
+
+Start from [`templates/module_template.h`](templates/module_template.h): a tremolo that was put in
+`modulation/`, built, and run through every test. The shape:
 
 ```cpp
 #pragma once
-#include "../core/module.h"
+#include "../../core/module.h"
 namespace rig {
-
 inline constexpr ParamDesc TREM_PARAMS[] = {
   // symbol   label    min    max   default unit  curve        decimals sign
   {"depth", "DEPTH",  0.f,  100.f, 0.5f,  "%",  Curve::Lin, 0, false},
   {"rate",  "RATE",   0.5f, 16.f,  0.4f,  "Hz", Curve::Log, 1, false},
   {"shape", "SHAPE",  0.f,  1.f,   0.f,   "",   Curve::Lin, 2, false},
 };
-inline constexpr ModuleDesc TREM_DESC = {"trem", "TREMOLO", "sine to square", 3, TREM_PARAMS, 0, {nullptr, nullptr}};
-
+inline constexpr ModuleDesc TREM_DESC = {"trem", "TREMOLO", "sine to square", 3, TREM_PARAMS, 1, {"gain", nullptr}};
 struct Trem : Module {
-  float ph = 0;
   const ModuleDesc& desc() const override { return TREM_DESC; }
-  void init(float s) override { sr = s; reset(); }
-  void reset() override { ph = 0; }
+  void init(float s) override { /* ... */ }
+  void reset() override { /* ... */ }
   void process(const float* inL, const float* inR, float* oL, float* oR, int n,
-               const float* e, const Context&) override {
-    float depth = map(0, e[0]) * 0.01f, hz = map(1, e[1]), sh = e[2];
-    for (int i = 0; i < n; i++) {
-      ph += hz / sr; if (ph >= 1) ph -= 1;
-      float s = sinf(2 * PI_F * ph), lfo = (1 - sh) * s + sh * (s > 0 ? 1.f : -1.f);
-      float g = 1.f - depth * 0.5f * (1.f + lfo);
-      oL[i] = inL[i] * g; oR[i] = inR[i] * g;
-    }
-  }
+               const float* e, const Context& ctx) override { /* ... */ }
 };
-} // namespace rig
+}
 ```
+
+The build checks the file and stops with what to fix if:
+- it isn't in a folder listed in `categories.txt`;
+- it doesn't hold exactly one `struct <Name> : Module`;
+- its description's id isn't the file name (`trem.h` → `"trem"`);
+- an id or struct name is already taken.
 
 Rules:
 - `e[i]` is the knob after modulation, 0..1. Use `map(i, e[i])` for real units.
@@ -46,33 +61,22 @@ Rules:
 - Up to 8 parameters (`MAXPAR`) and 2 display meters (`meters()` + names in the desc).
 - `Context` gives `sr` and `bpm` for tempo-synced effects.
 
-## 2. Register it in `engine/modules/registry.h`
+## 2. Run `./build.sh`
 
-```cpp
-#include "trem.h"
-...
-  X(Tess, tess)        \
-  X(Trem, trem)
-```
+It makes `engine/modules/registry.h` from the folders and builds everything. The new effect appears
+in its tab of the **Add an effect** panel. Adding it to the library doesn't add it to a fresh rig;
+to do that, add its id to `default_chain.txt` (at most 12).
 
-The list is the module *types*. A fresh chain holds one of each, in this order; after that the player
+The registry holds the module *types*. A fresh chain holds the ones in `default_chain.txt`; after that the player
 adds, removes and reorders instances freely (several of one type is fine: `holo`, `holo2`), and
 presets save the chain. Your module is one instance: keep all its state in members, never `static`
 (test 93 and the chain tests check two instances stay independent).
 
 ## 3. Add a test: `tests/native/test_<id>.cpp`
 
-```cpp
-#include "framework.h"
-using namespace rigtest;
-TEST("70 trem: full depth dips the level") {
-  Engine e; e.init(SR); only(e, mod(e, "trem"));
-  ...
-  CHECK(condition, "what you measured %.1f dB", value);
-}
-```
-
-`only(e, index)` isolates one module. `riffSignal()` gives the synthetic guitar riff.
+Start from [`templates/test_module_template.cpp`](templates/test_module_template.cpp):
+`e.addModule("trem", nullptr, -1, false)` puts one in the chain and returns its slot, `only(e, slot)`
+isolates it, and `riffSignal()` gives a synthetic guitar riff. Show it does its job, with numbers.
 
 ## Optional: a file slot (IRs, captures, samples)
 

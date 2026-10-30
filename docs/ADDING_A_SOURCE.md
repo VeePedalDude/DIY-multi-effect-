@@ -7,11 +7,25 @@ per block (128 samples, about every 2.7 ms). Sources live in the **modulation ra
 (cross-modulation). You get all of that, plus the panel, the matrix, presets, scenes and the text
 protocol, from the description alone.
 
-Four steps: one new file, one registry line, one test file, and the docs table. The format below is
+Three steps: one new file in the right folder, a test, and the docs table. There is no list to edit:
+the folders are the registry (`tools/gen_registry.py` makes `engine/sources/registry.h` from them). The format below is
 checked by `tests/native/test_conformance.cpp` for every registered type, so a mistake fails the
 build with the type's name and what's wrong.
 
-## 1. Write `engine/sources/<id>.h`
+## Where sources live
+
+```
+engine/sources/
+  categories.txt     the tabs of the "Add a source" panel, in order: folder | tab label | what goes here
+  default_rack.txt   what a fresh rig's rack starts with, in order (source ids)
+  time/lfo.h         one source per file, in its category's folder
+  playing/env.h  playing/adsr.h
+  chaos/orbit.h
+  outside/heart.h  outside/ctrl.h
+  registry.h         GENERATED from the folders (./build.sh runs the generator)
+```
+
+## 1. Write `engine/sources/<category>/<id>.h`
 
 Start from [`templates/source_template.h`](templates/source_template.h), a working sample-and-hold
 source (it was built and run through every test). The shape:
@@ -19,7 +33,7 @@ source (it was built and run through every test). The shape:
 ```cpp
 // engine/sources/rand.h - RANDOM: one line saying what it does, its output and its defaults.
 #pragma once
-#include "../core/source.h"
+#include "../../core/source.h"
 namespace rig {
 //                 symbol   label    min    max     default unit        curve       decimals sign
 inline constexpr ParamDesc RAND_PARAMS[] = {
@@ -74,18 +88,13 @@ struct RandomSH : Source {
 use them in `update()`. Sources that only need slow outside data can also live outside the engine
 and just send `ext ctrl <value>`.
 
-## 2. Register it in `engine/sources/registry.h`
+## 2. Run `./build.sh`
 
-```cpp
-#include "rand.h"
-...
-  X(Ctrl,      ctrl)    \
-  X(RandomSH,  rand)
-```
-
-The order is the order of a fresh rack (one of each type). Adding a type also adds it to a fresh
-rack, which changes nothing that's playing: an unpatched source moves nothing (test 80 proves the
-output stays bit-identical).
+It makes the registry from the folders and stops with what to fix if the file is in a folder that
+isn't in `categories.txt`, doesn't hold exactly one `struct <Name> : Source`, or its id isn't its file
+name. The new source appears in its tab of the **Add a source** panel. It isn't added to a fresh rack
+unless you add its id to `default_rack.txt` (at most 16), so the library can grow without the
+default rig changing.
 
 ## 3. Test it: `tests/native/test_<id>.cpp`
 

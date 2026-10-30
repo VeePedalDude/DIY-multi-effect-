@@ -19,9 +19,9 @@ static void patchDefaults(Engine& e) {          // the rig's default patches (as
 }
 
 TEST("80 rack: a fresh rack is one of each type; adding sources nobody listens to changes nothing") {
-  Engine e; e.init(SR); bool ids = e.rack.count() == NSRCTYPES;
-  for (int t = 0; t < NSRCTYPES; t++) ids = ids && e.rack.slot[t].type == t && !strcmp(e.rack.slot[t].id, sourceTypeDesc(t).id) && strstr(e.rackJson, sourceTypeDesc(t).id);
-  CHECK(ids && strstr(e.descJson, "\"sourceTypes\":[") && strstr(e.descJson, "\"maxSources\":16"), "%d instances, ids = type ids in slots 0..%d; describe() lists the %d types and the rack", e.rack.count(), NSRCTYPES - 1, NSRCTYPES);
+  Engine e; e.init(SR); int nd = 0; const char* const* want = defaultRack(nd); bool ids = e.rack.count() == nd;
+  for (int i = 0; i < nd; i++) ids = ids && e.rack.slot[i].type == sourceTypeIndex(want[i]) && !strcmp(e.rack.slot[i].id, want[i]) && strstr(e.rackJson, want[i]);
+  CHECK(ids && strstr(e.descJson, "\"sourceTypes\":[") && strstr(e.descJson, "\"maxSources\":16") && strstr(e.descJson, "\"sourceCategories\":["), "%d instances from default_rack.txt, ids = type ids in slots 0..%d; describe() lists %d types in %d categories", e.rack.count(), nd - 1, NSRCTYPES, NSRCCATS);
   Engine* a = new Engine(); a->init(SR); patchDefaults(*a);
   Engine* b = new Engine(); b->init(SR); patchDefaults(*b); add(*b, "lfo"); add(*b, "orbit"); add(*b, "adsr");
   auto ra = render(*a, riffSignal()), rb = render(*b, riffSignal());

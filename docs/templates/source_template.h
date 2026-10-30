@@ -1,10 +1,11 @@
-// engine/sources/rand.h - RANDOM: a new value every RATE steps per beat (sample and hold), gliding
+// engine/sources/chaos/rand.h - RANDOM: a new value every RATE steps per beat (sample and hold), gliding
 // to it over SLEW. Output -1..1, evenly spread. Default 2 per beat, no glide.
 //
-// TEMPLATE for a new modulation source (docs/ADDING_A_SOURCE.md). Copy to engine/sources/<id>.h,
-// rename RAND/RandomSH/"rand", and keep the shape: description first, then the struct.
+// TEMPLATE for a new modulation source (docs/ADDING_A_SOURCE.md). Copy to
+// engine/sources/<category>/<id>.h (a folder from engine/sources/categories.txt), rename
+// RAND/RandomSH/"rand", keep the shape (description first, then the struct) and run ./build.sh.
 #pragma once
-#include "../core/source.h"
+#include "../../core/source.h"
 
 namespace rig {
 

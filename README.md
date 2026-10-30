@@ -51,15 +51,17 @@ table; the layout never changes. Reference: [docs/SKINS.md](docs/SKINS.md).
 engine/
   core/        dsp.h (filters, delays, smoothing) · module.h · source.h   ← the contracts
                nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps) · tuner.h (strobe tuner)
-  modules/     gate.h amp.h cab.h holo.h tess.h + registry.h (chain order)
-  sources/     lfo.h env.h adsr.h orbit.h heart.h ctrl.h + registry.h   (source types)
+  modules/     <category>/<id>.h: dynamics/gate.h drive/amp.h cab/cab.h delay/holo.h reverb/tess.h
+               categories.txt (the tabs) · default_chain.txt (a fresh rig) · registry.h (generated)
+  sources/     time/lfo.h playing/env.h playing/adsr.h chaos/orbit.h outside/heart.h outside/ctrl.h
+               categories.txt · default_rack.txt · registry.h (generated)
   fx_chain.h   the effect chain: module types table, the order as one atomic word
   mod_rack.h   the modulation rack: instances added/removed live, cross-modulation
   engine.h     the chain: routing, modulation, bypass, master, meters, self-description
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 50-hud 51-source-panel
+  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 49-picker 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
                60-controllers 70-presets 72-preset-format 90-main
   screens/     one face display (and card colour) per module: gate.js amp.js cab.js holo.js tess.js
@@ -75,7 +77,7 @@ tests/
   models/      .nam captures of every architecture, for the tests
 hosts/linux/   the iMac's native JACK host (next)
 third_party/   NeuralAmpModelerCore, Eigen, nlohmann/json (vendored, unchanged)
-tools/         build_web.py: assembles dist/rig-test.html · wasm/: shims for the WebAssembly build
+tools/         gen_registry.py: makes the registries from the folders · build_web.py: assembles dist/rig-test.html · wasm/: shims for the WebAssembly build
 docs/          ARCHITECTURE · PROTOCOL · LIBRARY · ADDING_A_MODULE · ADDING_A_SOURCE
 dist/          rig-test.html (built, committed)
 ```
@@ -132,7 +134,10 @@ and the depths. **P** (or the tab beside it) hides the side panel.
 ### The effect chain
 
 - **Add, remove and reorder effects while it plays.** The **+ ADD EFFECT** card at the end of the
-  row (or **+ Add effect** in the Mod Matrix) lists every kind of effect. Up to 12 in all, in any
+  row (or **+ Add effect** in the Mod Matrix) opens a tab per kind of effect: Dynamics, Amps & drive,
+  Cabs & IRs, Filter & EQ, Modulation, Pitch, Delay, Reverb, Utility, Experimental. A search box
+  looks across all of them, and the panel remembers the last tab. Sources get the same: Time &
+  tempo, Your playing, Physics & chaos, Outside world. Up to 12 in all, in any
   order, several of one kind if you like (two delays: HOLOGRAM and HOLOGRAM 2).
 - **In each effect's panel:**
   - **◀ ▶** moves it earlier or later in the chain.
@@ -160,6 +165,11 @@ and the depths. **P** (or the tab beside it) hides the side panel.
   An envelope can speed up an LFO while you dig in; an orbit can wander an LFO's shape; two LFOs can
   chase each other. The knob shows its setting and where modulation has it right now (`8.0 beats → 3.2 beats`).
 - Presets save the rack and every patch; scenes switch knobs and patches within it.
+- **Adding a new effect or source is one file.** The folders are the registry: put
+  `engine/modules/<category>/<id>.h` (or `engine/sources/<category>/<id>.h`) in its category's
+  folder and run `./build.sh`; it shows up in that tab. A new tab is one line in `categories.txt`.
+  New ones don't join a fresh rig unless you list them in `default_chain.txt` / `default_rack.txt`.
+  The build stops with what to fix if a file is in the wrong place or misnamed.
 - New kinds of source follow one format ([ADDING_A_SOURCE.md](docs/ADDING_A_SOURCE.md), with a
   working template), and growing an existing one keeps old presets sounding the same
   ([EXPANDING.md](docs/EXPANDING.md)). Every registered type is checked automatically.
@@ -213,7 +223,9 @@ and the depths. **P** (or the tab beside it) hides the side panel.
   are kept. `.rigskin` zips are read stored or deflated, or with `skin.json` inside a folder.
 - **Headless Chromium:** 25/25 main checks (including opening and editing sources, depth, patching
   from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks.
-  The 13/13 chain checks add a second HOLOGRAM from the “+” card, set its knob, move it to the
+  The 17/17 chain checks also cover the add panel's tabs (a tab per category, the first non-empty
+  one open, empty ones saying which folder to use), search across tabs, arrow keys and the
+  remembered tab. They add a second HOLOGRAM from the “+” card, set its knob, move it to the
   front with ◀, patch the LFO to it, duplicate the cab, remove the amp, check the matrix, reload a
   preset's chain in order, fill the chain to 12 and check Overview fits it.
   The 14/14 rack checks add an LFO from the “+” orb, set its knob, patch the envelope to its rate

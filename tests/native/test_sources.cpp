@@ -56,7 +56,7 @@ static std::vector<float> trace(Engine& e, int k, const std::vector<float>& in) 
 TEST("65 sources: every source describes its knobs, with defaults in range") {
   Engine e; e.init(SR); int total = 0; bool ok = true;
   for (int k = 0; k < NSRCTYPES; k++) {
-    const SourceDesc& d = sourceTypeDesc(e.rack.slot[k].type); total += d.nparams;
+    const SourceDesc& d = sourceTypeDesc(k); total += d.nparams;    // every type, in a fresh rack or not
     for (int p = 0; p < d.nparams; p++) { const ParamDesc& q = d.params[p]; ok = ok && q.def >= 0 && q.def <= 1 && q.max > q.min && (q.curve == Curve::Lin || q.min > 0); }
   }
   CHECK(ok && total >= NSRCTYPES && strstr(e.descJson, "\"symbol\":\"rate\""), "%d sources, %d knobs, all listed in describe()", NSRCTYPES, total);

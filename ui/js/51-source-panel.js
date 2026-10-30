@@ -55,19 +55,18 @@ function renderSourcePanel(s) {
   h += `<div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">${s.params.length ? `src_set ${s.id} ${s.params[0].sym} 0.5<br>src_mod ${s.id} ${s.params[0].sym} &lt;source&gt; 0.3<br>` : ''}src_remove ${s.id}</span></div>`;
   panel.innerHTML = h;
 }
-// The add panel: every kind of source, and what's in the rack now.
+// The add panel for sources: a tab per category (engine/sources/<category>/), search across them all.
+PICKERS.src = {
+  cats: () => DESC.sourceCategories,
+  items: () => TYPE_ORDER.map((t) => { const d = TYPES[t], have = SRC.filter((s) => s.type === t).length; return { type: t, name: d.name, sub: d.sub, category: d.category, have,
+    color: instanceColor(SKIN, t, have + 1, d.index), detail: (d.params.length ? d.params.map((q) => q.label.toLowerCase()).join(' · ') : 'no settings') + (d.ext ? ' · takes outside input' : '') }; }),
+  full: () => rackFull(), attr: 'data-add-type', noun: 'source', folder: 'engine/sources', doc: 'docs/ADDING_A_SOURCE.md',
+};
 function renderAddPanel() {
-  const full = rackFull();
-  let h = `<div><div class="eyebrow">Modulation rack · ${SRC.length} of ${DESC.maxSources}</div><h2>Add a source</h2><div class="kind">${full ? 'The rack is full: remove one first.' : 'Any kind, as many as you like (several LFOs are fine).'}</div></div><div class="types">`;
-  TYPE_ORDER.forEach((t) => {
-    const d = TYPES[t], have = SRC.filter((s) => s.type === t).length, col = instanceColor(SKIN, t, have + 1, d.index);
-    h += `<div class="patch"><div class="prow"><span><b style="color:${col}">${srcEsc(d.name)}</b> <small class="muted">${srcEsc(d.sub)}${have ? ` · ${have} in the rack` : ''}</small></span>
-      <button class="btn mini" data-add-type="${t}" ${full ? 'disabled' : ''}>Add</button></div>
-      <small class="muted">${d.params.length ? d.params.map((q) => q.label.toLowerCase()).join(' · ') : 'no settings'}${d.ext ? ' · takes outside input' : ''}</small></div>`;
-  });
-  h += `</div><p class="note">Sources can move each other: open one and use <b>Moved by</b> on any of its knobs, or carry a cable from one orb to another.</p>
+  panel.innerHTML = `<div><div class="eyebrow">Modulation rack · ${SRC.length} of ${DESC.maxSources}</div><h2>Add a source</h2><div class="kind">${rackFull() ? 'The rack is full: remove one first.' : 'Any kind, as many as you like (several LFOs are fine).'}</div></div>
+  ${pickerHtml('src')}
+  <p class="note">Sources can move each other: open one and use <b>Moved by</b> on any of its knobs, or carry a cable from one orb to another.</p>
   <div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">src_add lfo lfo2<br>src_remove lfo2</span></div>`;
-  panel.innerHTML = h;
 }
 // Live trace of the open source (the last ~4 s of its output, -1..1), drawn from the main loop.
 function drawSourceScope() {

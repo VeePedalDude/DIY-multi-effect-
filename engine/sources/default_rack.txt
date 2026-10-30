@@ -1,0 +1,3 @@
+# What a fresh rig's modulation rack starts with, in order (source ids). Adding a source to a folder
+# does not add it here.
+lfo env adsr orbit heart ctrl

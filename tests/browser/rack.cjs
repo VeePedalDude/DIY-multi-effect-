@@ -35,7 +35,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => window.__rig.overview && 0); 
   const plus = await page.evaluate(() => window.__rig.addScreen());
   await click(plus);
-  check(await page.isVisible('[data-add-type="lfo"]') && /Add a source/.test(await page.textContent('#panel')), 'clicking “+ ADD” opens the add panel with every kind of source');
+  const stabs = await page.evaluate(() => [...document.querySelectorAll('[data-pick-tabs="src"] [role=tab]')].map((t) => t.textContent.trim().replace(/\s+\d+$/, '')));
+  check(await page.isVisible('[data-add-type="lfo"]') && /Add a source/.test(await page.textContent('#panel')) && stabs.length === 4, `clicking “+ ADD” opens the add panel, a tab per kind of source (${stabs.join(', ')})`);
 
   console.log('2. Add an LFO: it plays, with its own knobs');
   await page.click('[data-add-type="lfo"]'); await sleep(800); await fresh();

@@ -1,7 +1,7 @@
-// engine/sources/lfo.h - tempo-synced LFO. RATE is beats per cycle (8 = 0.25 Hz at 120 bpm);
+// engine/sources/time/lfo.h - tempo-synced LFO. RATE is beats per cycle (8 = 0.25 Hz at 120 bpm);
 // SHAPE morphs sine (0%) -> triangle (50%) -> square (100%).
 #pragma once
-#include "../core/source.h"
+#include "../../core/source.h"
 
 namespace rig {
 

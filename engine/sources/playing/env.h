@@ -1,7 +1,7 @@
-// engine/sources/env.h - envelope follower on the dry input. FLOOR dBFS -> -1, 0 dBFS -> +1
+// engine/sources/playing/env.h - envelope follower on the dry input. FLOOR dBFS -> -1, 0 dBFS -> +1
 // (default -60 dB). ATTACK and RELEASE set how fast it follows.
 #pragma once
-#include "../core/source.h"
+#include "../../core/source.h"
 
 namespace rig {
 

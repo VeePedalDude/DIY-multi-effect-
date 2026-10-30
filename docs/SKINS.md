@@ -56,7 +56,7 @@ a colour name. Images and fonts are file names inside the `.rigskin`.
 | `labels` | the source name labels above the orbs: `bg`, `text` |
 | `tuner` | the strobe tuner. `tile`: which of your `tiles` it's drawn on (turned sideways). `glass` (its display), `stripe` (the strobe bands), `inTune` / `flat` / `sharp` (note, arrows and marker), `text` / `bright`. The face-down mini card in the top bar: `back`, `backLine` (border and lattice), `backMark` (the little strobe on it) |
 | `fonts` | fonts in the packet: `[{ "family": "Orbitron", "file": "orbitron.woff2", "weight": "700" }]`. Use the family name in `ui.fontDisplay` / `ui.fontMono`. Formats: woff2, woff, ttf, otf. |
-| `css` | a stylesheet in the packet, applied after the built-in one, for anything the settings don't cover. Selectors to use: `.top`, `.bottom`, `.panel`, `.drawer`, `.tuner`, `.tunerMini`, `.matrix` (and its `table`, `th`, `.cell`), `.btn`, `.scene`, `.skinrow`, `.asset`, `.patch`, `.overlay .card`. |
+| `css` | a stylesheet in the packet, applied after the built-in one, for anything the settings don't cover. Selectors to use: `.top`, `.bottom`, `.panel`, `.drawer`, `.tuner`, `.tunerMini`, `.tabs`, `.tab`, `.pick-search`, `.matrix` (and its `table`, `th`, `.cell`), `.btn`, `.scene`, `.skinrow`, `.asset`, `.patch`, `.overlay .card`. |
 
 ### Card frame images
 

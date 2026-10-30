@@ -1,11 +1,11 @@
-// engine/modules/amp.h - NAM capture player, with a built-in waveshaper amp when no capture is loaded.
+// engine/modules/drive/amp.h - NAM capture player, with a built-in waveshaper amp when no capture is loaded.
 // Captures run through NeuralAmpModelerCore (any .nam architecture, see core/nam.h).
 // The built-in shaper is oversampled (os x) and uses 1st-order antiderivative anti-aliasing (ADAA).
 #pragma once
 #include <string>
 #include <vector>
-#include "../core/module.h"
-#include "../core/nam.h"
+#include "../../core/module.h"
+#include "../../core/nam.h"
 
 namespace rig {
 

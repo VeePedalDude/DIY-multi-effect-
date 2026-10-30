@@ -1,6 +1,6 @@
-// engine/modules/holo.h - Hologram delay: tempo-synced dotted 8th with a diffused "halo" cloud.
+// engine/modules/delay/holo.h - Hologram delay: tempo-synced dotted 8th with a diffused "halo" cloud.
 #pragma once
-#include "../core/module.h"
+#include "../../core/module.h"
 
 namespace rig {
 

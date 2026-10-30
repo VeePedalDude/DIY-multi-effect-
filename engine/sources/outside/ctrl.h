@@ -1,6 +1,6 @@
-// engine/sources/ctrl.h - external controller value (gamepad stick, slider, any sensor) via `ext ctrl <-1..1>`, smoothed.
+// engine/sources/outside/ctrl.h - external controller value (gamepad stick, slider, any sensor) via `ext ctrl <-1..1>`, smoothed.
 #pragma once
-#include "../core/source.h"
+#include "../../core/source.h"
 
 namespace rig {
 

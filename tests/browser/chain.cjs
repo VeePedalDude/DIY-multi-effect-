@@ -34,7 +34,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(ids(c.ui) === 'gate amp cab holo tess' && inStep(c), `five modules in order, slots from the engine (${c.engine.map((e) => e.id + '@' + e.slot).join(' ')})`);
   const plus = await page.evaluate(() => window.__rig.fxAddScreen());
   await page.mouse.click(plus.x, plus.y); await sleep(500);
-  check(await page.isVisible('[data-addfx-type="holo"]') && /Add an effect/.test(await page.textContent('#panel')), 'clicking the “+ ADD EFFECT” card opens the add panel with every kind of effect');
+  const tabs = await page.evaluate(() => [...document.querySelectorAll('[data-pick-tabs="fx"] [role=tab]')].map((t) => [t.textContent.trim(), t.getAttribute('aria-selected'), t.classList.contains('empty')]));
+  check(/Add an effect/.test(await page.textContent('#panel')) && tabs.length === 10 && tabs[0][0].startsWith('Dynamics') && tabs[0][1] === 'true' && tabs.filter((t) => t[2]).length === 5,
+    `the “+ ADD EFFECT” card opens a tab per kind of effect (${tabs.map((t) => t[0].replace(/\s+\d+$/, '')).join(', ')}); the first with something in it is open; 5 are empty for now`);
+  await page.click('[data-pick-tab="fx:pitch"]'); await sleep(200);
+  check(/Nothing in Pitch yet/.test(await page.textContent('[data-pick-list="fx"]')) && /engine\/modules\/pitch\//.test(await page.textContent('[data-pick-list="fx"]')), 'an empty tab says so, and which folder new ones go in');
+  await page.fill('[data-pick-q="fx"]', 'reverb'); await sleep(300);
+  const found = await page.evaluate(() => [...document.querySelectorAll('[data-pick-list="fx"] [data-addfx-type]')].map((b) => b.dataset.addfxType));
+  const keepsFocus = await page.evaluate(() => document.activeElement && document.activeElement.dataset.pickQ === 'fx');
+  check(found.join() === 'tess' && keepsFocus, `searching “reverb” across every tab finds ${found.join(', ')} (the search box keeps focus while you type)`);
+  await page.fill('[data-pick-q="fx"]', ''); await page.click('[data-pick-tab="fx:delay"]'); await sleep(200);
+  await page.focus('[data-pick-tab="fx:delay"]'); await page.keyboard.press('ArrowRight'); await sleep(200);
+  const arrow = await page.evaluate(() => window.__rig.picker.tab('fx'));
+  await page.keyboard.press('ArrowLeft'); await sleep(200);
+  check(arrow === 'reverb' && (await page.evaluate(() => window.__rig.picker.tab('fx'))) === 'delay' && await page.isVisible('[data-addfx-type="holo"]'), 'arrow keys move between tabs; Delay lists HOLOGRAM');
 
   console.log('2. Add a second HOLOGRAM: it plays, with its own knobs');
   await page.click('[data-addfx-type="holo"]'); await sleep(800); await fresh();
@@ -51,6 +64,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const pk = await outPeak();
   check(ids(c.ui) === 'holo2 gate amp cab holo tess' && inStep(c) && await page.isDisabled('[data-act="fx-left"]') && pk > 0.01, `chain now ${ids(c.ui)} in the page and the engine; ◀ is disabled at the front; still playing (peak ${pk.toFixed(3)})`);
   await page.screenshot({ path: path.join(shots, 'shot-chain-stage.png') });
+  await page.evaluate(() => { window.__rig.state.focus = 'addfx'; }); await page.click('#vMatrix'); await page.click('#vStage'); await sleep(400);
+  check(await page.getAttribute('[data-pick-tab="fx:delay"]', 'aria-selected') === 'true', 'the add panel opens again on the tab used last (Delay)');
+  await page.screenshot({ path: path.join(shots, 'shot-picker.png') });
+  await open('holo2');
 
   console.log('4. Patch the LFO to HOLOGRAM 2\'s halo from its panel');
   await page.evaluate(() => { const el = document.querySelector('[data-patch="holo2.halo"]'); el.value = 'lfo'; el.dispatchEvent(new Event('change', { bubbles: true })); }); await sleep(500);

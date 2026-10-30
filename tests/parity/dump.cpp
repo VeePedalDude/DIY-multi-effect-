@@ -65,5 +65,21 @@ int main() {
   }
   f = fopen("build/geo_native.f32", "wb"); fwrite(trace.data(), 4, trace.size(), f); fclose(f);
   printf("native dump 3 (GEO PULSE): %zu blocks, %d events fired\n", trace.size() / 3, (int)(trace.back() / 32));
+
+  // Scenario 4 (mirrored in parity.mjs): GATE SEQ, swing, ratchets, chance, then EUCLID with FILL moved by
+  // the LFO, random order and a 1-bar resync; patched to TESSERACT. Every block: value and both meters.
+  rig_init(48000); rig_tempo(120); strcpy(rig_text(), "seq"); const int sk = rig_src_add();
+  auto scfg = [&](int i, float real) { const rig::ParamDesc& q = rig::SEQ_SETTINGS[i]; rig_src_cfg(sk, i, (real - q.min) / (q.max - q.min)); };
+  scfg(rig::SS_STEPS, 12); scfg(rig::SS_SEED, 4); scfg(rig::SS_OUT, 4); rig_src_param(sk, rig::SK_SWING, 0.4f); rig_src_param(sk, rig::SK_PROB, 0.8f); rig_src_param(sk, rig::SK_SLEW, 0.1f);
+  for (int r = 0; r < 12; r++) { rig_src_cell(sk, r, rig::SC_VALUE, (r * 7 % 12) / 11.f); rig_src_cell(sk, r, rig::SC_RATCHET, (r % 4) / 3.f); }
+  rig_src_cell(sk, 5, rig::SC_ON, 0.f); rig_mod(4, 1, sk, 0.25f);
+  std::vector<float> st; st.reserve(g.size() / 128 * 3 + 8);
+  for (size_t i = 0; i < g.size(); i += 128) {
+    if (i == 48000 * 6) { scfg(rig::SS_PATTERN, 1); scfg(rig::SS_DIR, 3); scfg(rig::SS_RESYNC, 1); rig_src_mod(sk, rig::SK_FILL, 0, 0.4f); rig_tempo(97); }
+    memcpy(rig_in(), &g[i], 512); rig_process(128);
+    st.push_back(rig_meters()[rig::M_SRC + sk]); st.push_back(rig_meters()[rig::M_SRCM + sk * rig::MAXSRCMETERS]); st.push_back(rig_meters()[rig::M_SRCM + sk * rig::MAXSRCMETERS + 1]);
+  }
+  f = fopen("build/seq_native.f32", "wb"); fwrite(st.data(), 4, st.size(), f); fclose(f);
+  printf("native dump 4 (GATE SEQ): %zu blocks, %d hits fired\n", st.size() / 3, (int)(st.back() / 32));
   return s1 || s2;
 }

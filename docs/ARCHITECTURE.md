@@ -28,7 +28,7 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `ui/worklet/` | runs `rig.wasm` in the browser, parses the text protocol | the engine's description |
 | `ui/js/` | page logic, one file per job (model, bridge, audio, stage, faces, HUD, controllers, presets, main) | the engine's description |
 | `ui/screens/` | the small display on each module's face, and its card colour (`TILE.<id>`), one file per module id | its own module |
-| `ui/sources/` | a source type's own picture in its panel (`<id>.js`, optional: GEO PULSE's 3D view), drawn from `rig_view()` and its meters | the engine's description |
+| `ui/sources/` | a source type's own picture in its panel (`<id>.js`, optional: GEO PULSE's 3D view, GATE SEQ's squares), drawn from `rig_view()` and its meters | the engine's description |
 | `ui/assets/` | images embedded into the page for the built-in skins: the hall background, the three card frames | nothing |
 | `ui/js/04-skin-core.js`, `57-skins.js` | skins: the default skin (also the schema), validation, `.rigskin` zips; applying a skin and the Skins menu ([SKINS.md](SKINS.md)) | the default skin |
 | `ui/js/58-tuner.js` | the strobe tuner: the face-down mini card in the top bar, the sideways card it opens, T to open and collapse | the engine's meter layout, the skin's `tuner` section |

@@ -67,7 +67,7 @@ ui/
   index.html   page shell
   sources/     a source type's own picture in its panel (geo.js: GEO PULSE's 3D view; seq.js: GATE SEQ's squares and lanes; ctrl.js: CONTROLLER's input and LEARN)
   js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 47-va-plot 49-picker 50-hud 51-source-panel
-               52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
+               52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner 59-viz
                60-controllers (USB gamepads, joysticks and MIDI for CONTROLLER sources; 12-inputs-core reads them) 70-presets 72-preset-format 90-main
   screens/     one face display per module type: gate.js amp.js cab.js holo.js tess.js, and the EQs' curves
                tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js, and the synth filters'
@@ -120,7 +120,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs` and `controllers.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs` and `viz.cjs`.
 
 ## Current effects and sources
 
@@ -176,6 +176,17 @@ bipolar or unipolar output; envelope attack/release/floor, ADSR times; the three
 smoothing and dead zone): click a source's orb or name to open them, along with everything it moves
 and the depths. Each patch from an LFO also has its own **Phase** and **Div** (¼× … 8× the LFO's
 cycle), so one LFO can move several knobs at different offsets and speeds, locked together. **P** (or the tab beside it) hides the side panel.
+
+### The Visualizer
+
+**Visualizer** in the top bar (or **V**) swaps the 3D stage for a circular, layered picture of every
+modulation source in the rack: one ring each, innermost first, in the source's colour.
+- **The rings:** each traces its last ~8 seconds around the circle, newest at 12 o'clock with a dot that grows with the value, fading as it ages. The name, live value and how many knobs it moves sit in the gap.
+- **Links:** a source moving another source's knob shows as a dashed link through the middle.
+- **The core** in the centre swells with how busy the rack is.
+- **Click a ring** to edit that source in the panel; **V** goes back.
+
+The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins colour it (the `viz` section).
 
 ### The effect chain
 

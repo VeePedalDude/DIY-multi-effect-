@@ -25,6 +25,7 @@ function onEngineMsg(d) {
     meters = d; rig.meters = d;
     SRC.forEach((s) => { if (!s.hist) return; s.hist.push(srcVal(s)); if (s.hist.length > 120) s.hist.shift(); });
     SRC.forEach((s) => { const v = SRCVIEW[s.type]; if (v && v.meters) v.meters(s); });   // source views read every meter packet, not every frame
+    vizPush();                                   // the Visualizer's longer traces (59-viz.js)
     return;
   }
   if (d.type === 'resp') {

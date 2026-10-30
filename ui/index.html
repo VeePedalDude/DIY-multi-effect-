@@ -24,6 +24,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);overflow:hi
 /* the skin's backdrop is its own layer behind the transparent 3D canvas */
 #backdrop{position:fixed;inset:0;will-change:transform;background-color:var(--stageBg);background-position:center;background-size:cover;background-repeat:no-repeat;pointer-events:none}
 #stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:transparent}
+#viz{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:1;background:transparent}
+#viz[hidden]{display:none}
 .hud{position:fixed;z-index:5}
 button,select,input{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -205,6 +207,7 @@ body.panel-hidden .matrix{right:16px}
 </head>
 <body>
 <div id="backdrop" aria-hidden="true"></div>
+<canvas id="viz" hidden role="img" aria-label="Visualizer"></canvas>
 <canvas id="stage" tabindex="0" role="img" aria-label="3D stage: five effect modules in an arc, six modulation sources above, and cables showing which source moves which knob. The Mod Matrix view shows the same routing as a table."></canvas>
 
 <header class="hud top" id="top">
@@ -216,6 +219,7 @@ body.panel-hidden .matrix{right:16px}
   <div class="seg" role="group" aria-label="View">
     <button id="vStage" aria-pressed="true">3D Stage</button>
     <button id="vMatrix" aria-pressed="false">Mod Matrix</button>
+    <button id="vViz" aria-pressed="false" title="Visualizer (V): every modulation source as a ring">Visualizer</button>
   </div>
   <button class="btn" id="overview">Overview</button>
   <button class="tunerMini" id="tunerBtn" aria-label="Tuner (T)" title="Tuner (T)" aria-expanded="false" aria-controls="tuner"><canvas id="tunerMini" width="128" height="88" aria-hidden="true"></canvas></button>

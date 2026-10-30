@@ -24,6 +24,8 @@ body{background:var(--bg);color:var(--fg);font-family:var(--display);overflow:hi
 /* the skin's backdrop is its own layer behind the transparent 3D canvas */
 #backdrop{position:fixed;inset:0;will-change:transform;background-color:var(--stageBg);background-position:center;background-size:cover;background-repeat:no-repeat;pointer-events:none}
 #stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none;background:transparent}
+#viz{position:fixed;inset:0;width:100%;height:100%;display:block;z-index:1;background:transparent}
+#viz[hidden]{display:none}
 .hud{position:fixed;z-index:5}
 button,select,input{font:inherit;color:inherit}
 button{cursor:pointer}
@@ -205,6 +207,7 @@ body.panel-hidden .matrix{right:16px}
 </head>
 <body>
 <div id="backdrop" aria-hidden="true"></div>
+<canvas id="viz" hidden role="img" aria-label="Visualizer"></canvas>
 <canvas id="stage" tabindex="0" role="img" aria-label="3D stage: five effect modules in an arc, six modulation sources above, and cables showing which source moves which knob. The Mod Matrix view shows the same routing as a table."></canvas>
 
 <header class="hud top" id="top">
@@ -216,6 +219,7 @@ body.panel-hidden .matrix{right:16px}
   <div class="seg" role="group" aria-label="View">
     <button id="vStage" aria-pressed="true">3D Stage</button>
     <button id="vMatrix" aria-pressed="false">Mod Matrix</button>
+    <button id="vViz" aria-pressed="false" title="Visualizer (V): every modulation source as a ring">Visualizer</button>
   </div>
   <button class="btn" id="overview">Overview</button>
   <button class="tunerMini" id="tunerBtn" aria-label="Tuner (T)" title="Tuner (T)" aria-expanded="false" aria-controls="tuner"><canvas id="tunerMini" width="128" height="88" aria-hidden="true"></canvas></button>
@@ -628,6 +632,8 @@ const DEFAULT_SKIN = {
   sources: { lfo: '#4FE3F0', env: '#FFB547', adsr: '#FF5FA2', orbit: '#A78BFA', heart: '#FF7A6B', ctrl: '#9BE15D', geo: '#2EF2A0', seq: '#F7E35A' },
   sourceFallback: ['#7DD3FC', '#F9A8D4', '#FDE68A', '#86EFAC', '#C4B5FD', '#FCA5A5'],
   labels: { bg: 'rgba(12,9,22,.88)', text: '#A9B3C9' },
+  // the Visualizer view (V): a ring per modulation source in its own colour, over a veil on the background
+  viz: { bg: 'rgba(6,4,14,.62)', track: '#121A2C', grid: '#1A2338', text: '#94A3BD', bright: '#E6ECF5', core: '#4FE3F0' },
   // the strobe tuner: a card turned sideways (`tile` names one of `tiles`), and the face-down mini card that opens it
   tuner: { tile: 'teal', glass: '#070A14', stripe: '#4FE3F0', inTune: '#9BE15D', flat: '#FFB547', sharp: '#FF5FA2', text: '#94A3BD', bright: '#E6ECF5',
     back: '#151030', backLine: '#7B5BD6', backMark: '#4FE3F0' },
@@ -644,6 +650,7 @@ const CLASSIC_SKIN = {
   tiles: { console: { image: null, accent: '#4FE3F0', rim: '#1F2A40', glow: '#4FE3F0' } },
   tileOrder: ['console'], modules: {},
   labels: { bg: 'rgba(10,14,23,.88)', text: '#94A3BD' },
+  viz: { bg: 'rgba(5,7,12,.94)', track: '#0F1524' },
   tuner: { tile: 'console', back: '#0C1220', backLine: '#2A3550', backMark: '#4FE3F0' },
 };
 
@@ -1108,6 +1115,7 @@ function onEngineMsg(d) {
     meters = d; rig.meters = d;
     SRC.forEach((s) => { if (!s.hist) return; s.hist.push(srcVal(s)); if (s.hist.length > 120) s.hist.shift(); });
     SRC.forEach((s) => { const v = SRCVIEW[s.type]; if (v && v.meters) v.meters(s); });   // source views read every meter packet, not every frame
+    vizPush();                                   // the Visualizer's longer traces (59-viz.js)
     return;
   }
   if (d.type === 'resp') {
@@ -1210,7 +1218,7 @@ function applyRack(list) {
 // The engine's view: which slot each instance is in.
 function onEngineRack(list) {
   const slot = Object.fromEntries(list.map((e) => [e.id, e.slot]));
-  SRC.forEach((s) => { s.slot = s.id in slot ? slot[s.id] : null; s.hist = []; });
+  SRC.forEach((s) => { const was = s.slot; s.slot = s.id in slot ? slot[s.id] : null; s.hist = []; if (s.slot !== was) s.vhist = []; });
 }
 // The engine refused a src_add (rack full, id taken): take the instance back out of the page.
 function rackRefused(line, status) {
@@ -2687,7 +2695,8 @@ function renderMatrix() {
 function setHint() {
   if (state.storing) { hint.className = 'hint carry'; hint.textContent = 'Store mode: click a scene letter to save the current settings into it'; return; }
   if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it, or another source's orb to move one of its knobs · Esc to drop`; return; }
-  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · the + card adds an effect, the + orb a source · P hides the panel · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
+  if (state.view === 'viz') { hint.className = 'hint'; hint.textContent = 'Visualizer: a ring for each modulation source, newest value at the top, fading round the circle · dashed links: one source moving another · click a ring to edit it · V back to the stage'; return; }
+  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · the + card adds an effect, the + orb a source · P hides the panel · V visualizer · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
 }
 // The side panel can be hidden (button or P) and remembers that per browser.
 let panelHidden = false;
@@ -2705,7 +2714,11 @@ function updatePanelToggle() {
   b.setAttribute('aria-label', b.title);
 }
 function update() { renderPanel(); updatePanelToggle(); if (state.view === 'matrix') renderMatrix(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); drawAddLabel(); drawAddCard(); }
-function setView(v) { state.view = v; state.carrying = null; $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vMatrix').setAttribute('aria-pressed', v === 'matrix'); matrix.hidden = v !== 'matrix'; update(); }
+function setView(v) {
+  state.view = v; state.carrying = null;
+  $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vMatrix').setAttribute('aria-pressed', v === 'matrix'); $('vViz').setAttribute('aria-pressed', v === 'viz');
+  matrix.hidden = v !== 'matrix'; vizShow(v === 'viz'); update();
+}
 
 function wireHud() {
   panel.addEventListener('click', (e) => {
@@ -2732,7 +2745,7 @@ function wireHud() {
     if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey && !e.altKey) setPanelHidden(!panelHidden);
   });
   document.body.classList.toggle('panel-hidden', panelHidden);
-  $('vStage').onclick = () => setView('stage'); $('vMatrix').onclick = () => setView('matrix'); $('overview').onclick = overview;
+  $('vStage').onclick = () => setView('stage'); $('vMatrix').onclick = () => setView('matrix'); $('vViz').onclick = () => setView('viz'); $('overview').onclick = overview;
   $('settingsBtn').onclick = () => { const d = $('drawer'); d.hidden = !d.hidden; $('settingsBtn').setAttribute('aria-expanded', String(!d.hidden)); };
 
   // bottom bar
@@ -3734,6 +3747,137 @@ function wireTuner() {
 }
 rig.tuner = { open: tunOpen, collapse: tunCollapse, off: tunOff, setRef: tunSetRef, state: tun, reading: tunReading, skin: () => SKIN.tuner, layout: () => LAYOUT.tun };
 
+// ===== ui/js/59-viz.js =====
+// 59-viz.js - the Visualizer view: the effect cards and source orbs give way to a circular, layered
+// picture of every modulation source in the rack. One ring per source, innermost first in rack
+// order, in the source's colour. Each ring traces its last ~8 s of output around the circle, newest
+// value at 12 o'clock (the head, with a dot whose size follows the value) and fading as it ages
+// round to the gap just right of the top, where the ring's name sits. Cross-modulation (a source
+// moving another source's knob) shows as a dashed link from the modulator's head, through the middle,
+// to the bottom of the ring it moves (one point per knob). The core in the middle swells with how busy the rack is. Click a ring to edit that source.
+// The 3D stage isn't drawn while this is up. Colours: the skin's `viz` section and source colours.
+const vizCanvas = $('viz'), vizCtx = vizCanvas.getContext('2d');
+const VIZ_N = 256, VIZ_SPAN = 0.92;              // samples per ring (~8 s at ~31 meter packets/s); share of the circle they use
+const viz = { rings: [], hover: null, cx: 0, cy: 0, R: 0, r0: 0, W: 0, H: 0, dpr: 1, label: 0 };
+
+// Every meter packet: one more point for each source (20-bridge.js calls this).
+function vizPush() { SRC.forEach((s) => { if (!s.vhist) s.vhist = []; s.vhist.push(srcVal(s)); if (s.vhist.length > VIZ_N) s.vhist.shift(); }); }
+
+function vizLayout() {
+  const W = innerWidth, H = innerHeight, dpr = Math.min(2, devicePixelRatio || 1);
+  if (vizCanvas.width !== Math.round(W * dpr) || vizCanvas.height !== Math.round(H * dpr)) { vizCanvas.width = Math.round(W * dpr); vizCanvas.height = Math.round(H * dpr); }
+  const top = $('top').offsetHeight + 14, bottom = H - $('bottom').offsetHeight - 14;
+  const right = !panelHidden && W > 900 ? W - $('panel').offsetWidth - 32 : W - 16, left = 16;
+  const R = Math.max(40, Math.min(right - left, bottom - top) / 2 - 24), r0 = R * 0.2;
+  const live = SRC.filter((s) => s.slot !== null), bw = (R - r0) / Math.max(1, live.length);
+  Object.assign(viz, { W, H, dpr, cx: (left + right) / 2, cy: (top + bottom) / 2, R, r0,
+    rings: live.map((s, i) => ({ s, rb: r0 + bw * (i + 0.5), bw })) });
+}
+// Angle of history point j of n: newest at the top, older counter-clockwise.
+const vizAngle = (j, n) => -Math.PI / 2 - 2 * Math.PI * VIZ_SPAN * (n - 1 - j) / (VIZ_N - 1);
+const vizAt = (r, a) => [viz.cx + r * Math.cos(a), viz.cy + r * Math.sin(a)];
+
+function drawVizRing(c, ring, V) {
+  const s = ring.s, h = s.vhist || [], n = h.length, amp = ring.bw * 0.42, hov = viz.hover === s.id, v = srcVal(s);
+  c.save(); c.strokeStyle = V.track; c.globalAlpha = hov ? 0.95 : 0.6; c.lineWidth = ring.bw * 0.86;
+  c.beginPath(); c.arc(viz.cx, viz.cy, ring.rb, 0, Math.PI * 2); c.stroke(); c.restore();
+  if (n > 1) {
+    const pts = h.map((x, j) => vizAt(ring.rb + clamp(x, -1, 1) * amp, vizAngle(j, n)));
+    c.save(); c.fillStyle = s.color; c.globalAlpha = hov ? 0.2 : 0.12; c.beginPath();       // the area between the ring's centre line and the trace
+    pts.forEach((p, j) => (j ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])));
+    c.arc(viz.cx, viz.cy, ring.rb, vizAngle(n - 1, n), vizAngle(0, n), true); c.closePath(); c.fill(); c.restore();
+    const K = 16, step = Math.ceil(n / K);                                                   // the trace, fading with age
+    c.save(); c.strokeStyle = s.color; c.lineWidth = hov ? 3 : 2; c.lineJoin = 'round';
+    for (let k = 0; k * step < n - 1; k++) {
+      const a = k * step, b = Math.min(n - 1, a + step);
+      c.globalAlpha = 0.12 + 0.88 * Math.pow(b / (n - 1), 1.6);
+      c.beginPath(); c.moveTo(pts[a][0], pts[a][1]); for (let j = a + 1; j <= b; j++) c.lineTo(pts[j][0], pts[j][1]); c.stroke();
+    }
+    c.restore();
+  }
+  const [hx, hy] = vizAt(ring.rb + clamp(v, -1, 1) * amp, -Math.PI / 2);                    // the head: where it is now
+  c.save(); c.fillStyle = s.color; if (!RM) { c.shadowColor = s.color; c.shadowBlur = 8 + 14 * Math.abs(v); }
+  c.beginPath(); c.arc(hx, hy, 3 + 4 * Math.abs(v) + (hov ? 1.5 : 0), 0, Math.PI * 2); c.fill(); c.restore();
+  if (ring.bw >= 11) {                                                                         // its name in the gap right of the top
+    const moves = Object.entries(state.conns).filter(([pid, sid]) => sid === s.id && knobOf(pid)).length;
+    const fs = clamp(ring.bw * 0.34, 10, 15), [lx, ly] = vizAt(ring.rb, -Math.PI / 2 + 0.035 + 6 / ring.rb);
+    c.save(); c.font = `600 ${fs}px ${SKIN.ui.fontDisplay}`; c.textBaseline = 'middle'; c.fillStyle = s.color;
+    c.translate(lx, ly); c.fillText(s.name, 0, 0);
+    const w = c.measureText(s.name).width; c.font = `400 ${fs * 0.85}px ${SKIN.ui.fontMono}`; c.fillStyle = hov ? V.bright : V.text;
+    c.fillText(` ${v >= 0 ? '+' : ''}${v.toFixed(2)}${moves ? ` → ${moves}` : ''}`, w, 0); c.restore();
+  }
+}
+// Where a link to knob `pi` of a ring lands: near 6 o'clock, spread by knob.
+const vizLinkAngle = (pi) => Math.PI / 2 + 0.22 * pi;
+// Cross-modulation: a source patched to another source's knob.
+function drawVizLinks(c) {
+  const at = Object.fromEntries(viz.rings.map((r) => [r.s.id, r]));
+  let n = 0;
+  Object.entries(state.conns).forEach(([pid, sid]) => {
+    const q = SPARAMS[pid], from = at[sid], to = q && at[q.src.id]; if (!from || !to) return;
+    const side = n++ % 2 ? 1 : -1;                                                           // bow left, then right, past the core
+    const v = srcVal(from.s), [x0, y0] = vizAt(from.rb + clamp(v, -1, 1) * from.bw * 0.42, -Math.PI / 2);
+    const [x1, y1] = vizAt(to.rb, vizLinkAngle(q.pi)), mx = viz.cx + side * (viz.r0 * 1.4 + 0.35 * Math.max(from.rb, to.rb)), my = viz.cy;
+    c.save(); c.strokeStyle = from.s.color; c.lineWidth = 2; c.globalAlpha = 0.85; c.setLineDash([7, 5]); c.lineDashOffset = RM ? 0 : -T * 30;
+    c.beginPath(); c.moveTo(x0, y0); c.quadraticCurveTo(mx, my, x1, y1); c.stroke();
+    c.setLineDash([]); c.globalAlpha = 1; c.fillStyle = from.s.color; if (!RM) { c.shadowColor = from.s.color; c.shadowBlur = 10; }
+    c.beginPath(); c.arc(x1, y1, 5, 0, Math.PI * 2); c.fill(); c.restore();
+  });
+}
+function drawViz() {
+  vizLayout(); const c = vizCtx, V = SKIN.viz, { cx, cy, R, r0 } = viz;
+  c.setTransform(viz.dpr, 0, 0, viz.dpr, 0, 0); c.clearRect(0, 0, viz.W, viz.H);
+  c.fillStyle = V.bg; c.fillRect(0, 0, viz.W, viz.H);
+  c.save(); c.strokeStyle = V.grid; c.lineWidth = 1; c.beginPath();                       // spokes and the outer edges
+  for (let k = 0; k < 12; k++) { const a = k * Math.PI / 6, [x0, y0] = vizAt(r0, a), [x1, y1] = vizAt(R, a); c.moveTo(x0, y0); c.lineTo(x1, y1); }
+  c.stroke(); c.beginPath(); c.arc(cx, cy, R, 0, Math.PI * 2); c.stroke(); c.restore();
+  viz.rings.forEach((ring) => drawVizRing(c, ring, V));
+  drawVizLinks(c);
+  const busy = viz.rings.length ? viz.rings.reduce((a, r) => a + Math.abs(srcVal(r.s)), 0) / viz.rings.length : 0;   // the core
+  c.save(); c.fillStyle = V.core; c.globalAlpha = 0.12 + 0.3 * busy; c.beginPath(); c.arc(cx, cy, r0 * (0.55 + 0.35 * busy), 0, Math.PI * 2); c.fill(); c.restore();
+  c.save(); c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = V.bright; c.font = `700 ${clamp(r0 * 0.3, 14, 26)}px ${SKIN.ui.fontDisplay}`;
+  const n = viz.rings.length;
+  if (n) { c.fillText(String(n), cx, cy - r0 * 0.12); c.fillStyle = V.text; c.font = `400 ${clamp(r0 * 0.13, 10, 13)}px ${SKIN.ui.fontMono}`; c.fillText(n === 1 ? 'source' : 'sources', cx, cy + r0 * 0.2); }
+  else { c.font = `600 18px ${SKIN.ui.fontDisplay}`; c.fillText('No modulation sources running', cx, cy - 12); c.fillStyle = V.text; c.font = `400 13px ${SKIN.ui.fontMono}`; c.fillText('add one from the 3D Stage (+ orb) or the Mod Matrix', cx, cy + 14); }
+  c.restore();
+  if (T - viz.label > 1) {                                                                     // what a screen reader hears, once a second
+    viz.label = T;
+    vizCanvas.setAttribute('aria-label', n ? `Visualizer, ${n} modulation source${n > 1 ? 's' : ''}: ` + viz.rings.map((r) => `${r.s.name} ${srcVal(r.s).toFixed(2)}`).join(', ') : 'Visualizer: no modulation sources running');
+  }
+}
+// The ring under a point (page coordinates), or null.
+function vizRingAt(x, y) {
+  const d = Math.hypot(x - viz.cx, y - viz.cy);
+  const r = viz.rings.find((g) => Math.abs(d - g.rb) <= g.bw / 2); return r ? r.s.id : null;
+}
+function vizShow(on) {
+  vizCanvas.hidden = !on; canvas.style.visibility = on ? 'hidden' : '';
+  $('overview').disabled = on; document.body.classList.toggle('viz-on', on);
+  if (on) drawViz();
+}
+function wireViz() {
+  vizCanvas.addEventListener('pointermove', (e) => { const id = vizRingAt(e.clientX, e.clientY); viz.hover = id; vizCanvas.style.cursor = id ? 'pointer' : ''; });
+  vizCanvas.addEventListener('pointerleave', () => { viz.hover = null; });
+  vizCanvas.addEventListener('click', (e) => {
+    const id = vizRingAt(e.clientX, e.clientY); if (!id) return;
+    state.focus = 'src:' + id; if (panelHidden) setPanelHidden(false); update();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.target.closest && e.target.closest('input,textarea,select')) return;
+    if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey && !e.altKey) setView(state.view === 'viz' ? 'stage' : 'viz');
+  });
+}
+// Test helpers: the rings as drawn (centre, radii, colour, value now) and the view's state.
+rig.viz = {
+  rings: () => viz.rings.map((r) => ({ id: r.s.id, rb: r.rb, bw: r.bw, color: r.s.color, value: srcVal(r.s), points: (r.s.vhist || []).length })),
+  centre: () => ({ x: viz.cx, y: viz.cy, R: viz.R, r0: viz.r0 }),
+  linkEnd: (id, pi) => { const r = viz.rings.find((g) => g.s.id === id); if (!r) return null; const [x, y] = vizAt(r.rb, vizLinkAngle(pi)); return { x, y }; },
+  head: (id) => { const r = viz.rings.find((g) => g.s.id === id); if (!r) return null; const [x, y] = vizAt(r.rb + clamp(srcVal(r.s), -1, 1) * r.bw * 0.42, -Math.PI / 2); return { x, y }; },
+  pixel: (x, y) => Array.from(vizCtx.getImageData(Math.round(x * viz.dpr), Math.round(y * viz.dpr), 1, 1).data),
+  draw: () => drawViz(),
+  stageFrames: () => renderer.info.render.frame,        // 3D frames drawn so far (the Visualizer stops them)
+};
+
 // ===== ui/js/60-controllers.js =====
 // 60-controllers.js - outside-world inputs feeding sources.
 //  - USB gamepads, joysticks, flight sticks and HOTAS (the Gamepad API: every axis, hat and button) and MIDI
@@ -4190,33 +4334,37 @@ function fillCurve(curve, attr) { const arr = attr.array; for (let i = 0; i < CN
 function loop() {
   requestAnimationFrame(loop);              // schedule first, so one bad frame can never freeze the stage
   const dt = Math.min(clock.getDelta(), .05); T += dt; frame++;
-  cam.r += (camGoal.r - cam.r) * .06; cam.target.lerp(camGoal.target, .06); placeCamera();
-  const level = meters ? clamp((20 * Math.log10(meters.outPk + 1e-9) + 50) / 50, 0, 1) : 0;
-  flowMat.opacity = .25 + .75 * level; flowMat.size = .14 + .2 * level;
-  MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });
-  SRC.forEach((s) => { if (!s.orb) return; const v = srcVal(s), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
-  moveBackdrop();
-  if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(); drawAddCard(); drawSourceScope(); }
-  drawSourceView(dt);
-  for (let i = 0; i < NP; i++) { const u = ((i / NP) + T * (RM ? .01 : .05 + .1 * level)) % 1; flowCurve.getPointAt(u, tmpV); flowPos[i * 3] = tmpV.x; flowPos[i * 3 + 1] = tmpV.y + .06; flowPos[i * 3 + 2] = tmpV.z; }
-  flowGeo.attributes.position.needsUpdate = true;
-  cables.forEach((c) => {
-    const curve = cableCurve(c.s, c.pid);
-    fillCurve(curve, c.line.geometry.attributes.position);
-    c.ph += dt * (RM ? .05 : .2 + .5 * Math.abs(srcVal(c.s)));
-    c.pulses.forEach((p, k) => curve.getPoint((c.ph + k / 3) % 1, p.position));
-  });
-  if (state.carrying) {
-    ray.setFromCamera(ndc, camera); const n = new THREE.Vector3(); camera.getWorldDirection(n);
-    ray.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n.negate(), cam.target), pointerWorld);
-    fillCurve(bez(SRCMAP[state.carrying].orb.position.clone(), pointerWorld.clone()), carryGeo.attributes.position); carryLine.computeLineDistances();
+  const vizOn = state.view === 'viz';         // the Visualizer replaces the 3D stage: none of it is drawn meanwhile
+  if (!vizOn) {
+    cam.r += (camGoal.r - cam.r) * .06; cam.target.lerp(camGoal.target, .06); placeCamera();
+    const level = meters ? clamp((20 * Math.log10(meters.outPk + 1e-9) + 50) / 50, 0, 1) : 0;
+    flowMat.opacity = .25 + .75 * level; flowMat.size = .14 + .2 * level;
+    MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });
+    SRC.forEach((s) => { if (!s.orb) return; const v = srcVal(s), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
+    moveBackdrop();
+    if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(); drawAddCard(); }
+    for (let i = 0; i < NP; i++) { const u = ((i / NP) + T * (RM ? .01 : .05 + .1 * level)) % 1; flowCurve.getPointAt(u, tmpV); flowPos[i * 3] = tmpV.x; flowPos[i * 3 + 1] = tmpV.y + .06; flowPos[i * 3 + 2] = tmpV.z; }
+    flowGeo.attributes.position.needsUpdate = true;
+    cables.forEach((c) => {
+      const curve = cableCurve(c.s, c.pid);
+      fillCurve(curve, c.line.geometry.attributes.position);
+      c.ph += dt * (RM ? .05 : .2 + .5 * Math.abs(srcVal(c.s)));
+      c.pulses.forEach((p, k) => curve.getPoint((c.ph + k / 3) % 1, p.position));
+    });
+    if (state.carrying) {
+      ray.setFromCamera(ndc, camera); const n = new THREE.Vector3(); camera.getWorldDirection(n);
+      ray.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n.negate(), cam.target), pointerWorld);
+      fillCurve(bez(SRCMAP[state.carrying].orb.position.clone(), pointerWorld.clone()), carryGeo.attributes.position); carryLine.computeLineDistances();
+    }
   }
+  if (frame % 2 === 0) drawSourceScope();       // the side panel's live trace and view of the source being edited
+  drawSourceView(dt);
   if (frame % 3 === 0) {
     document.querySelectorAll('[data-disp]').forEach((el) => { const p = PARAMS[el.dataset.disp]; if (p) el.textContent = p.fmt(effOf(p)); });
     refreshSourceReadouts();
     if (meters) { meterBar($('mIn'), meters.inPk); meterBar($('mOut'), meters.outPk); $('dspLoad').textContent = (meters.load * 100).toFixed(1) + '%'; }
   }
-  renderer.render(scene, camera);
+  if (vizOn) drawViz(); else renderer.render(scene, camera);
 }
 function wireStart() {
   $('startBtn').onclick = async () => {
@@ -4241,7 +4389,7 @@ function wireStart() {
 (async function boot() {
   try { await loadModel(); }
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
-  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireControllers(); wirePresets(); wireStart();
+  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireControllers(); wirePresets(); wireStart();
   const libraryReady = initLibrary().catch((e) => logLine('library: ' + e.message, true));
   restoreSkin(libraryReady).catch((e) => logLine('skin: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();

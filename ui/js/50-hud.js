@@ -71,7 +71,8 @@ function renderMatrix() {
 function setHint() {
   if (state.storing) { hint.className = 'hint carry'; hint.textContent = 'Store mode: click a scene letter to save the current settings into it'; return; }
   if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it, or another source's orb to move one of its knobs · Esc to drop`; return; }
-  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · the + card adds an effect, the + orb a source · P hides the panel · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
+  if (state.view === 'viz') { hint.className = 'hint'; hint.textContent = 'Visualizer: a ring for each modulation source, newest value at the top, fading round the circle · dashed links: one source moving another · click a ring to edit it · V back to the stage'; return; }
+  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · the + card adds an effect, the + orb a source · P hides the panel · V visualizer · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
 }
 // The side panel can be hidden (button or P) and remembers that per browser.
 let panelHidden = false;
@@ -89,7 +90,11 @@ function updatePanelToggle() {
   b.setAttribute('aria-label', b.title);
 }
 function update() { renderPanel(); updatePanelToggle(); if (state.view === 'matrix') renderMatrix(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); drawAddLabel(); drawAddCard(); }
-function setView(v) { state.view = v; state.carrying = null; $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vMatrix').setAttribute('aria-pressed', v === 'matrix'); matrix.hidden = v !== 'matrix'; update(); }
+function setView(v) {
+  state.view = v; state.carrying = null;
+  $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vMatrix').setAttribute('aria-pressed', v === 'matrix'); $('vViz').setAttribute('aria-pressed', v === 'viz');
+  matrix.hidden = v !== 'matrix'; vizShow(v === 'viz'); update();
+}
 
 function wireHud() {
   panel.addEventListener('click', (e) => {
@@ -116,7 +121,7 @@ function wireHud() {
     if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey && !e.altKey) setPanelHidden(!panelHidden);
   });
   document.body.classList.toggle('panel-hidden', panelHidden);
-  $('vStage').onclick = () => setView('stage'); $('vMatrix').onclick = () => setView('matrix'); $('overview').onclick = overview;
+  $('vStage').onclick = () => setView('stage'); $('vMatrix').onclick = () => setView('matrix'); $('vViz').onclick = () => setView('viz'); $('overview').onclick = overview;
   $('settingsBtn').onclick = () => { const d = $('drawer'); d.hidden = !d.hidden; $('settingsBtn').setAttribute('aria-expanded', String(!d.hidden)); };
 
   // bottom bar

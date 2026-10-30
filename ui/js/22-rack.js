@@ -42,7 +42,7 @@ function applyRack(list) {
 // The engine's view: which slot each instance is in.
 function onEngineRack(list) {
   const slot = Object.fromEntries(list.map((e) => [e.id, e.slot]));
-  SRC.forEach((s) => { s.slot = s.id in slot ? slot[s.id] : null; s.hist = []; });
+  SRC.forEach((s) => { const was = s.slot; s.slot = s.id in slot ? slot[s.id] : null; s.hist = []; if (s.slot !== was) s.vhist = []; });
 }
 // The engine refused a src_add (rack full, id taken): take the instance back out of the page.
 function rackRefused(line, status) {

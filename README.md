@@ -63,10 +63,10 @@ engine/
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  sources/     a source type's own picture in its panel (geo.js: GEO PULSE's 3D view; seq.js: GATE SEQ's squares and lanes)
+  sources/     a source type's own picture in its panel (geo.js: GEO PULSE's 3D view; seq.js: GATE SEQ's squares and lanes; ctrl.js: CONTROLLER's input and LEARN)
   js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 47-va-plot 49-picker 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
-               60-controllers 70-presets 72-preset-format 90-main
+               60-controllers (USB gamepads, joysticks and MIDI for CONTROLLER sources; 12-inputs-core reads them) 70-presets 72-preset-format 90-main
   screens/     one face display per module type: gate.js amp.js cab.js holo.js tess.js, and the EQs' curves
                tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js, and the synth filters'
                svf.js comb.js formant.js ota.js ladder.js diode.js sallen.js
@@ -118,7 +118,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs` and `seq.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs` and `controllers.cjs`.
 
 ## Current effects and sources
 
@@ -157,7 +157,9 @@ cutoff follows your picking, up to 4 octaves either way), DRIVE and LEVEL; the s
 | Sallen-Key | HP CUT, HP PEAK, LP CUT, LP PEAK | Korg MS-20 style: high-pass into low-pass, peaks screaming through clipping diodes |
 
 Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate
-(simulated, or a Bluetooth strap), controller (gamepad stick or slider), GATE SEQ (Time & tempo): a step sequencer, up to 32 squares you click on and off (or drag to paint),
+(simulated, or a Bluetooth strap), CONTROLLER (any control on a USB gamepad, joystick, flight stick or MIDI
+controller: open it, press LEARN and move the control; INVERT, 0…+1 or −1…+1, momentary or toggle buttons;
+add more CONTROLLERs for more controls; bindings stay with presets and this browser), GATE SEQ (Time & tempo): a step sequencer, up to 32 squares you click on and off (or drag to paint),
 each step with its own velocity, chance, ratchet (1–4 hits), gate length and value, drawn in lanes under
 the squares; step length as a note value, swing, a Euclidean fill, shift, directions, resync every few
 bars, and gate / trigger / envelope / velocity / stepped-value outputs. And GEO PULSE (also in
@@ -298,7 +300,7 @@ Linux host there. In the browser on a recent PC they run comfortably.
 
 ## Known gaps
 
-- Not yet tested on your 2i2, real Windows latency, a real gamepad, or a real heart strap.
+- Not yet tested on your 2i2, real Windows latency, a real gamepad, joystick or MIDI controller (tested with simulated ones), or a real heart strap.
 - The **Choose folder** flow (Chrome's folder picker and its permission prompt) can't be automated
   here. The same library code is tested through browser storage, which uses the same file-handle
   interface, but the folder picker itself needs a try on your PC.

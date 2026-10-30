@@ -18,6 +18,7 @@ const state = {
   carrying: null, focus: null, view: 'stage', bpm: 120, master: -12,
   conns: { 'amp.input': 'env', 'holo.feedback': 'lfo', 'holo.halo': 'orbit', 'tess.fold': 'heart' },
   bypass: {}, scenes: {}, scene: null, storing: false, ctrl: 0,
+  inputs: {},                             // CONTROLLER instance id -> its hardware binding (12-inputs-core.js)
   depths: {},                             // per-patch swing; missing = DEPTH
   taps: {},                               // per-patch PHASE (degrees) and DIV, for sources that tap (an LFO); missing = 0 degrees, 1x
   assets: {},                             // module id -> { kind, name, size, hash } chosen from the library

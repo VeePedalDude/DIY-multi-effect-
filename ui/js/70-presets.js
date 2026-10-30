@@ -35,6 +35,8 @@ async function loadPresetFile(file) {
   const r = readPreset(json);
   if (r.error) { presetNote(`${file}: ${r.error}`, true); return r; }
   applyChain(r.chain); applyRack(r.rack); state.sourceExtras = r.sourceExtras;
+  // CONTROLLER bindings: a preset that names any sets them; one that names none keeps yours
+  if (Object.keys(r.inputs || {}).length) { Object.keys(state.inputs).forEach((id) => bindInput(id, null)); Object.entries(r.inputs).forEach(([id, b]) => bindInput(id, b)); }
   applySnapshot(r.snap);
   if (r.master !== undefined) setMaster(r.master);
   state.scenes = r.scenes; state.scene = null; state.presetExtras = r.extras;

@@ -1,4 +1,6 @@
-// engine/sources/outside/ctrl.h - external controller value (gamepad stick, slider, any sensor) via `ext ctrl <-1..1>`, smoothed.
+// engine/sources/outside/ctrl.h - an outside control (a USB gamepad, joystick or flight stick axis or button, a MIDI knob,
+// fader, key or pitch bend, the on-screen slider, any sensor) via `ext <id> <-1..1>`, smoothed. Which control feeds
+// which instance is the page's job (ui/js/60-controllers.js, ui/sources/ctrl.js): the engine only sees the value.
 #pragma once
 #include "../../core/source.h"
 
@@ -8,7 +10,7 @@ inline constexpr ParamDesc CTRL_PARAMS[] = {
   {"smooth",   "SMOOTH",    1.f, 900.f, 0.5f, "ms", Curve::Log, 0, false},   // 30 ms
   {"deadzone", "DEAD ZONE", 0.f, 50.f,  0.f,  "%",  Curve::Lin, 0, false},   // a drifting stick's centre reads 0
 };
-inline constexpr SourceDesc CTRL_DESC = {"ctrl", "CONTROLLER", "gamepad stick / slider", "value -1..1", 0, {nullptr, nullptr}, 2, CTRL_PARAMS};
+inline constexpr SourceDesc CTRL_DESC = {"ctrl", "CONTROLLER", "USB or MIDI control", "value -1..1", 0, {nullptr, nullptr}, 2, CTRL_PARAMS};
 
 struct Ctrl : Source {
   float target = 0, value = 0;

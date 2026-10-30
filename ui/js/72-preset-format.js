@@ -9,7 +9,9 @@
 //     "sources": [ { "id": "lfo", "type": "lfo", "params": { "rate": 8, "shape": 0 } },        the rack, in order (version 3)
 //                  { "id": "lfo2", "type": "lfo", "params": { "rate": 0.5 } },
 //                  { "id": "geo", "type": "geo", "params": {...}, "settings": { "shape": 1, "verts": 7 },   settings, and the table's
-//                    "table": { "3": { "accent": 1 }, "5": { "on": 0 } } } ],                               cells that aren't default
+//                    "table": { "3": { "accent": 1 }, "5": { "on": 0 } } },                                 cells that aren't default
+//                  { "id": "ctrl", "type": "ctrl", "params": {...}, "input": { "kind": "midi", "device": "nanoKONTROL2",    a CONTROLLER's control
+//                    "type": "cc", "num": 14, "ch": 1, "invert": false, "range": "full", "mode": "momentary" } } ],  (12-inputs-core.js)
 //     "mods":   [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 },              a module knob
 //                 { "target": "tess.fold", "source": "lfo", "depth": 0.3, "phase": 90, "div": 1.5 },   this patch's own PHASE (degrees)
 //                                                                                              and DIV, only when not 0 / 1 (a tapping source)
@@ -79,6 +81,7 @@ function sectionFromSnapshot(s, top) {
         rows.forEach((row, r) => src.table.cols.forEach((c, j) => { if (row[j] !== undefined && Math.abs(row[j] - c.def) > 1e-9) (t[r] = t[r] || {})[c.sym] = round6(c.real(row[j])); }));
         e.table = t;
       }
+      if (top && state.inputs && state.inputs[src.id]) e.input = { ...state.inputs[src.id] };   // the preset's own section only
       return e;
     }),
     tempo: s.bpm,
@@ -208,8 +211,12 @@ function readPreset(json, renames = PRESET_RENAMES) {
   const { rack, extras: sourceExtras } = readRack(json.sources, renames, warn, new Set(chain.map((c) => c.id)));
   const ctx = { chainTypes: Object.fromEntries(chain.map((c) => [c.id, c.type])), rackTypes: Object.fromEntries(rack.map((r) => [r.id, r.type])),
     extraIds: new Set(sourceExtras.map((e) => e.id).concat(extras.map((e) => e.id))) };
-  const main = readSection(json, renames, warn, ctx), scenes = {};
+  const main = readSection(json, renames, warn, ctx), scenes = {}, inputs = {};
+  for (const e of Array.isArray(json.sources) ? json.sources : []) {          // CONTROLLER bindings (by device name)
+    if (!e || !e.input || !ctx.rackTypes[e.id]) continue;
+    const b = sanitizeBinding(e.input); if (b) inputs[e.id] = b; else warn(`source ${e.id}: its input isn't one this build can read; left unbound`);
+  }
   for (const [k, s] of Object.entries(json.scenes || {})) if (/^[A-D]$/.test(k) && s && typeof s === 'object') scenes[k] = readSection(s, renames, (w) => warn(`scene ${k}: ${w}`), ctx).snap;
   const master = typeof json.master === 'number' && json.master >= -60 && json.master <= 6 ? json.master : undefined;
-  return { name: typeof json.name === 'string' ? json.name : '', snap: main.snap, assets: main.assets, chain, extras, rack, sourceExtras, scenes, master, warnings };
+  return { name: typeof json.name === 'string' ? json.name : '', snap: main.snap, assets: main.assets, chain, extras, rack, sourceExtras, scenes, master, inputs, warnings };
 }

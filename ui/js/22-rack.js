@@ -22,10 +22,12 @@ function removeSource(s) {
   reindexSources();
   logLine(`removed ${s.name} (${s.id})`);
 }
-// Another of the same kind, with the same knob settings (not its patches).
+// Another of the same kind, with the same knobs, settings and table (not its patches).
 function duplicateSource(s) {
   const d = addSource(s.type); if (!d) return null;
   s.params.forEach((q, i) => setSrcParam(d.params[i], q.v));
+  s.settings.forEach((q, i) => setSrcSetting(d.settings[i], q.v));
+  if (s.table) s.table.v.forEach((row, r) => row.forEach((v, j) => { if (v !== d.table.v[r][j]) setSrcCell(d, r, j, v); }));
   return d;
 }
 // The rack a preset asks for, in its order: [{ id, type }]. Keeps instances that match (id and type).

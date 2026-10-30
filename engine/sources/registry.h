@@ -2,6 +2,7 @@
 // To add a source: put engine/sources/<category>/<id>.h in a folder listed in categories.txt, then
 // run ./build.sh. To change what a fresh rig starts with: default_rack.txt.
 #pragma once
+#include "time/geo.h"
 #include "time/lfo.h"
 #include "playing/adsr.h"
 #include "playing/env.h"
@@ -11,6 +12,7 @@
 
 // X(Type, id, category): every source type, by category (the order of categories.txt), then by id or order.txt
 #define RIG_SOURCES(X) \
+  X(GeoPulse,  geo, time) \
   X(Lfo,       lfo, time) \
   X(PickAdsr,  adsr, playing) \
   X(EnvFollow, env, playing) \

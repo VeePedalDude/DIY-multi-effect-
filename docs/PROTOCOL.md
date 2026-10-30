@@ -16,6 +16,8 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `src_remove <source>` | take a source out of the rack, with every patch to and from it |
 | `src_mod <source> <symbol> <from source> <depth> [phase] [div]` | cross-modulation: `from` moves this source's knob ±depth (`src_mod lfo rate env 0.3`); a source may move its own knobs. `phase` and `div` as for `mod_connect` |
 | `src_unmod <source> <symbol>` | unpatch a source's knob |
+| `src_cfg <source> <symbol> <0..1>` | set a source's setting (normalised): like a knob, but not a patch target (`src_cfg geo shape 0.125`: STAR) |
+| `src_cell <source> <row> <symbol> <0..1>` | set one cell of a source's table (`src_cell geo 3 on 0`: vertex 4 off) |
 | `ext <source> <value>` | feed an outside value to a source (`ext heart 72`, `ext ctrl -0.4`) |
 | `tuner <0\|1> [mute 0\|1]` | strobe tuner on the dry input; with mute (the default) the output fades out while it's on |
 | `tuner_ref <400..480>` | the tuner's A4 reference in Hz (default 440) |
@@ -75,6 +77,7 @@ name; a whole-number knob without a unit (WAVE, SYNC, POLAR) is a selector the e
 | orbit | speed (simulated time when free), orbit (CLASSIC: today's wandering figure-eight; or a known periodic solution with its own masses: FIGURE-8, BUTTERFLY I, BUTTERFLY III, MOTH I, GOGGLES, YIN-YANG, DRAGONFLY, BUMBLEBEE, YARN, HEAVY THIRD, LIGHT THIRD), out (DISTANCE, BODY X, SPEED, CLOSENESS), rate (beats per orbit when synced, note-value stops), sync (FREE / SYNC), chaos (0 % repeats the orbit exactly, more nudges each cycle, 100 % runs free). Meters: `period` (s), `cycles` |
 | heart | rest (simulated bpm when no strap is connected) |
 | ctrl | smooth, deadzone |
+| geo | knobs: rate (beats per step, note-value stops), gate (% of each step), prob, curve (HYPERBOLIC: 0 = Euclidean), warp, timing (UNIFORM → ANGULAR → GEODESIC, a blend), phase (degrees of the cycle), depth (3D). Settings: shape (POLYGON, STAR, WARPED, HYPERBOLIC, TETRAHEDRON, CUBE, OCTAHEDRON, DODECAHEDRON, ICOSAHEDRON), verts (3–32), skip, rot, cycles (ONE / ALL when skip and verts share a factor), dir (FORWARD, REVERSE, PING-PONG, RANDOM), length (AUTO or beats), swing, offset (ms), seed, out (GATE, TRIGGER, ENVELOPE, VELOCITY, PHASE, VERTEX), polar, smooth, retrig, attack, decay, accent, tilt and trail (the 3D view only). Table, a row per vertex: on, prob, vel, accent, gate. `ext geo 0` stops, `1` plays on, `2` goes back to the start. Meters: `step`, `fired` |
 
 In the browser the page reads the file from the library and sends it to the engine (a binary
 message: a `.nam` file's text as-is, or an IR decoded to the `RIR1` header plus float samples,
@@ -115,7 +118,10 @@ then `rig_fx_add()` returns the slot (or −1 unknown type, −2 full, −3 bad 
 once the audio thread has finished with it; the browser calls it about 30 times a second. Sources by rack slot: `rig_src_param(slot, p, v)`, `rig_ext(slot, v)`, `rig_mod(m, p, slot, depth)`;
 the rack: write `"<type> [id]"` to `rig_text()`, then `rig_src_add()` returns the slot (or −1 unknown
 type, −2 full, −3 bad id); `rig_src_remove(slot)`, `rig_src_mod(slot, p, fromSlot, depth)` (−1
-unpatches), `rig_mod_tap(m, p, degrees, div)` and `rig_src_tap(slot, p, degrees, div)` (a patch's
+unpatches), `rig_src_cfg(slot, i, v)` and `rig_src_cell(slot, row, col, v)` (settings and table cells,
+normalised; the description lists each type's `settings` and `table: {rows, cols}`), `rig_view(type)` (for
+drawing only, on the page's own copy of the engine: write knobs and settings to `rig_view_buf()`, read
+what the type draws from `rig_view_buf() + 64`), `rig_mod_tap(m, p, degrees, div)` and `rig_src_tap(slot, p, degrees, div)` (a patch's
 PHASE and DIV; `tapDivs` in the description lists the choices, the nearest is taken; a new source on
 the knob starts again at 0 degrees, 1×), `rig_rack()` (JSON: what's in the rack and where). Adding and removing allocate: call
 them between `rig_process` calls or from a control thread (a removed instance is freed once the

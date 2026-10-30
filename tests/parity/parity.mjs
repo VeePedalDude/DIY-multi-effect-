@@ -64,6 +64,28 @@ const diff2 = 10 * Math.log10(sd2 / ss2);
 check(diff2 < -60, `with files vs native: diff energy ${diff2.toFixed(1)} dB below signal (max |diff| ${maxd2.toExponential(2)}; SIMD vs scalar maths in NAM)`);
 console.log(`      wasm render with A2 + 3 s stereo IR: ${(100 * ms2 / 1000 / secs).toFixed(1)}% of one core`);
 
+// Scenario 3: GEO PULSE, every block's value and meters must match native exactly (see dump.cpp)
+{
+  const natG = new Float32Array(fs.readFileSync('build/geo_native.f32').buffer.slice(0));
+  const gt = desc.sourceTypes.find((t) => t.type === 'geo'), si = (s) => gt.settings.findIndex((q) => q.symbol === s), ki = (s) => gt.params.findIndex((q) => q.symbol === s), ci = (s) => gt.table.cols.findIndex((q) => q.symbol === s);
+  X.rig_init(48000); const tx = new Uint8Array(X.memory.buffer, X.rig_text(), 64); tx.fill(0); tx.set(new TextEncoder().encode('geo')); const gk = X.rig_src_add();
+  const cfg = (s, real) => { const q = gt.settings[si(s)]; X.rig_src_cfg(gk, si(s), (real - q.min) / (q.max - q.min)); };
+  cfg('shape', 3); cfg('verts', 9); cfg('dir', 3); cfg('seed', 11); cfg('out', 2);
+  X.rig_src_param(gk, ki('prob'), 0.7); X.rig_src_param(gk, ki('warp'), 0.5); X.rig_src_param(gk, ki('curve'), 0.8); X.rig_src_param(gk, ki('timing'), 1);
+  X.rig_src_cell(gk, 4, ci('on'), 0); X.rig_src_cell(gk, 2, ci('accent'), 1); X.rig_mod(3, 0, gk, 0.3);
+  const tr = new Float32Array(natG.length); let w = 0;
+  for (let i = 0; i < inp.length; i += 128) {
+    if (i === 48000 * 4) { cfg('shape', 7); cfg('dir', 2); X.rig_src_param(gk, ki('depth'), 0.6); }
+    if (i === 48000 * 9) { cfg('shape', 1); cfg('verts', 12); cfg('skip', 4); cfg('cycles', 1); cfg('swing', 30); X.rig_ext(gk, 2); }
+    view(X.rig_in()).set(inp.subarray(i, i + 128)); X.rig_process(128);
+    const M = new Float32Array(X.memory.buffer, X.rig_meters(), X.rig_meters_len()), L = desc.meters;
+    tr[w++] = M[L.src + gk]; tr[w++] = M[L.srcm + gk * L.perSrc]; tr[w++] = M[L.srcm + gk * L.perSrc + 1];
+  }
+  let same = 0, firstDiff = -1, worst = 0; for (let i = 0; i < natG.length; i++) { if (tr[i] === natG[i]) same++; else { if (firstDiff < 0) firstDiff = i; worst = Math.max(worst, Math.abs(tr[i] - natG[i])); } }
+  const events = Math.floor(natG[natG.length - 1] / 32);
+  check(same === natG.length || (worst < 1e-5 && natG.every((x, i) => i % 3 === 0 || x === tr[i])), `GEO PULSE (hyperbolic, random, probability, 3 shape changes, a reset): ${natG.length / 3} blocks, ${events} events; ${same === natG.length ? 'every value and meter identical' : `meters identical, values within ${worst.toExponential(1)} (first difference at block ${Math.floor(firstDiff / 3)})`}`);
+}
+
 // What files cost in WebAssembly (the browser): one file loaded, the riff played through the chain.
 // "99.9%" = 99.9% of 128-sample blocks finish within this share of their 2.67 ms (this machine).
 const irFile = (secs, ch) => {

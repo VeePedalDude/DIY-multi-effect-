@@ -13,6 +13,8 @@
 //     phase (degrees, default 0) and div (1/4 1/3 1/2 2/3 1 3/2 2 3 4 8, default 1) are the patch's own
 //     offset and multiple of the source's cycle, for sources that tap (the LFO); others ignore them.
 //   src_unmod <source> <symbol>
+//   src_cfg <source> <symbol> <0..1>          a setting (not a patch target: a shape, a seed...)
+//   src_cell <source> <row> <symbol> <0..1>   a cell of the source's table (per step / per vertex)
 //   fx_add <type> [id] [position]             fx_remove <inst>             fx_move <inst> <position>
 // Sources are rack instances, named by id ("lfo", "lfo2"); every change to the rack is answered
 // with a {type:'rack'} message listing what's in it and in which slot. Modules are chain instances
@@ -79,6 +81,7 @@ class RigEngine extends AudioWorkletProcessor {
   readRack() { this.rack = JSON.parse(cString(this.x.memory, this.x.rig_rack())).sources; }
   sendRack() { this.port.postMessage({ type: 'rack', rack: this.rack }); }
   source(tok) { const r = this.rack.find((s) => s.id === tok); return r ? r.slot : -1; }      // rack slot of an instance id
+  sourceType(slot) { const r = this.rack.find((s) => s.slot === slot); return r ? this.types[r.type] : null; }
   sourceKnob(slot, sym) { const r = this.rack.find((s) => s.slot === slot), t = r && this.types[r.type]; return t ? t.params.findIndex((q) => q.symbol === sym) : -1; }
   // [phase] [div] after a patch's depth: degrees, and a multiple of the cycle written 3/2 or 1.5.
   tapArgs(a, b) {
@@ -129,6 +132,20 @@ class RigEngine extends AudioWorkletProcessor {
       const f = this.source(t[3]), d = Number(t[4]), tap = this.tapArgs(t[5], t[6]); if (f < 0 || !(d >= 0 && d <= 1) || !tap) return ERR.VALUE_OUT_OF_RANGE;
       if (X.rig_src_mod(k, p, f, d) !== 0) return ERR.INSTANCE_INVALID;
       X.rig_src_tap(k, p, tap[0], tap[1]); return 0;
+    }
+    if (c === 'src_cfg') {                       // src_cfg <source> <symbol> <0..1>
+      const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
+      const i = (this.sourceType(k).settings || []).findIndex((q) => q.symbol === t[2]); if (i < 0) return ERR.INVALID_PARAM_SYMBOL;
+      const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE;
+      X.rig_src_cfg(k, i, v); return 0;
+    }
+    if (c === 'src_cell') {                      // src_cell <source> <row> <symbol> <0..1>
+      const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
+      const tb = this.sourceType(k).table || { rows: 0, cols: [] }, row = Number(t[2]), j = tb.cols.findIndex((q) => q.symbol === t[3]);
+      if (!Number.isInteger(row) || row < 0 || row >= tb.rows) return ERR.VALUE_OUT_OF_RANGE;
+      if (j < 0) return ERR.INVALID_PARAM_SYMBOL;
+      const v = Number(t[4]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE;
+      X.rig_src_cell(k, row, j, v); return 0;
     }
     if (c === 'src_set') {                       // src_set <source> <symbol> <0..1>
       const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;

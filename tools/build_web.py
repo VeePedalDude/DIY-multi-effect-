@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """tools/build_web.py - assemble dist/rig-test.html from ui/ and build/rig.wasm.
 
-Script order: ui/js/*.js by name, with every ui/screens/*.js inserted before the
-first ui/js file numbered 50 or higher. All of it runs inside one function scope.
+Script order: ui/js/*.js by name, with every ui/screens/*.js and ui/sources/*.js inserted before
+the first ui/js file numbered 50 or higher. All of it runs inside one function scope.
 Images in ui/assets/ are embedded as data: URLs in UI_ASSETS (keyed by file name), so the
 page stays a single file that works offline and from disk.
 """
@@ -11,9 +11,10 @@ root = pathlib.Path(__file__).resolve().parent.parent
 ui = root / 'ui'
 js = sorted((ui / 'js').glob('*.js'))
 screens = sorted((ui / 'screens').glob('*.js'))
+srcviews = sorted((ui / 'sources').glob('*.js'))
 early = [p for p in js if int(re.match(r'(\d+)', p.name).group(1)) < 50]
 late = [p for p in js if p not in early]
-parts = early + screens + late
+parts = early + screens + srcviews + late
 mime = {'.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml'}
 assets = {p.name: f"data:{mime[p.suffix]};base64,{base64.b64encode(p.read_bytes()).decode()}"
           for p in sorted((ui / 'assets').glob('*')) if p.suffix in mime}
@@ -32,4 +33,4 @@ html = html.replace('/*__WORKLET__*/', worklet).replace('/*__WASM_B64__*/', wasm
 (root / 'build/app.js').write_text(app)          # for syntax checks
 asset_kb = sum(len(v) for v in assets.values()) // 1024
 out = root / 'dist/rig-test.html'; out.parent.mkdir(exist_ok=True); out.write_text(html)
-print(f'wrote {out.relative_to(root)} ({out.stat().st_size // 1024} KB): {len(parts)} ui files ({len(screens)} screens), {len(assets)} images ({asset_kb} KB)')
+print(f'wrote {out.relative_to(root)} ({out.stat().st_size // 1024} KB): {len(parts)} ui files ({len(screens)} screens, {len(srcviews)} source views), {len(assets)} images ({asset_kb} KB)')

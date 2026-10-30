@@ -19,6 +19,7 @@ through the rename table.**
 | Move it to another category | Move the file to that folder (`git mv`). Only its tab changes: its id, presets and patches stay the same. | Rename the file at the same time (the id is the file name). |
 | Change the order inside a tab | List the ids in `<category>/order.txt` (whitespace separated, `#` comments). Ids it leaves out follow, by id. | |
 | Add a category | One line in `categories.txt` (`folder \| tab label \| what goes here`) and the folder. Lines are in tab order. | |
+| Add a setting or a table column | Append it to `settings` (or `cols`), defaulting to the old behaviour, like a knob. Settings and columns are saved by symbol, so the same rules apply: never rename without `PRESET_RENAMES.sourceKnobs`. | Insert one before existing ones: `rig_src_cfg` and `rig_src_cell` address them by position. |
 | Add a display meter | Up to 2 per module or source; name it in the desc, fill it in `meters()`. Face screens read meters by name (`h.meter('name')`). | |
 | Take outside data (sources) | Set `ext` in the desc to what the value means; implement `ext(float)`. | Block or allocate in `ext()`. |
 | Add a file slot (modules) | See ADDING_A_MODULE.md, "a file slot". | |

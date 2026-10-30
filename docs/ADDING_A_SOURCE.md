@@ -60,6 +60,8 @@ struct RandomSH : Source {
 | `ext` | `nullptr`, or what `ext <id> <value>` means (`"value -1..1"`), if it takes outside data |
 | `nmeters`, `meters` | up to 2 display values, each named; `meters()` fills them |
 | `nparams`, `params` | up to 8 knobs (`MAXPAR`) |
+| `nsettings`, `settings` | optional, up to 24 settings (`MAXCFG`): described like knobs and saved in presets, but nothing patches them (a shape, a seed, a direction). Read with `setting(c, i)`; set with `src_cfg`. The panel shows the first four beside the knobs and folds the rest under **More settings**. A symbol can't be a knob's too |
+| `rows`, `ncols`, `cols` | optional table: up to 32 rows of up to 6 columns (`MAXROWS`, `MAXCOLS`), each column described like a knob (per step, per vertex...). Read with `cell(c, row, col)`; set with `src_cell`; presets keep the cells that differ from the default |
 
 ### Knobs (`ParamDesc`, `engine/core/param.h`)
 
@@ -69,7 +71,7 @@ struct RandomSH : Source {
 | `label` | what the panel shows: `"RATE"` |
 | `min`, `max` | the real range; `max > min`; a `Curve::Log` knob needs `min > 0` |
 | `def` | the default, **normalised** 0..1. Centre the range on it: on a log curve, a default value of √(min × max) sits at 0.5 |
-| `unit` | one of `"" dB ms s Hz % x bpm beats "per beat" st ct` |
+| `unit` | one of `"" dB ms s Hz % x bpm beats "per beat" st ct deg` |
 | `decimals` | 0–4 digits in the readout; `sign` shows a leading `+` |
 | `stops`, `nstops` | optional named stops in real units, ascending (`{0.5f, "1/8"}, {1.f, "1/4"}`). Turning the knob by hand lands on them and the readout shows the name; cross-modulation still moves it continuously. A whole-number knob with no unit (`""`, 0 decimals) is a selector: round it in `update()` (`lrintf`) and crossfade a change, since cross-modulation can switch it every block. See `time/lfo.h` |
 
@@ -84,6 +86,14 @@ struct RandomSH : Source {
 | A jumping knob must not make the output jump on its own | phase-accumulate rates (`ph += dt × rate`), smooth what would click |
 | Use the full −1..1 range; centre "nothing happening" sensibly | bipolar (LFO: −1..1 around 0) or unipolar (envelope: −1 at rest, +1 at full); say which in the header |
 | `c.dt` is the block length in seconds; `c.bpm` the tempo; `c.in`/`c.n` the dry guitar | tempo-synced sources follow tap tempo for free |
+
+### Drawing it in its panel (`view()`, `ui/sources/<id>.js`)
+
+A source can add its own picture to its side panel: `ui/sources/<id>.js` registers `SRCVIEW.<id> = { html(s),
+mount(s), frame(s), meters(s) }` (GEO PULSE's 3D view is the example). What it draws should come from the
+engine, not be worked out again in JavaScript: implement `view(knobs, cfg, out, max)` (pure: it reads only
+its arguments) and the page calls it through `rig_view()` on its own copy of the engine; anything that moves
+comes from the meters, read in `meters(s)` on every meter packet (about 31 a second), never from a clock of the view's own.
 
 ### Per-destination phase and multiple (`taps`)
 

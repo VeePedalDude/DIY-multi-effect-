@@ -3,9 +3,10 @@
 // failure names the type and what it broke (docs/ADDING_A_SOURCE.md, docs/ADDING_A_MODULE.md).
 #include "framework.h"
 #include <set>
+#include <array>
 using namespace rigtest;
 
-static const char* UNITS[] = {"", "dB", "ms", "s", "Hz", "%", "x", "bpm", "beats", "per beat", "st", "ct"};
+static const char* UNITS[] = {"", "dB", "ms", "s", "Hz", "%", "x", "bpm", "beats", "per beat", "st", "ct", "deg"};
 static bool symbolOk(const char* s) { if (!s || !(s[0] >= 'a' && s[0] <= 'z')) return false; for (int i = 0; s[i]; i++) if (i > 15 || !((s[i] >= 'a' && s[i] <= 'z') || (s[i] >= '0' && s[i] <= '9') || s[i] == '_')) return false; return true; }
 // Problems with a knob list, as text ("" = none).
 static std::string knobProblems(int n, const ParamDesc* ps) {
@@ -34,16 +35,21 @@ static std::string knobProblems(int n, const ParamDesc* ps) {
 
 TEST("90 conformance: every source type's description follows the format") {
   std::set<std::string> ids; int bad = 0;
-  printf("      %-8s %-12s knobs meters ext\n", "type", "name");
+  printf("      %-8s %-16s knobs settings table meters ext\n", "type", "name");
   for (int t = 0; t < NSRCTYPES; t++) {
     const SourceDesc& d = sourceTypeDesc(t); std::string p = knobProblems(d.nparams, d.params);
+    if (d.nsettings < 0 || d.nsettings > MAXCFG || (d.nsettings > 0 && !d.settings)) p += " settings: 0..24, with a list;";
+    else { std::string s = knobProblems(d.nsettings > MAXPAR ? 0 : d.nsettings, d.settings); for (int i = 0; i < d.nsettings; i += MAXPAR) s += knobProblems(std::min(MAXPAR, d.nsettings - i), d.settings + i); if (!s.empty()) p += " settings:" + s; }
+    for (int i = 0; i < d.nsettings; i++) for (int k = 0; k < d.nparams; k++) if (d.settings && !strcmp(d.settings[i].symbol, d.params[k].symbol)) p += std::string(" setting ") + d.settings[i].symbol + " has a knob's symbol;";
+    if (d.rows < 0 || d.rows > MAXROWS || d.ncols < 0 || d.ncols > MAXCOLS || ((d.rows > 0) != (d.ncols > 0)) || (d.ncols > 0 && !d.cols)) p += " table: up to 32 rows x 6 columns, both or neither;";
+    else if (d.ncols) { std::string s = knobProblems(d.ncols, d.cols); if (!s.empty()) p += " table:" + s; }
     if (!ModRack::validId(d.id) || strlen(d.id) > 12) p += " id must be [a-z][a-z0-9_]*, up to 12 (room for instance numbers);";
     else if (!ids.insert(d.id).second) p += " id used by another type;";
     if (!d.name || !d.name[0] || strlen(d.name) > 16) p += " name 1..16 characters;";
     if (!d.sub) p += " sub missing;";
     if (d.nmeters < 0 || d.nmeters > MAXSRCMETERS) p += " more than 2 meters;";
     for (int m = 0; m < d.nmeters && m < MAXSRCMETERS; m++) if (!d.meters[m] || !d.meters[m][0]) p += " meter without a name;";
-    printf("      %-8s %-12s %5d %6d %s\n", d.id, d.name, d.nparams, d.nmeters, d.ext ? "yes" : "-");
+    printf("      %-8s %-16s %5d %8d %2dx%-2d %6d %s\n", d.id, d.name, d.nparams, d.nsettings, d.rows, d.ncols, d.nmeters, d.ext ? "yes" : "-");
     if (!p.empty()) { printf("      ! %s:%s\n", d.id, p.c_str()); bad++; }
   }
   CHECK(bad == 0, "%d source types checked, %d with problems", NSRCTYPES, bad);
@@ -56,6 +62,14 @@ static bool torture(int t, std::string& why) {
   std::vector<float> k(MAXPAR); for (int p = 0; p < d.nparams; p++) k[p] = d.params[p].def; knobSets.push_back(k);
   knobSets.push_back(std::vector<float>(MAXPAR, 0.f)); knobSets.push_back(std::vector<float>(MAXPAR, 1.f));
   unsigned r = 11; for (int s = 0; s < 3; s++) { for (auto& v : k) { r = r * 1664525u + 1013904223u; v = (r >> 8) / 16777216.f; } knobSets.push_back(k); }
+  // settings and table: defaults, all 0, all 1, then random, alongside each knob set
+  std::vector<std::vector<float>> cfgSets; std::vector<std::vector<std::array<float, MAXCOLS>>> tabSets;
+  for (size_t ks = 0; ks < knobSets.size(); ks++) {
+    std::vector<float> cf(MAXCFG, 0.f); std::vector<std::array<float, MAXCOLS>> tb(MAXROWS);
+    for (int i = 0; i < d.nsettings; i++) { float v = d.settings[i].def; if (ks == 1) v = 0; if (ks == 2) v = 1; if (ks > 2) { r = r * 1664525u + 1013904223u; v = (r >> 8) / 16777216.f; } cf[i] = v; }
+    for (int row = 0; row < d.rows; row++) for (int j = 0; j < d.ncols; j++) { float v = d.cols[j].def; if (ks == 1) v = 0; if (ks == 2) v = 1; if (ks > 2) { r = r * 1664525u + 1013904223u; v = (r >> 8) / 16777216.f; } tb[row][j] = v; }
+    cfgSets.push_back(cf); tabSets.push_back(tb);
+  }
   const char* inputs[] = {"silence", "riff", "full-scale noise", "DC +1", "square +-1"};
   for (float sr : {44100.f, 96000.f}) for (int blk : {1, 37, 128}) for (size_t ks = 0; ks < knobSets.size(); ks++) for (int in = 0; in < 5; in++) {
     Source* s = sourceTypes()[t].make(); s->init(sr);
@@ -64,7 +78,7 @@ static bool torture(int t, std::string& why) {
     for (int i = 0, pos = 0; i < (int)(1.5f * sr / blk); i++, pos += blk) {
       for (int j = 0; j < blk; j++) { n = n * 1664525u + 1013904223u;
         buf[j] = in == 0 ? 0.f : in == 1 ? g[(pos + j) % g.size()] : in == 2 ? (n >> 8) / 8388608.f - 1.f : in == 3 ? 1.f : (((pos + j) / 50) % 2 ? 1.f : -1.f); }
-      SourceContext c{buf, blk, sr, blk / sr, 120.f, knobSets[ks].data()};
+      SourceContext c{buf, blk, sr, blk / sr, 120.f, knobSets[ks].data(), cfgSets[ks].data(), reinterpret_cast<const float (*)[MAXCOLS]>(tabSets[ks].data())};
       float v = s->update(c);
       if (d.taps) { unsigned cn; float cp; s->cycle(cn, cp);    // a tapping source: every phase of this cycle and the next, too
         if (!(cp >= 0.f && cp < 1.f)) v = NAN;

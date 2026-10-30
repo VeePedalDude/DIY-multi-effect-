@@ -9,6 +9,22 @@ const srcFocus = () => (typeof state.focus === 'string' && state.focus.startsWit
 function focusSource(s) { state.focus = 'src:' + s.id; update(); }
 const srcEsc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 let srcRemoveArmed = null;                    // the source whose Remove was clicked once (click again to confirm)
+let srcMoreOpen = false;                      // "More settings" stays open across re-renders
+const SETTINGS_UP_FRONT = 4;                  // a source's first settings show beside its knobs; the rest fold away
+// A setting (src_cfg): a switch with named positions is a menu; anything else a slider, landing on whole
+// numbers when it shows none (VERTICES, SEED) and on its named stops when it has them.
+const normOfStop = (q, r) => (q.desc.curve === 'log' ? Math.log(r / q.desc.min) / Math.log(q.desc.max / q.desc.min) : (r - q.desc.min) / (q.desc.max - q.desc.min));
+function snapSetting(q, v) { v = q.snap(clamp(v, 0, 1)); if (!q.desc.stops && q.desc.decimals === 0 && q.desc.curve !== 'log') v = normOfStop(q, Math.round(q.real(v))); return clamp(v, 0, 1); }
+function settingHtml(q, color) {
+  if (isSelector(q.desc)) {
+    const cur = Math.round(q.real(q.v));
+    return `<div class="param"><div class="prow"><b><label for="sc-${q.id}" style="color:inherit;font:inherit;display:inline">${q.label}</label></b></div>
+      <select id="sc-${q.id}" data-scfg="${q.id}" style="min-height:36px">${q.desc.stops.map(([v, n]) => `<option value="${normOfStop(q, v)}"${v === cur ? ' selected' : ''}>${srcEsc(n)}</option>`).join('')}</select></div>`;
+  }
+  return `<div class="param"><div class="prow"><b><label for="sc-${q.id}" style="color:inherit;font:inherit;display:inline">${q.label}</label></b><span class="num" data-cdisp="${q.id}">${q.fmt(q.v)}</span></div>
+    <input type="range" id="sc-${q.id}" data-scfg="${q.id}" min="0" max="1" step="0.001" value="${q.v}" style="accent-color:${color}"></div>`;
+}
+const settingOf = (id) => { const [sid, sym] = String(id).split('~'), s = SRCMAP[sid]; return s && s.settings.find((q) => q.sym === sym); };
 
 function patchRowHtml(pid, S) {            // one patched knob: who moves it, unplug, depth
   const d = depthOf(pid);
@@ -28,6 +44,8 @@ function renderSourcePanel(s) {
     <button class="btn ${armed ? 'byp' : ''}" data-act="remove-src" title="Take it out of the rack, with its patches">${armed ? 'Confirm remove' : 'Remove'}</button></div>`;
   if (other) h += `<p class="note">Carrying <b style="color:${other.color}">${srcEsc(other.name)}</b>: pick one of ${srcEsc(s.name)}'s knobs below for it to move.</p>`;
   if (s.ext) h += `<p class="note">Takes outside input: ${srcEsc(s.ext)} (<span class="mono">ext ${s.id} &lt;value&gt;</span>).</p>`;
+  if (SRCVIEW[s.type]) h += SRCVIEW[s.type].html(s);
+  if (s.settings.length) h += `<div class="params">${s.settings.slice(0, SETTINGS_UP_FRONT).map((q) => settingHtml(q, s.color)).join('')}</div>`;
   if (s.params.length) {
     h += `<div class="params">`;
     s.params.forEach((q) => {
@@ -40,7 +58,9 @@ function renderSourcePanel(s) {
       h += `</div>`;
     });
     h += `</div>`;
-  } else h += `<p class="note">This source has no settings.</p>`;
+  } else if (!s.settings.length) h += `<p class="note">This source has no settings.</p>`;
+  if (s.settings.length > SETTINGS_UP_FRONT) h += `<details class="more" id="srcMore"${srcMoreOpen ? ' open' : ''}><summary>More settings · ${s.settings.length - SETTINGS_UP_FRONT}</summary>
+    <div class="params" style="margin-top:14px">${s.settings.slice(SETTINGS_UP_FRONT).map((q) => settingHtml(q, s.color)).join('')}</div></details>`;
   h += `<div class="patches"><span class="eyebrow">Moves · ${targets.length}</span>`;
   if (!targets.length) h += `<p class="note">Nothing yet. Carry a cable to a knob on the stage or to another source, or pick one below.</p>`;
   targets.forEach((pid) => {
@@ -52,9 +72,13 @@ function renderSourcePanel(s) {
     + `<optgroup label="Module knobs">${free.filter((k) => k.mod).map((k) => `<option value="${k.id}">${srcEsc(k.mod.name)} · ${k.label}</option>`).join('')}</optgroup>`
     + `<optgroup label="Source knobs (cross-modulation)">${free.filter((k) => k.src).map((k) => `<option value="${k.id}">${srcEsc(k.src.name)} · ${k.label}</option>`).join('')}</optgroup></select></label>`;
   h += `</div>`;
-  h += `<div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">${s.params.length ? `src_set ${s.id} ${s.params[0].sym} 0.5<br>src_mod ${s.id} ${s.params[0].sym} &lt;source&gt; 0.3<br>` : ''}${TYPES[s.type].taps ? `mod_connect holo feedback ${s.id} 0.3 90 3/2 <span class="muted">(phase, div)</span><br>` : ''}src_remove ${s.id}</span></div>`;
+  h += `<div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">${s.params.length ? `src_set ${s.id} ${s.params[0].sym} 0.5<br>src_mod ${s.id} ${s.params[0].sym} &lt;source&gt; 0.3<br>` : ''}${s.settings.length ? `src_cfg ${s.id} ${s.settings[0].sym} 0.5<br>` : ''}${s.table ? `src_cell ${s.id} 0 ${s.table.cols[0].sym} 1<br>` : ''}${TYPES[s.type].taps ? `mod_connect holo feedback ${s.id} 0.3 90 3/2 <span class="muted">(phase, div)</span><br>` : ''}src_remove ${s.id}</span></div>`;
   panel.innerHTML = h;
+  const more = document.getElementById('srcMore'); if (more) more.addEventListener('toggle', () => { srcMoreOpen = more.open; });
+  if (SRCVIEW[s.type]) SRCVIEW[s.type].mount(s);
 }
+// The open source's extra view, every frame (ui/sources/<type>.js).
+function drawSourceView(dt) { const s = srcFocus(); if (s && SRCVIEW[s.type]) SRCVIEW[s.type].frame(s, dt); }
 // The add panel for sources: a tab per category (engine/sources/<category>/), search across them all.
 PICKERS.src = {
   cats: () => DESC.sourceCategories,
@@ -89,6 +113,8 @@ function wireSourcePanel() {
   panel.addEventListener('input', (e) => {
     const t = e.target, ds = t.dataset || {};
     if (ds.spid) { const q = SPARAMS[ds.spid], v = q.snap(Number(t.value)); setSrcParam(q, v); if (v !== Number(t.value)) t.value = v; refreshSourceReadouts(); }
+    if (ds.scfg && t.tagName === 'INPUT') { const q = settingOf(ds.scfg), v = snapSetting(q, Number(t.value)); setSrcSetting(q, v); if (v !== Number(t.value)) t.value = v;
+      document.querySelectorAll(`[data-cdisp="${ds.scfg}"]`).forEach((el) => { el.textContent = q.fmt(q.v); }); }
     if (ds.tphase) { setTap(ds.tphase, Number(t.value), tapOf(ds.tphase).div); document.querySelectorAll(`[data-tpdisp="${ds.tphase}"]`).forEach((el) => { el.textContent = `${Math.round(Number(t.value))}°`; }); }
     if (ds.depth) { setDepth(ds.depth, Number(t.value)); document.querySelectorAll(`[data-ddisp="${ds.depth}"]`).forEach((el) => { el.textContent = `±${Math.round(Number(t.value) * 100)}%`; }); }
   });
@@ -97,6 +123,7 @@ function wireSourcePanel() {
     if (ds.srcpatch && e.target.value) { connect(e.target.value, ds.srcpatch); update(); }
     if (ds.spatch && e.target.value) { connect(ds.spatch, e.target.value); update(); }
     if (ds.tdiv) setTap(ds.tdiv, tapOf(ds.tdiv).phase, Number(e.target.value));
+    if (ds.scfg && e.target.tagName === 'SELECT') { setSrcSetting(settingOf(ds.scfg), Number(e.target.value)); update(); }
   });
   panel.addEventListener('click', (e) => {
     const add = e.target.closest('[data-add-type]');

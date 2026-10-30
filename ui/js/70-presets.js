@@ -7,6 +7,9 @@ function applySnapshot(s) {
   state.depths = { ...(s.depths || {}) };
   state.taps = { ...(s.taps || {}) };
   SRC.forEach((src) => src.params.forEach((q) => { q.v = s.srcParams && s.srcParams[q.id] !== undefined ? s.srcParams[q.id] : q.def; }));
+  SRC.forEach((src) => src.settings.forEach((q) => { q.v = s.srcCfg && s.srcCfg[q.id] !== undefined ? s.srcCfg[q.id] : q.def; }));
+  SRC.forEach((src) => { if (!src.table) return; const rows = s.srcCells && s.srcCells[src.id];
+    src.table.v = Array.from({ length: src.table.rows }, (_, r) => src.table.cols.map((c, j) => (rows && rows[r] && rows[r][j] !== undefined ? rows[r][j] : c.def))); });
   if (s.bpm) { state.bpm = s.bpm; $('bpm').textContent = Math.round(s.bpm); }
   sendAll(); syncCables(); update();
 }

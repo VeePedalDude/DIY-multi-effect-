@@ -67,6 +67,21 @@ EXPORT(rig_mod_tap) void rig_mod_tap(int m, int p, float deg, float div) {
   E().tap[m][p].set(deg, div);
 }
 EXPORT(rig_src_tap) int rig_src_tap(int src, int p, float deg, float div) { return E().rack.tapSet(src, p, deg, div); }
+// Settings (not patch targets) and table cells of a source, normalised 0..1 (SourceDesc settings / cols).
+EXPORT(rig_src_cfg) int rig_src_cfg(int src, int i, float v) { return E().rack.cfgSet(src, i, v); }
+EXPORT(rig_src_cell) int rig_src_cell(int src, int row, int col, float v) { return E().rack.cellSet(src, row, col, v); }
+// For the UI's drawing only (its main-thread copy of the engine, not the audio one): what a source type
+// draws for the knobs and settings written to rig_view_buf() (knobs at 0, settings at MAXPAR, both
+// normalised); the result is written from rig_view_buf() + 64. Returns how many numbers. Allocates once per type.
+static float g_view[64 + 512];
+static_assert(rig::MAXPAR + rig::MAXCFG <= 64, "rig_view_buf: knobs and settings must fit before the output");
+static rig::Source* g_viewSrc[64] = {nullptr};
+EXPORT(rig_view_buf) float* rig_view_buf() { return g_view; }
+EXPORT(rig_view) int rig_view(int type) {
+  if (type < 0 || type >= rig::NSRCTYPES || type >= 64) return 0;
+  if (!g_viewSrc[type]) { g_viewSrc[type] = rig::sourceTypes()[type].make(); g_viewSrc[type]->init(48000.f); }
+  return g_viewSrc[type]->view(g_view, g_view + rig::MAXPAR, g_view + 64, 512);
+}
 EXPORT(rig_rack) const char* rig_rack() { return E().rackJson; }
 // The effect chain (control thread; allocates). Modules are addressed by slot (rig_chain() lists the
 // chain in order with each instance's slot; a fresh chain is one of each type, slots 0.. in order).

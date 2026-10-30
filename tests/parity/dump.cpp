@@ -48,5 +48,22 @@ int main() {
   }
   f = fopen("build/out_native2.f32", "wb"); fwrite(out.data(), 4, out.size(), f); fclose(f);
   printf("native dump 2 (A2 capture, 3 s stereo IR): loads %d %d · %s · %s\n", s1, s2, rig_asset_status(1), rig_asset_status(2));
+
+  // Scenario 3 (mirrored in parity.mjs): GEO PULSE, HYPERBOLIC, random direction and probability, patched to
+  // HOLOGRAM feedback; settings change at 4 s and 9 s. Every block: its value and both meters (step, fired).
+  rig_init(48000); strcpy(rig_text(), "geo"); const int gk = rig_src_add();
+  auto cfg = [&](int i, float real) { const rig::ParamDesc& q = rig::GEO_SETTINGS[i]; rig_src_cfg(gk, i, (real - q.min) / (q.max - q.min)); };
+  cfg(rig::GS_SHAPE, 3); cfg(rig::GS_VERTS, 9); cfg(rig::GS_DIR, 3); cfg(rig::GS_SEED, 11); cfg(rig::GS_OUT, 2);
+  rig_src_param(gk, rig::GK_PROB, 0.7f); rig_src_param(gk, rig::GK_WARP, 0.5f); rig_src_param(gk, rig::GK_CURVE, 0.8f); rig_src_param(gk, rig::GK_TIMING, 1.f);
+  rig_src_cell(gk, 4, rig::GC_ON, 0.f); rig_src_cell(gk, 2, rig::GC_ACCENT, 1.f); rig_mod(3, 0, gk, 0.3f);
+  std::vector<float> trace; trace.reserve(g.size() / 128 * 3 + 8);
+  for (size_t i = 0; i < g.size(); i += 128) {
+    if (i == 48000 * 4) { cfg(rig::GS_SHAPE, 7); cfg(rig::GS_DIR, 2); rig_src_param(gk, rig::GK_DEPTH, 0.6f); }
+    if (i == 48000 * 9) { cfg(rig::GS_SHAPE, 1); cfg(rig::GS_VERTS, 12); cfg(rig::GS_SKIP, 4); cfg(rig::GS_CYCLES, 1); cfg(rig::GS_SWING, 30); rig_ext(gk, 2); }
+    memcpy(rig_in(), &g[i], 512); rig_process(128);
+    trace.push_back(rig_meters()[rig::M_SRC + gk]); trace.push_back(rig_meters()[rig::M_SRCM + gk * rig::MAXSRCMETERS]); trace.push_back(rig_meters()[rig::M_SRCM + gk * rig::MAXSRCMETERS + 1]);
+  }
+  f = fopen("build/geo_native.f32", "wb"); fwrite(trace.data(), 4, trace.size(), f); fclose(f);
+  printf("native dump 3 (GEO PULSE): %zu blocks, %d events fired\n", trace.size() / 3, (int)(trace.back() / 32));
   return s1 || s2;
 }

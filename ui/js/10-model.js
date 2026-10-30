@@ -9,7 +9,9 @@
 // patch target: a module's knob (PARAMS, "holo.feedback") or a source's knob (SPARAMS, "lfo2.rate");
 // ids never clash because the engine refuses source ids that are module ids.
 let DESC = null, LAYOUT = null;
+let VIEWX = null;                         // the main-thread copy of the engine: rig_view() for drawing (never the audio one)
 let MODS = [], SRC = [], PARAMS = {}, SRCMAP = {}, TYPES = {}, TYPE_ORDER = [], SPARAMS = {}, MTYPES = {}, MTYPE_ORDER = [];
+const SRCVIEW = {};                       // extra views for a source type's panel (ui/sources/<type>.js): { html(s), mount(s), frame(s, dt), meters(s)? }
 const RACK_HOOKS = [];                    // called after the rack changes (the stage rebuilds its orbs)
 const CHAIN_HOOKS = [];                   // called after the chain changes (the stage rebuilds its cards)
 const WASM_BYTES = b64ToBytes(RIG_WASM_B64);
@@ -20,8 +22,9 @@ function cStringMain(mem, ptr) { const u = new Uint8Array(mem.buffer, ptr); let 
 // snap(v): the nearest stop, which turning it by hand lands on. A whole-number knob without a unit is a
 // selector (the engine rounds it), so its readout names the position it's on; others show a stop's
 // name only when they sit on it (cross-modulation glides between).
+const isSelector = (q) => !!(q.stops && q.stops.length && !q.unit && q.decimals === 0);   // a switch: the engine rounds it
 function formatter(q) {
-  const unit = q.unit ? (q.unit === '%' ? '%' : ' ' + q.unit) : '';
+  const unit = q.unit ? (q.unit === '%' ? '%' : q.unit === 'deg' ? '°' : ' ' + q.unit) : '';
   const real = (v) => q.curve === 'log' ? q.min * Math.pow(q.max / q.min, v) : q.min + (q.max - q.min) * v;
   const norm = (r) => q.curve === 'log' ? Math.log(r / q.min) / Math.log(q.max / q.min) : (r - q.min) / (q.max - q.min);
   const stops = q.stops || [], selector = !q.unit && q.decimals === 0;
@@ -39,7 +42,7 @@ function formatter(q) {
 async function loadModel() {
   const { instance } = await WebAssembly.instantiate(WASM_BYTES, {});
   const X = instance.exports; if (X._initialize) X._initialize();
-  X.rig_init(48000);
+  X.rig_init(48000); VIEWX = X;
   DESC = JSON.parse(cStringMain(X.memory, X.rig_describe()));
   LAYOUT = DESC.meters;
   MTYPE_ORDER = DESC.moduleTypes.map((t) => t.type);
@@ -99,11 +102,18 @@ function sourceNameFor(id, type) {
 }
 function makeSource(id, type, slot) {
   const d = TYPES[type];
-  const s = { id, type, name: sourceNameFor(id, type), sub: d.sub, ext: d.ext, meterNames: d.meters, slot: slot ?? null, idx: 0, color: null, params: [], hist: [] };
+  const s = { id, type, name: sourceNameFor(id, type), sub: d.sub, ext: d.ext, meterNames: d.meters, slot: slot ?? null, idx: 0, color: null, params: [], settings: [], table: null, hist: [] };
   s.params = (d.params || []).map((q, pi) => {           // the source's own knobs (src_set), same shape as module params
     const f = formatter(q);
     return { id: `${id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, snap: f.snap, src: s, pi };
   });
+  s.settings = (d.settings || []).map((q, i) => {         // its settings (src_cfg): knobs nothing can patch
+    const f = formatter(q);
+    return { id: `${id}~${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, snap: f.snap, src: s, i };
+  });
+  if (d.table && d.table.rows) s.table = { rows: d.table.rows,          // its table (src_cell): one row per step / vertex
+    cols: d.table.cols.map((q, j) => { const f = formatter(q); return { sym: q.symbol, label: q.label, def: q.def, desc: q, real: f.real, fmt: f.fmt, snap: f.snap, j }; }),
+    v: Array.from({ length: d.table.rows }, () => d.table.cols.map((q) => q.def)) };
   return s;
 }
 // The rack in order: [{ id, type, slot? }]. Instances that stay keep their knob settings.

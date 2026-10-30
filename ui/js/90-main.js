@@ -33,6 +33,7 @@ function loop() {
   SRC.forEach((s) => { if (!s.orb) return; const v = srcVal(s), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
   moveBackdrop();
   if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(); drawAddCard(); drawSourceScope(); }
+  drawSourceView(dt);
   for (let i = 0; i < NP; i++) { const u = ((i / NP) + T * (RM ? .01 : .05 + .1 * level)) % 1; flowCurve.getPointAt(u, tmpV); flowPos[i * 3] = tmpV.x; flowPos[i * 3 + 1] = tmpV.y + .06; flowPos[i * 3 + 2] = tmpV.z; }
   flowGeo.attributes.position.needsUpdate = true;
   cables.forEach((c) => {

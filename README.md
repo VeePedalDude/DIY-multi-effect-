@@ -63,6 +63,7 @@ engine/
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
+  sources/     a source type's own picture in its panel (geo.js: GEO PULSE's 3D view)
   js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 47-va-plot 49-picker 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
                60-controllers 70-presets 72-preset-format 90-main
@@ -72,7 +73,7 @@ ui/
   assets/      images of the built-in skins: hall background, card frames (embedded into the page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
-  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, eq, synth, sources, tuner, rack)
+  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, eq, synth, sources, lfo, orbit, geo, tuner, rack)
                + test_conformance.cpp: the format and safety of every module and source type
   parity/      native vs WebAssembly comparison
   ui/          Node unit tests: library and preset format
@@ -117,7 +118,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs` and `chain.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs` and `geo.cjs`.
 
 ## Current effects and sources
 
@@ -156,7 +157,13 @@ cutoff follows your picking, up to 4 octaves either way), DRIVE and LEVEL; the s
 | Sallen-Key | HP CUT, HP PEAK, LP CUT, LP PEAK | Korg MS-20 style: high-pass into low-pass, peaks screaming through clipping diodes |
 
 Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate
-(simulated, or a Bluetooth strap), controller (gamepad stick or slider). Each has its own knobs (LFO
+(simulated, or a Bluetooth strap), controller (gamepad stick or slider), and GEO PULSE (in the add panel's
+Time & tempo tab): a rhythm from a shape. A point travels round a polygon, star, warped or hyperbolic
+polygon or Platonic solid in time with the tempo; each vertex can fire a gate, a trigger or an envelope,
+with its own chance, velocity, accent and gate length. Step lengths can follow the geometry (the angle
+turned, or the distance travelled, measured hyperbolically on the hyperbolic shape) while the cycle keeps
+its length; 7 steps against a 16-step pattern stay in time with each other. Its panel shows the shape in
+3D: drag to turn it, click a vertex to edit it. Each has its own knobs (LFO
 rate as note values when synced or Hz when free, nine waves, depth, steps for a staircase, and
 bipolar or unipolar output; envelope attack/release/floor, ADSR times; the three-body orbit: eleven known periodic orbits or the old chaotic one, what to read from it, its speed or a tempo-synced period, and how far each cycle strays; heart rest rate, controller
 smoothing and dead zone): click a source's orb or name to open them, along with everything it moves

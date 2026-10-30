@@ -7,7 +7,9 @@
 //                   "asset": { "kind": "ir", "name": "V30.wav", "size": 8236, "hash": "1a2b3c4d" } },
 //                 { "id": "holo", "type": "holo", ... }, { "id": "holo2", "type": "holo", ... } ],
 //     "sources": [ { "id": "lfo", "type": "lfo", "params": { "rate": 8, "shape": 0 } },        the rack, in order (version 3)
-//                  { "id": "lfo2", "type": "lfo", "params": { "rate": 0.5 } } ],
+//                  { "id": "lfo2", "type": "lfo", "params": { "rate": 0.5 } },
+//                  { "id": "geo", "type": "geo", "params": {...}, "settings": { "shape": 1, "verts": 7 },   settings, and the table's
+//                    "table": { "3": { "accent": 1 }, "5": { "on": 0 } } } ],                               cells that aren't default
 //     "mods":   [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 },              a module knob
 //                 { "target": "tess.fold", "source": "lfo", "depth": 0.3, "phase": 90, "div": 1.5 },   this patch's own PHASE (degrees)
 //                                                                                              and DIV, only when not 0 / 1 (a tapping source)
@@ -52,11 +54,13 @@ function toNorm(q, r) { return q.curve === 'log' ? Math.log(r / q.min) / Math.lo
 const unitText = (q, r) => `${round6(r)}${q.unit ? (q.unit === '%' ? '%' : ' ' + q.unit) : ''}`;
 
 // Normalised in-memory snapshot: { params: {pid: 0..1}, bypass: {id: bool}, conns: {pid: sid}, depths: {pid: d},
-// taps: {pid: {phase, div}}, srcParams: {"lfo.rate": 0..1}, bpm }
+// taps: {pid: {phase, div}}, srcParams: {"lfo.rate": 0..1}, srcCfg: {"geo~shape": 0..1}, srcCells: {geo: [[0..1 per column] per row]}, bpm }
 function currentSnapshot() {
   return { params: Object.fromEntries(Object.values(PARAMS).map((p) => [p.id, p.v])), bypass: { ...state.bypass },
     conns: { ...state.conns }, depths: { ...state.depths }, taps: { ...state.taps }, bpm: state.bpm,
-    srcParams: Object.fromEntries(SRC.flatMap((s) => s.params.map((q) => [q.id, q.v]))) };
+    srcParams: Object.fromEntries(SRC.flatMap((s) => s.params.map((q) => [q.id, q.v]))),
+    srcCfg: Object.fromEntries(SRC.flatMap((s) => s.settings.map((q) => [q.id, q.v]))),
+    srcCells: Object.fromEntries(SRC.filter((s) => s.table).map((s) => [s.id, s.table.v.map((row) => row.slice())])) };
 }
 // top: the preset's own section (sources carry their type: that's the rack); scenes list knob values only.
 function sectionFromSnapshot(s, top) {
@@ -67,7 +71,16 @@ function sectionFromSnapshot(s, top) {
       if (t && (t.phase || t.div !== 1)) { m.phase = round6(t.phase); m.div = round6(t.div); }       // only when set: older files and builds see nothing new
       return m;
     }),
-    sources: SRC.filter((src) => top || src.params.length).map((src) => ({ id: src.id, ...(top ? { type: src.type } : {}), params: Object.fromEntries(src.params.map((q) => [q.sym, round6(q.real((s.srcParams || {})[q.id] ?? q.def))])) })),
+    sources: SRC.filter((src) => top || src.params.length || src.settings.length || src.table).map((src) => {
+      const e = { id: src.id, ...(top ? { type: src.type } : {}), params: Object.fromEntries(src.params.map((q) => [q.sym, round6(q.real((s.srcParams || {})[q.id] ?? q.def))])) };
+      if (src.settings.length) e.settings = Object.fromEntries(src.settings.map((q) => [q.sym, round6(q.real((s.srcCfg || {})[q.id] ?? q.def))]));
+      if (src.table) {                                  // only the cells that differ from their column's default
+        const rows = ((s.srcCells || {})[src.id]) || [], t = {};
+        rows.forEach((row, r) => src.table.cols.forEach((c, j) => { if (row[j] !== undefined && Math.abs(row[j] - c.def) > 1e-9) (t[r] = t[r] || {})[c.sym] = round6(c.real(row[j])); }));
+        e.table = t;
+      }
+      return e;
+    }),
     tempo: s.bpm,
   };
 }
@@ -119,7 +132,7 @@ function presetKnob(pid, ctx, renames) {
 }
 function readSection(sec, renames, warn, ctx) {
   const { rackTypes, extraIds } = ctx;
-  const snap = { params: {}, bypass: {}, conns: {}, depths: {}, taps: {}, srcParams: {}, bpm: undefined }, assets = {};
+  const snap = { params: {}, bypass: {}, conns: {}, depths: {}, taps: {}, srcParams: {}, srcCfg: {}, srcCells: {}, bpm: undefined }, assets = {};
   for (const entry of Array.isArray(sec.chain) ? sec.chain : []) {
     const id = entry && entry.id, type = ctx.chainTypes[id];
     if (!type) { if (!extraIds.has(id)) warn(`module ${id}: not in this preset's chain; its settings were skipped`); continue; }
@@ -155,6 +168,29 @@ function readSection(sec, renames, warn, ctx) {
       const v = toNorm(q, r);
       if (v < -1e-6 || v > 1 + 1e-6) warn(`${qid}: ${unitText(q, r)} is outside ${unitText(q, q.min)}–${unitText(q, q.max)}; set to the nearest end`);
       snap.srcParams[qid] = clamp(v, 0, 1);
+    }
+    for (const [sym0, r] of Object.entries(entry.settings || {})) {        // settings: checked like knobs
+      const sym = (renames.sourceKnobs || {})[`${type}.${sym0}`] || sym0, q = (TYPES[type].settings || []).find((x) => x.symbol === sym), qid = `${id}~${sym}`;
+      if (!q) { warn(`${id}: no setting called “${sym0}”; ignored`); continue; }
+      if (typeof r !== 'number' || !isFinite(r) || (q.curve === 'log' && r <= 0)) { warn(`${id} ${sym}: “${r}” isn't a usable value; kept the default`); continue; }
+      const v = toNorm(q, r);
+      if (v < -1e-6 || v > 1 + 1e-6) warn(`${id} ${sym}: ${unitText(q, r)} is outside ${unitText(q, q.min)}–${unitText(q, q.max)}; set to the nearest end`);
+      snap.srcCfg[qid] = clamp(v, 0, 1);
+    }
+    const tb = TYPES[type].table;
+    if (entry.table && typeof entry.table === 'object' && tb && tb.rows) {   // table: every cell starts at its default
+      const rows = Array.from({ length: tb.rows }, () => tb.cols.map((c) => c.def));
+      for (const [r0, cells] of Object.entries(entry.table)) {
+        const r = Number(r0);
+        if (!Number.isInteger(r) || r < 0 || r >= tb.rows || !cells || typeof cells !== 'object') { warn(`${id}: table row “${r0}” isn't one of 0–${tb.rows - 1}; ignored`); continue; }
+        for (const [sym, val] of Object.entries(cells)) {
+          const j = tb.cols.findIndex((c) => c.symbol === sym);
+          if (j < 0) { warn(`${id}: table has no column “${sym}”; ignored`); continue; }
+          if (typeof val !== 'number' || !isFinite(val)) { warn(`${id} row ${r} ${sym}: “${val}” isn't a usable value; kept the default`); continue; }
+          rows[r][j] = clamp(toNorm(tb.cols[j], val), 0, 1);
+        }
+      }
+      snap.srcCells[id] = rows;
     }
   }
   if (typeof sec.tempo === 'number' && sec.tempo >= 30 && sec.tempo <= 300) snap.bpm = sec.tempo;

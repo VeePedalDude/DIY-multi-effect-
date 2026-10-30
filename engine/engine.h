@@ -81,7 +81,7 @@ struct Engine {
   DCBlock dcL, dcR;
   int nanResets = 0;
   float meters[M_LEN];
-  char descJson[24576];
+  char descJson[65536];
   char rackJson[4096];
   char chainJson[2048];
 
@@ -384,7 +384,10 @@ struct Engine {
       if (t) j.ch(',');
       j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(sourceTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
       j.key("ext"); j.str(d.ext); j.ch(','); j.key("taps"); j.raw(d.taps ? "true" : "false"); j.ch(',');
-      j.key("params"); params(j, d.nparams, d.params); j.ch(','); j.key("meters"); j.ch('[');
+      j.key("params"); params(j, d.nparams, d.params); j.ch(',');
+      j.key("settings"); params(j, d.nsettings, d.settings); j.ch(',');
+      j.key("table"); j.ch('{'); j.key("rows"); j.num(d.rows); j.ch(','); j.key("cols"); params(j, d.ncols, d.cols); j.raw("},");
+      j.key("meters"); j.ch('[');
       for (int q = 0; q < d.nmeters; q++) { if (q) j.ch(','); j.str(d.meters[q]); }
       j.raw("]}");
     }

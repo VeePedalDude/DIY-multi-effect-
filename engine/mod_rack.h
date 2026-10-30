@@ -55,6 +55,8 @@ struct SrcSlot {
   int conn[MAXPAR];                        // slot of the source moving each knob, or -1
   float depth[MAXPAR];                     // its swing, +/- in normalised units
   Tap tap[MAXPAR];                         // its PHASE and DIV, for a tapping source (core/tap.h)
+  float cfg[MAXCFG] = {0};                 // settings, normalised (not patch targets)
+  float tab[MAXROWS][MAXCOLS] = {{0}};     // table cells, normalised
   float val = 0;                           // output this block, -1..1
   int nparams() const { return type >= 0 ? sourceTypeDesc(type).nparams : 0; }
 };
@@ -107,6 +109,8 @@ struct ModRack {
     SrcSlot& S = slot[k];
     const SourceDesc& d = sourceTypeDesc(t);
     for (int p = 0; p < MAXPAR; p++) { S.base[p] = S.eff[p] = p < d.nparams ? d.params[p].def : 0.f; S.conn[p] = -1; S.depth[p] = 0.22f; S.tap[p].reset(); }
+    for (int i = 0; i < MAXCFG; i++) S.cfg[i] = i < d.nsettings ? d.settings[i].def : 0.f;
+    for (int r = 0; r < MAXROWS; r++) for (int j = 0; j < MAXCOLS; j++) S.tab[r][j] = r < d.rows && j < d.ncols ? d.cols[j].def : 0.f;
     memcpy(S.id, want, SRC_ID_LEN); S.val = 0; S.type = t;
     S.s.store(src, std::memory_order_release);       // the audio thread sees it from its next block
     return k;
@@ -142,6 +146,17 @@ struct ModRack {
     slot[k].depth[p] = clampf(depth, 0.f, 1.f); slot[k].conn[p] = from;
     return 0;
   }
+  // A setting, or a table cell, of slot k (normalised; clamped). Returns 0 or RACK_NO_SUCH.
+  int cfgSet(int k, int i, float v) {
+    if (!used(k) || i < 0 || i >= sourceTypeDesc(slot[k].type).nsettings) return RACK_NO_SUCH;
+    slot[k].cfg[i] = clampf(v, 0.f, 1.f); return 0;
+  }
+  int cellSet(int k, int row, int col, float v) {
+    if (!used(k)) return RACK_NO_SUCH;
+    const SourceDesc& d = sourceTypeDesc(slot[k].type);
+    if (row < 0 || row >= d.rows || col < 0 || col >= d.ncols) return RACK_NO_SUCH;
+    slot[k].tab[row][col] = clampf(v, 0.f, 1.f); return 0;
+  }
   // PHASE (degrees) and DIV (a TAP_DIVS value; the nearest is taken) of the patch on knob p of slot k.
   int tapSet(int k, int p, float deg, float div) {
     if (!used(k) || p < 0 || p >= slot[k].nparams()) return RACK_NO_SUCH;
@@ -174,7 +189,7 @@ struct ModRack {
     float next[MAXSRC];
     for (int k = 0; k < MAXSRC; k++) {
       if (!live[k]) { next[k] = 0.f; continue; }
-      SourceContext c{in, n, sr, (float)n / sr, bpm, slot[k].eff};
+      SourceContext c{in, n, sr, (float)n / sr, bpm, slot[k].eff, slot[k].cfg, slot[k].tab};
       next[k] = clampf(live[k]->update(c), -1.f, 1.f);
       if (!(next[k] == next[k])) next[k] = 0.f;                   // a NaN never reaches a knob
     }

@@ -15,6 +15,8 @@ rig.modMeter = (modId, name) => { const m = MODS.find((x) => x.id === modId); re
 rig.srcParam = (id, sym) => { const s = SRCMAP[id], q = s && s.params.find((x) => x.sym === sym); return q ? q.real(q.v) : undefined; };
 rig.srcMeter = (id, name) => { const s = SRCMAP[id]; return s ? srcMeter(s, name) : undefined; };
 rig.state = state;
+rig.srcObj = (id) => SRCMAP[id];                 // a source instance as the page holds it (knobs, settings, table)
+rig.viewX = () => VIEWX;                         // the page's own copy of the engine (rig_view; tests replay patterns on it)
 rig.nanResets = () => meters ? meters.m[LAYOUT.nan] : 0;
 
 let quietLog = { last: '', t: 0 };
@@ -22,6 +24,7 @@ function onEngineMsg(d) {
   if (d.type === 'meters') {                     // ~31 per second: one point of each source's trace
     meters = d; rig.meters = d;
     SRC.forEach((s) => { if (!s.hist) return; s.hist.push(srcVal(s)); if (s.hist.length > 120) s.hist.shift(); });
+    SRC.forEach((s) => { const v = SRCVIEW[s.type]; if (v && v.meters) v.meters(s); });   // source views read every meter packet, not every frame
     return;
   }
   if (d.type === 'resp') {
@@ -40,9 +43,16 @@ function sendAll() {
   MODS.forEach((m) => m.params.forEach((p) => rig.cmd(`param_set ${m.inst} ${p.sym} ${p.v.toFixed(4)}`)));
   MODS.forEach((m) => rig.cmd(`bypass ${m.inst} ${state.bypass[m.id] ? 1 : 0}`));
   SRC.forEach((s) => s.params.forEach((q) => rig.cmd(`src_set ${s.id} ${q.sym} ${q.v.toFixed(6)}`)));
+  SRC.forEach((s) => s.settings.forEach((q) => rig.cmd(`src_cfg ${s.id} ${q.sym} ${q.v.toFixed(6)}`)));
+  SRC.forEach((s) => s.table && s.table.v.forEach((row, r) => row.forEach((v, j) => rig.cmd(`src_cell ${s.id} ${r} ${s.table.cols[j].sym} ${v.toFixed(6)}`))));
   Object.keys(PARAMS).concat(Object.keys(SPARAMS)).forEach((pid) => sendPatch(pid));
   rig.cmd(`set_bpm ${state.bpm}`); rig.cmd(`master ${state.master}`);
   rig.afterSend.forEach((f) => f());
+}
+function setSrcSetting(q, v) { q.v = clamp(v, 0, 1); rig.cmd(`src_cfg ${q.src.id} ${q.sym} ${q.v.toFixed(6)}`); }
+function setSrcCell(s, row, j, v) {             // one cell of a source's table, normalised
+  if (!s.table || row < 0 || row >= s.table.rows) return;
+  s.table.v[row][j] = clamp(v, 0, 1); rig.cmd(`src_cell ${s.id} ${row} ${s.table.cols[j].sym} ${s.table.v[row][j].toFixed(6)}`);
 }
 function setSrcParam(q, v) { q.v = clamp(v, 0, 1); rig.cmd(`src_set ${q.src.id} ${q.sym} ${q.v.toFixed(6)}`); }
 // One patch, as the engine should have it: a module knob (mod_connect) or a source knob (src_mod).

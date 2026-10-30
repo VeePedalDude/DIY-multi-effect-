@@ -126,6 +126,23 @@ u.state.taps = {};
 const lfoRate = u.SRC.find((s) => s.id === 'lfo').params.find((q) => q.sym === 'rate'), wave = u.SRC.find((s) => s.id === 'lfo').params.find((q) => q.sym === 'wave');
 check(lfoRate.fmt(lfoRate.def) === '2 bars' && lfoRate.fmt(lfoRate.snap(0.2)) === '1/4.' && lfoRate.fmt(0.2) !== '1/4.' && wave.fmt(wave.snap(0.5)) === 'SAW UP',
   `named stops: RATE ${lfoRate.fmt(lfoRate.def)} by default, turned to 1.51 beats lands on ${lfoRate.fmt(lfoRate.snap(0.2))}; WAVE at 0.5 is ${wave.fmt(wave.snap(0.5))}`);
+console.log('source settings and tables (GEOMETRIC PULSE)');
+u.setRack([...u.SRC.filter((x) => x.type !== 'geo').map((x) => ({ id: x.id, type: x.type })), { id: 'geo', type: 'geo' }]);
+const g = u.SRCMAP.geo, set = (sym, real) => { const q = g.settings.find((x) => x.sym === sym); q.v = (real - q.desc.min) / (q.desc.max - q.desc.min); };
+set('shape', 1); set('verts', 12); set('skip', 5); set('seed', 42);
+g.table.v[3][g.table.cols.findIndex((c) => c.sym === 'accent')] = 1; g.table.v[5][0] = 0; g.table.v[7][2] = 0.3;
+u.state.conns = {}; u.state.scenes = { D: u.currentSnapshot() };
+const gp = JSON.parse(JSON.stringify(u.buildPreset('Geo'))), ge = gp.sources.find((e) => e.id === 'geo');
+check(ge.settings.shape === 1 && ge.settings.verts === 12 && ge.settings.skip === 5 && ge.settings.seed === 42 && Object.keys(ge.table).join() === '3,5,7' && ge.table[3].accent === 1 && ge.table[5].on === 0 && ge.table[7].vel === 30,
+  `saved in real units, only the cells that differ: settings shape ${ge.settings.shape}, verts ${ge.settings.verts}; table ${JSON.stringify(ge.table)}`);
+r = u.readPreset(gp);
+const cfgOk = g.settings.every((q) => Math.abs(r.snap.srcCfg[q.id] - q.v) < 1e-6), cellsOk = g.table.v.every((row, i) => row.every((x, j) => Math.abs(r.snap.srcCells.geo[i][j] - x) < 1e-6));
+check(r.warnings.length === 0 && cfgOk && cellsOk && r.scenes.D.srcCells.geo[3][3] === 1, `every setting (${g.settings.length}) and cell (${g.table.rows} x ${g.table.cols.length}) loads back, scenes included`);
+const badG = JSON.parse(JSON.stringify(gp)); const be = badG.sources.find((e) => e.id === 'geo'); be.table = { 40: { on: 0 }, 2: { wobble: 1 } }; be.settings.flavour = 3;
+r = u.readPreset(badG);
+check(r.warnings.some((w) => w.includes('row “40”')) && r.warnings.some((w) => w.includes('column “wobble”')) && r.warnings.some((w) => w.includes('no setting called “flavour”')), `bad rows, columns and settings are named: ${r.warnings.filter((w) => w.startsWith('geo')).length} notes`);
+const verts = g.settings.find((q) => q.sym === 'verts'), shape = g.settings.find((q) => q.sym === 'shape');
+check(shape.fmt(shape.v) === 'STAR' && verts.fmt(verts.v) === '12', `readouts: SHAPE “${shape.fmt(shape.v)}”, VERTICES “${verts.fmt(verts.v)}”`);
 check(u.readPreset({ ...golden, version: 9 }).warnings.some((w) => w.includes('newer version')), 'a newer file loads with a note');
 check(u.readPreset({ hello: 1 }).error === 'not a RIG preset file', 'a non-preset file is refused');
 done('preset');

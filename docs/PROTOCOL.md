@@ -72,7 +72,7 @@ name; a whole-number knob without a unit (WAVE, SYNC, POLAR) is a selector the e
 | lfo | rate (beats per cycle, used with sync; stops on note values 1/8 … 32 bars), shape (sine → triangle → square: the MORPH wave), wave (MORPH, SINE, TRIANGLE, SQUARE, SAW UP, SAW DOWN, STEP RANDOM, SMOOTH RANDOM, EXP RISE), depth (0–100 %), steps (OFF, 2–32 per cycle: a staircase), hz (0.05–20 Hz, used when free), sync (FREE / SYNC), polar (BIPOLAR / UNI + / UNI −). Each patch from it can have its own phase and div. Meter: `hz` |
 | env | attack, release, floor |
 | adsr | attack, decay, sustain, release |
-| orbit | speed |
+| orbit | speed (simulated time when free), orbit (CLASSIC: today's wandering figure-eight; or a known periodic solution with its own masses: FIGURE-8, BUTTERFLY I, BUTTERFLY III, MOTH I, GOGGLES, YIN-YANG, DRAGONFLY, BUMBLEBEE, YARN, HEAVY THIRD, LIGHT THIRD), out (DISTANCE, BODY X, SPEED, CLOSENESS), rate (beats per orbit when synced, note-value stops), sync (FREE / SYNC), chaos (0 % repeats the orbit exactly, more nudges each cycle, 100 % runs free). Meters: `period` (s), `cycles` |
 | heart | rest (simulated bpm when no strap is connected) |
 | ctrl | smooth, deadzone |
 

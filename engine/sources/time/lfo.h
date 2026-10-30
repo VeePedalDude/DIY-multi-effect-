@@ -15,30 +15,26 @@
 // Meter: "hz", the rate it runs at now.
 #pragma once
 #include "../../core/source.h"
+#include "../../core/notes.h"
 
 namespace rig {
 
-inline constexpr ParamStop LFO_RATE_STOPS[] = {
-  {0.5f, "1/8"}, {2.f / 3.f, "1/4T"}, {0.75f, "1/8."}, {1.f, "1/4"}, {4.f / 3.f, "1/2T"}, {1.5f, "1/4."},
-  {2.f, "1/2"}, {8.f / 3.f, "1/1T"}, {3.f, "1/2."}, {4.f, "1 bar"}, {6.f, "1 bar."}, {8.f, "2 bars"},
-  {12.f, "3 bars"}, {16.f, "4 bars"}, {32.f, "8 bars"}, {64.f, "16 bars"}, {128.f, "32 bars"}};
 inline constexpr ParamStop LFO_WAVE_STOPS[] = {
   {0, "MORPH"}, {1, "SINE"}, {2, "TRIANGLE"}, {3, "SQUARE"}, {4, "SAW UP"}, {5, "SAW DOWN"},
   {6, "STEP RANDOM"}, {7, "SMOOTH RANDOM"}, {8, "EXP RISE"}};
 inline constexpr ParamStop LFO_STEPS_STOPS[] = {
   {0, "OFF"}, {2, "2"}, {3, "3"}, {4, "4"}, {6, "6"}, {8, "8"}, {12, "12"}, {16, "16"}, {24, "24"}, {32, "32"}};
-inline constexpr ParamStop LFO_SYNC_STOPS[] = {{0, "FREE"}, {1, "SYNC"}};
 inline constexpr ParamStop LFO_POLAR_STOPS[] = {{0, "BIPOLAR"}, {1, "UNI +"}, {2, "UNI -"}};
 
 // Ranges are centred on the defaults (0.5), so a fresh rig matches the fixed LFO it replaced.
 inline constexpr ParamDesc LFO_PARAMS[] = {
-  {"rate",  "RATE",  0.5f,  128.f, 0.5f, "beats", Curve::Log, 1, false, LFO_RATE_STOPS, 17},
+  {"rate",  "RATE",  0.5f,  128.f, 0.5f, "beats", Curve::Log, 1, false, NOTE_STOPS, NNOTE_STOPS},
   {"shape", "SHAPE", 0.f,   100.f, 0.f,  "%",     Curve::Lin, 0, false},
   {"wave",  "WAVE",  0.f,   8.f,   0.f,  "",      Curve::Lin, 0, false, LFO_WAVE_STOPS, 9},
   {"depth", "DEPTH", 0.f,   100.f, 1.f,  "%",     Curve::Lin, 0, false},
   {"steps", "STEPS", 0.f,   32.f,  0.f,  "",      Curve::Lin, 0, false, LFO_STEPS_STOPS, 10},
   {"hz",    "HZ",    0.05f, 20.f,  0.5f, "Hz",    Curve::Log, 2, false},   // 1 Hz
-  {"sync",  "SYNC",  0.f,   1.f,   1.f,  "",      Curve::Lin, 0, false, LFO_SYNC_STOPS, 2},
+  {"sync",  "SYNC",  0.f,   1.f,   1.f,  "",      Curve::Lin, 0, false, SYNC_STOPS, 2},
   {"polar", "POLAR", 0.f,   2.f,   0.f,  "",      Curve::Lin, 0, false, LFO_POLAR_STOPS, 3},
 };
 inline constexpr SourceDesc LFO_DESC = {"lfo", "LFO", "tempo synced or free · 9 waves", nullptr, 1, {"hz", nullptr}, 8, LFO_PARAMS, true};

@@ -81,7 +81,7 @@ tests/
   models/      .nam captures of every architecture, for the tests
 hosts/linux/   the iMac's native JACK host (next)
 third_party/   NeuralAmpModelerCore, Eigen, nlohmann/json (vendored, unchanged)
-tools/         gen_registry.py: makes the registries from the folders · build_web.py: assembles dist/rig-test.html · wasm/: shims for the WebAssembly build
+tools/         gen_registry.py: makes the registries from the folders · build_web.py: assembles dist/rig-test.html · wasm/: shims for the WebAssembly build · orbits/refine_orbits.cpp: re-derives THREE-BODY's orbit table
 docs/          ARCHITECTURE · PROTOCOL · LIBRARY · ADDING_A_MODULE · ADDING_A_SOURCE
 dist/          rig-test.html (built, committed)
 ```
@@ -158,7 +158,7 @@ cutoff follows your picking, up to 4 octaves either way), DRIVE and LEVEL; the s
 Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate
 (simulated, or a Bluetooth strap), controller (gamepad stick or slider). Each has its own knobs (LFO
 rate as note values when synced or Hz when free, nine waves, depth, steps for a staircase, and
-bipolar or unipolar output; envelope attack/release/floor, ADSR times, orbit speed, heart rest rate, controller
+bipolar or unipolar output; envelope attack/release/floor, ADSR times; the three-body orbit: eleven known periodic orbits or the old chaotic one, what to read from it, its speed or a tempo-synced period, and how far each cycle strays; heart rest rate, controller
 smoothing and dead zone): click a source's orb or name to open them, along with everything it moves
 and the depths. Each patch from an LFO also has its own **Phase** and **Div** (¼× … 8× the LFO's
 cycle), so one LFO can move several knobs at different offsets and speeds, locked together. **P** (or the tab beside it) hides the side panel.

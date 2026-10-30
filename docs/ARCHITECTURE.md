@@ -43,7 +43,7 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `tests/parity/` | proves the WebAssembly build matches native | C API |
 | `tests/browser/` | headless Chromium tests of the built page | `dist/rig-test.html` |
 | `hosts/linux/` | (next) native JACK host for the iMac | C API + protocol |
-| `tools/` | build helpers; `tools/wasm/` holds the shims that let NAM core build for WebAssembly ([README](../tools/wasm/README.md)) | |
+| `tools/` | build helpers; `tools/wasm/` holds the shims that let NAM core build for WebAssembly ([README](../tools/wasm/README.md)); `tools/orbits/refine_orbits.cpp` re-derives THREE-BODY's table of periodic orbits with its own integrator | |
 | `tests/models/` | `.nam` captures of every architecture, used by the native, parity and browser tests ([README](../tests/models/README.md)) | |
 
 ## The self-description

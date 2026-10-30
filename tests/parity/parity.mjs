@@ -24,6 +24,7 @@ for (let i = 0; i < inp.length; i += 128) {
   if (i === 48000 * 5) { X.rig_param(3, 0, 0.8); X.rig_bypass(1, 1); X.rig_tempo(90); }
   if (i === 48000 * 8) { X.rig_bypass(1, 0); X.rig_ext(5, 0.7); X.rig_mod(2, 1, 5, 0.3); }
   if (i === 48000 * 10) { X.rig_src_param(0, 2, 0.875); X.rig_src_param(0, 4, 0.25); X.rig_mod_tap(3, 0, 90, 1.5); }   // LFO: SMOOTH RANDOM, 8 STEPS; HOLOGRAM's patch at 90 degrees, 3/2
+  if (i === 48000 * 11) { X.rig_src_param(3, 1, 4 / 11); X.rig_src_param(3, 4, 1); X.rig_src_param(3, 2, 1 / 3); }   // THREE-BODY: MOTH I, synced, BODY X
   view(X.rig_in()).set(inp.subarray(i, i + 128)); X.rig_process(128);
   const L = view(X.rig_out_l()), R = view(X.rig_out_r());
   for (let k = 0; k < 128; k++) { out[2 * (i + k)] = L[k]; out[2 * (i + k) + 1] = R[k]; }

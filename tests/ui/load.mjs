@@ -1,11 +1,11 @@
 // tests/ui/load.mjs - load selected ui/js files into a sandbox (no browser) for unit tests.
 import fs from 'fs';
 import vm from 'vm';
-const FILES = ['00-core.js', '04-skin-core.js', '10-model.js', '52-vfs.js', '53-assets.js', '54-library-core.js', '72-preset-format.js'];
+const FILES = ['00-core.js', '04-skin-core.js', '10-model.js', '12-inputs-core.js', '52-vfs.js', '53-assets.js', '54-library-core.js', '72-preset-format.js'];
 const EXPORTS = ['state', 'DEPTH', 'MODS', 'PARAMS', 'SRCMAP', 'loadModel', 'extOf', 'kindForName', 'parseWavInfo', 'parseNamMeta', 'metaLine',
   'matchesQuery', 'uniqueName', 'safeFileName', 'fnv1a', 'KvDir', 'memStore', 'LibraryCore', 'buildPreset', 'readPreset', 'currentSnapshot',
   'PRESET_VERSION', 'PRESET_RENAMES', 'DEFAULT_SKIN', 'CLASSIC_SKIN', 'readSkinJson', 'mergeSkin', 'tileStyle', 'tileNameFor', 'skinFiles',
-  'zipFiles', 'unzip', 'readSkinPacket', 'crc32'];
+  'zipFiles', 'unzip', 'readSkinPacket', 'crc32', 'midiDecode', 'midiMatches', 'padRaw', 'inputValue', 'padSnapshot', 'padLearn', 'midiLearn', 'newBinding', 'sanitizeBinding', 'describeBinding'];
 export async function loadUi() {
   const stubEl = { textContent: '', appendChild() {}, removeChild() {}, childNodes: [], scrollTop: 0 };
   const ctx = vm.createContext({

@@ -26,7 +26,6 @@ function loop() {
   requestAnimationFrame(loop);              // schedule first, so one bad frame can never freeze the stage
   const dt = Math.min(clock.getDelta(), .05); T += dt; frame++;
   cam.r += (camGoal.r - cam.r) * .06; cam.target.lerp(camGoal.target, .06); placeCamera();
-  pollPad(frame);
   const level = meters ? clamp((20 * Math.log10(meters.outPk + 1e-9) + 50) / 50, 0, 1) : 0;
   flowMat.opacity = .25 + .75 * level; flowMat.size = .14 + .2 * level;
   MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });

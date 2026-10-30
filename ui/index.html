@@ -79,6 +79,10 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .srcview .geoview{display:block;width:100%;height:auto;aspect-ratio:7/5;border-radius:12px;border:1px solid var(--line);touch-action:none;cursor:grab}
 .vedit{display:flex;flex-direction:column;gap:8px}
 .seqview{display:flex;flex-direction:column;gap:10px}
+.inview{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--line);border-radius:12px}
+.inbar{position:relative;height:10px;border-radius:5px;background:var(--line);overflow:visible}
+.inbar i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:var(--accent);opacity:.55}
+.inbar b{position:absolute;top:-3px;width:3px;height:16px;margin-left:-1px;border-radius:2px;background:var(--fg)}
 .seqgrid{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:6px;touch-action:none;user-select:none}
 .sq{aspect-ratio:1;min-width:0;min-height:28px;padding:0;border-radius:5px;border:1px solid var(--line);background:var(--raise);cursor:pointer}
 .sq.beat{border-color:var(--line2)}
@@ -275,7 +279,7 @@ body.panel-hidden .matrix{right:16px}
   </section>
   <section>
     <h3>Controllers</h3>
-    <p class="note" id="padNote">No gamepad detected. Press a button on a connected pad to wake it.</p>
+    <p class="note" id="padNote">No gamepad or joystick yet: press a button on one to wake it. Open a CONTROLLER source and press LEARN to bind a control (USB gamepads, joysticks, flight sticks, MIDI).</p>
     <p class="note" id="heartNote">Heart source: simulated 72 bpm.</p>
     <button class="btn" id="heartBtn">Connect heart strap</button>
   </section>

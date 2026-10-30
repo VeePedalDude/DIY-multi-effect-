@@ -35,7 +35,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const plus = await page.evaluate(() => window.__rig.fxAddScreen());
   await page.mouse.click(plus.x, plus.y); await sleep(500);
   const tabs = await page.evaluate(() => [...document.querySelectorAll('[data-pick-tabs="fx"] [role=tab]')].map((t) => [t.textContent.trim(), t.getAttribute('aria-selected'), t.classList.contains('empty')]));
-  check(/Add an effect/.test(await page.textContent('#panel')) && tabs.length === 10 && tabs[0][0].startsWith('Dynamics') && tabs[0][1] === 'true' && tabs.filter((t) => t[2]).length === 4,
+  check(/Add an effect/.test(await page.textContent('#panel')) && tabs.length === 11 && tabs[0][0].startsWith('Dynamics') && tabs[0][1] === 'true' && tabs.filter((t) => t[2]).length === 4,
     `the “+ ADD EFFECT” card opens a tab per kind of effect (${tabs.map((t) => t[0].replace(/\s+\d+$/, '')).join(', ')}); the first with something in it is open; 4 are empty for now`);
   await page.click('[data-pick-tab="fx:pitch"]'); await sleep(200);
   check(/Nothing in Pitch yet/.test(await page.textContent('[data-pick-list="fx"]')) && /engine\/modules\/pitch\//.test(await page.textContent('[data-pick-list="fx"]')), 'an empty tab says so, and which folder new ones go in');
@@ -51,6 +51,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('[data-pick-tab="fx:filter"]'); await sleep(200);
   const eqs = await page.evaluate(() => [...document.querySelectorAll('[data-pick-list="fx"] [data-addfx-type]')].map((b) => b.dataset.addfxType).join(' '));
   check(eqs === 'tilt bax geq peq stack prog dyneq', `Filter & EQ lists its seven, simple to sophisticated (engine/modules/filter/order.txt): ${eqs}`);
+  await page.click('[data-pick-tab="fx:synth"]'); await sleep(200);
+  const synths = await page.evaluate(() => [...document.querySelectorAll('[data-pick-list="fx"] [data-addfx-type]')].map((b) => b.dataset.addfxType).join(' '));
+  check(synths === 'svf comb formant ota ladder diode sallen', `Synth filters lists its seven, simplest model first: ${synths}`);
   await page.click('[data-pick-tab="fx:delay"]'); await sleep(200);
 
   console.log('2. Add a second HOLOGRAM: it plays, with its own knobs');
@@ -111,18 +114,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(ids(c.ui) === saved && inStep(c) && Math.abs(fb2 - 0.8) < 1e-3 && c.conns['holo2.halo'] === 'lfo', `loading it restores ${ids(c.ui)} in the page and the engine, HOLOGRAM 2's knobs and its patch`);
   await page.click('#settingsBtn');
 
-  console.log('9. Each EQ added live draws its curve');
+  console.log('9. Each EQ and synth filter added live draws its curve');
   const drawn = [];
-  for (const t of ['tilt', 'bax', 'geq', 'peq', 'stack', 'prog', 'dyneq']) {
+  for (const t of ['tilt', 'bax', 'geq', 'peq', 'stack', 'prog', 'dyneq', 'svf', 'comb', 'formant', 'ota', 'ladder', 'diode', 'sallen']) {
     const id = await page.evaluate((t) => { const m = window.__rig.chain.add(t); return m && m.id; }, t); await sleep(600);
     const ok = await page.evaluate((id) => window.__rig.redrawFace(id), id);
     if (t === 'stack') { await open(id); await setSlider(`[data-pid="${id}.bass"]`, 0.9); await setSlider(`[data-pid="${id}.model"]`, 0.25); await sleep(400);
       await page.evaluate((id) => window.__rig.redrawFace(id), id); await page.screenshot({ path: path.join(shots, 'shot-eq-stack.png') }); }
+    if (t === 'ladder') { await open(id); await setSlider(`[data-pid="${id}.reso"]`, 0.8); await sleep(400);
+      await page.evaluate((id) => window.__rig.redrawFace(id), id); await page.screenshot({ path: path.join(shots, 'shot-synth-ladder.png') }); }
     if (ok) drawn.push(id);
     await page.evaluate((id) => window.__rig.chain.remove(id), id); await sleep(600);
   }
   const se = await page.evaluate(() => window.__rig.screenErrors);
-  check(drawn.length === 7 && se.length === 0 && ids((await C()).ui) === saved, `added and removed ${drawn.join(', ')}: every face screen drew${se.length ? ' (errors: ' + se.join(' | ') + ')' : ''}; the chain is back to ${saved}`);
+  check(drawn.length === 14 && se.length === 0 && ids((await C()).ui) === saved, `added and removed ${drawn.join(', ')}: every face screen drew${se.length ? ' (errors: ' + se.join(' | ') + ')' : ''}; the chain is back to ${saved}`);
 
   console.log('10. A full chain');
   for (let i = 0; i < 8; i++) await page.evaluate(() => window.__rig.chain.add('gate'));

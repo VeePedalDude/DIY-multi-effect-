@@ -12,23 +12,37 @@
 #include "filter/stack.h"
 #include "filter/prog.h"
 #include "filter/dyneq.h"
+#include "synth/svf.h"
+#include "synth/comb.h"
+#include "synth/formant.h"
+#include "synth/ota.h"
+#include "synth/ladder.h"
+#include "synth/diode.h"
+#include "synth/sallen.h"
 #include "delay/holo.h"
 #include "reverb/tess.h"
 
 // X(Type, id, category): every module type, by category (the order of categories.txt), then by id or order.txt
 #define RIG_MODULES(X) \
-  X(Gate,  gate, dynamics) \
-  X(Amp,   amp, drive) \
-  X(Cab,   cab, cab) \
-  X(Tilt,  tilt, filter) \
-  X(Bax,   bax, filter) \
-  X(Geq,   geq, filter) \
-  X(Peq,   peq, filter) \
-  X(Stack, stack, filter) \
-  X(Prog,  prog, filter) \
-  X(Dyneq, dyneq, filter) \
-  X(Holo,  holo, delay) \
-  X(Tess,  tess, reverb)
+  X(Gate,      gate, dynamics) \
+  X(Amp,       amp, drive) \
+  X(Cab,       cab, cab) \
+  X(Tilt,      tilt, filter) \
+  X(Bax,       bax, filter) \
+  X(Geq,       geq, filter) \
+  X(Peq,       peq, filter) \
+  X(Stack,     stack, filter) \
+  X(Prog,      prog, filter) \
+  X(Dyneq,     dyneq, filter) \
+  X(SvfFilter, svf, synth) \
+  X(Comb,      comb, synth) \
+  X(Formant,   formant, synth) \
+  X(Ota,       ota, synth) \
+  X(Ladder,    ladder, synth) \
+  X(Diode,     diode, synth) \
+  X(Sallen,    sallen, synth) \
+  X(Holo,      holo, delay) \
+  X(Tess,      tess, reverb)
 
 // X(id, "tab label", "what goes here"): the categories, in tab order
 #define RIG_MODULE_CATEGORIES(X) \
@@ -36,6 +50,7 @@
   X(drive, "Amps & drive", "amp captures, overdrive, distortion, fuzz") \
   X(cab, "Cabs & IRs", "speaker cabinets, impulse responses") \
   X(filter, "Filter & EQ", "EQs, wahs, filters") \
+  X(synth, "Synth filters", "filters from classic synths: ladders, state-variable, diode, Sallen-Key, comb, formant") \
   X(modulation, "Modulation", "chorus, flanger, phaser, tremolo, vibrato") \
   X(pitch, "Pitch", "octaves, harmonies, pitch shifting") \
   X(delay, "Delay", "echoes and repeats") \

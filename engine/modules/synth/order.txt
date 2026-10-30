@@ -1,0 +1,2 @@
+# The order of the Synth filters tab: simplest model first (tools/gen_registry.py).
+svf comb formant ota ladder diode sallen

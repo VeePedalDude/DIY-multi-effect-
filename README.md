@@ -49,10 +49,11 @@ table; the layout never changes. Reference: [docs/SKINS.md](docs/SKINS.md).
 
 ```
 engine/
-  core/        dsp.h (filters, delays, smoothing) · eq.h (EQ filters) · module.h · source.h   ← the contracts
+  core/        dsp.h (filters, delays, smoothing) · eq.h (EQ filters) · vaf.h (synth filters) · module.h · source.h
                nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps) · tuner.h (strobe tuner)
   modules/     <category>/<id>.h: dynamics/gate.h drive/amp.h cab/cab.h delay/holo.h reverb/tess.h
                filter/tilt.h bax.h geq.h peq.h stack.h prog.h dyneq.h (+ order.txt: their order in the tab)
+               synth/svf.h comb.h formant.h ota.h ladder.h diode.h sallen.h (+ order.txt)
                categories.txt (the tabs) · default_chain.txt (a fresh rig) · registry.h (generated)
   sources/     time/lfo.h playing/env.h playing/adsr.h chaos/orbit.h outside/heart.h outside/ctrl.h
                categories.txt · default_rack.txt · registry.h (generated)
@@ -62,15 +63,16 @@ engine/
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 49-picker 50-hud 51-source-panel
+  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 47-va-plot 49-picker 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
                60-controllers 70-presets 72-preset-format 90-main
   screens/     one face display per module type: gate.js amp.js cab.js holo.js tess.js, and the EQs' curves
-               tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js
+               tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js, and the synth filters'
+               svf.js comb.js formant.js ota.js ladder.js diode.js sallen.js
   assets/      images of the built-in skins: hall background, card frames (embedded into the page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
-  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, eq, sources, tuner, rack)
+  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, eq, synth, sources, tuner, rack)
                + test_conformance.cpp: the format and safety of every module and source type
   parity/      native vs WebAssembly comparison
   ui/          Node unit tests: library and preset format
@@ -139,6 +141,20 @@ In the add panel, not in a fresh rig. Filter & EQ, simple to sophisticated:
 | Program EQ | low freq, boost, atten; high freq, boost, bandwidth; high atten; drive | in the style of a passive tube program EQ: boost and cut together for a tight low end |
 | Dynamic EQ | freq, Q, threshold, range ±18 dB, ratio, attack, release | a bell that only moves when its band gets loud (tames a harsh pick attack) |
 
+Synth filters, simplest model first. Every one but the comb and formant has CUTOFF, RESO, ENV (the
+cutoff follows your picking, up to 4 octaves either way), DRIVE and LEVEL; the saturating ones run
+2x oversampled:
+
+| Module | Its own knobs | Notes |
+|---|---|---|
+| State variable | MODE: low-pass → notch → high-pass → band-pass | the Oberheim SEM's 12 dB multimode; sings but never self-oscillates |
+| Comb | FREQ, FEEDBACK ±95 %, DAMP, MIX | rings at a pitch and its harmonics; negative feedback: an octave down, odd harmonics |
+| Formant | VOWEL A-E-I-O-U, SHIFT ±12 st, RESO, MIX | three resonances where a voice puts them; ENV talks through the vowels |
+| OTA filter | POLES 1-4 (6-24 dB/oct) | Juno / Jupiter / Prophet-5 style; the level holds as RESO rises |
+| Ladder | COMP (puts back the bass the resonance takes) | Moog transistor ladder, 24 dB/oct, self-oscillates on pitch |
+| Diode ladder | | TB-303 / EMS: coupled stages, squelchy; acid with ENV |
+| Sallen-Key | HP CUT, HP PEAK, LP CUT, LP PEAK | Korg MS-20 style: high-pass into low-pass, peaks screaming through clipping diodes |
+
 Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate
 (simulated, or a Bluetooth strap), controller (gamepad stick or slider). Each has its own knobs (LFO
 rate and shape, envelope attack/release/floor, ADSR times, orbit speed, heart rest rate, controller
@@ -149,7 +165,7 @@ and the depths. **P** (or the tab beside it) hides the side panel.
 
 - **Add, remove and reorder effects while it plays.** The **+ ADD EFFECT** card at the end of the
   row (or **+ Add effect** in the Mod Matrix) opens a tab per kind of effect: Dynamics, Amps & drive,
-  Cabs & IRs, Filter & EQ, Modulation, Pitch, Delay, Reverb, Utility, Experimental. A search box
+  Cabs & IRs, Filter & EQ, Synth filters, Modulation, Pitch, Delay, Reverb, Utility, Experimental. A search box
   looks across all of them, and the panel remembers the last tab. Sources get the same: Time &
   tempo, Your playing, Physics & chaos, Outside world. Up to 12 in all, in any
   order, several of one kind if you like (two delays: HOLOGRAM and HOLOGRAM 2).
@@ -237,9 +253,10 @@ and the depths. **P** (or the tab beside it) hides the side panel.
   are kept. `.rigskin` zips are read stored or deflated, or with `skin.json` inside a folder.
 - **Headless Chromium:** 25/25 main checks (including opening and editing sources, depth, patching
   from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks.
-  The 19/19 chain checks also cover the add panel's tabs (a tab per category, the first non-empty
-  one open, empty ones saying which folder to use, Filter & EQ in its order), search across tabs,
-  arrow keys and the remembered tab, and add each EQ live to check its face draws. They add a second HOLOGRAM from the “+” card, set its knob, move it to the
+  The 20/20 chain checks also cover the add panel's tabs (a tab per category, the first non-empty
+  one open, empty ones saying which folder to use, Filter & EQ and Synth filters in their order),
+  search across tabs, arrow keys and the remembered tab, and add each EQ and synth filter live to
+  check its face draws. They add a second HOLOGRAM from the “+” card, set its knob, move it to the
   front with ◀, patch the LFO to it, duplicate the cab, remove the amp, check the matrix, reload a
   preset's chain in order, fill the chain to 12 and check Overview fits it.
   The 14/14 rack checks add an LFO from the “+” orb, set its knob, patch the envelope to its rate

@@ -53,6 +53,15 @@ Types in the library but not a fresh chain (add them with `fx_add`):
 | stack | bass, mid, treble, model, level |
 | prog | lfreq, lboost, latten, hfreq, hboost, bw, hatten, drive |
 | dyneq | freq, q, thresh, range, ratio, attack, release (meters: gain, level) |
+| svf | cutoff, reso, mode, env, drive, level |
+| comb | freq, feedback, damp, env, mix |
+| formant | vowel, shift, reso, env, mix |
+| ota | cutoff, reso, poles, env, drive, level |
+| ladder | cutoff, reso, env, drive, comp, level |
+| diode | cutoff, reso, env, drive, level |
+| sallen | hpcut, hppeak, lpcut, lppeak, env, drive, level |
+
+The synth filters' meters: `cutoff` (Hz, where it is now, after ENV) and `env` (0..1, the level ENV reads).
 
 Source types and their knobs (`src_set`, `src_mod`):
 

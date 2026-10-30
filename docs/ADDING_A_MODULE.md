@@ -14,6 +14,7 @@ engine/modules/
   delay/holo.h
   reverb/tess.h
   filter/tilt.h …       seven equalisers; filter/order.txt lists them simple to sophisticated
+  synth/ladder.h …      seven synth filters, simplest model first (synth/order.txt)
   registry.h            GENERATED from the folders by tools/gen_registry.py (./build.sh runs it)
 ```
 
@@ -28,6 +29,9 @@ ids it names come first, in that order, then any others.
 Building an equaliser or a filter? `engine/core/eq.h` has state-variable bells, shelves and passes
 that stay clean while their knobs move, first-order shelves, and a third-order filter from s-domain
 coefficients; the seven in `filter/` are worked examples, from one knob (`tilt.h`) to a dynamic EQ.
+For a resonant filter that saturates, `engine/core/vaf.h` has a zero-delay-feedback loop for any small
+analog system (`VaLoop`: give it A, b, c), 2x oversampling, an ENV amount and the loop noise that lets
+a resonance start by itself; `synth/ladder.h` is the shortest example.
 
 Start from [`templates/module_template.h`](templates/module_template.h): a tremolo that was put in
 `modulation/`, built, and run through every test. The shape:

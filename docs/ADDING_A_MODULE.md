@@ -15,11 +15,12 @@ engine/modules/
   reverb/tess.h
   filter/tilt.h …       seven equalisers; filter/order.txt lists them simple to sophisticated
   synth/ladder.h …      seven synth filters, simplest model first (synth/order.txt)
+  voice/polyv.h         POLY VOICE: the notes of a chord, played by tape keyboards or a polysynth
   registry.h            GENERATED from the folders by tools/gen_registry.py (./build.sh runs it)
 ```
 
 Each folder is a tab in the **Add an effect** panel: Dynamics, Amps & drive, Cabs & IRs,
-Filter & EQ, Modulation, Pitch, Delay, Reverb, Utility, Experimental. A tab with no effects yet
+Filter & EQ, Synth filters, Synth voices, Modulation, Pitch, Delay, Reverb, Utility, Experimental. A tab with no effects yet
 still shows, and says which folder new ones go in. A new category is one line in `categories.txt`
 plus its folder. Inside a tab, effects are listed by id, unless the folder has an `order.txt`: the
 ids it names come first, in that order, then any others.
@@ -32,6 +33,10 @@ coefficients; the seven in `filter/` are worked examples, from one knob (`tilt.h
 For a resonant filter that saturates, `engine/core/vaf.h` has a zero-delay-feedback loop for any small
 analog system (`VaLoop`: give it A, b, c), 2x oversampling, an ENV amount and the loop noise that lets
 a resonance start by itself; `synth/ladder.h` is the shortest example.
+Turning what's played into notes? `engine/core/polytrack.h` finds up to six notes of a chord every 5 ms
+(`PolyTracker`) and keeps voices for them (`PolyAlloc`: matched, glided, started, released, restarted
+on a new pick); `engine/core/fft.h` is the FFT under it, also handy for building wavetables in `init()`.
+`voice/polyv.h` uses both.
 
 Start from [`templates/module_template.h`](templates/module_template.h): a tremolo that was put in
 `modulation/`, built, and run through every test. The shape:

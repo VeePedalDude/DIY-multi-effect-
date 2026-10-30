@@ -106,6 +106,30 @@ console.log(`      wasm render with A2 + 3 s stereo IR: ${(100 * ms2 / 1000 / se
   check(sameMeters && worst < 1e-4, `GATE SEQ (swing, ratchets, chance, then EUCLID with FILL moved by the LFO, random order, resync, a tempo change): ${natS.length / 3} blocks, ${Math.floor(natS[natS.length - 1] / 32)} hits; playhead and hits identical, values within ${worst.toExponential(1)}`);
 }
 
+// Scenario 5: POLY VOICE (see dump.cpp). Its note finding is a chain of decisions on FFT peaks, so the
+// check is the output's difference energy and how many blocks show the same notes.
+{
+  const natO = new Float32Array(fs.readFileSync('build/polyv_native.f32').buffer.slice(0)), natM = new Float32Array(fs.readFileSync('build/polyv_meters.f32').buffer.slice(0));
+  const T = desc.moduleTypes ? desc.moduleTypes.find((t) => t.type === 'polyv') : null, pi = (s) => (T ? T.params.findIndex((q) => q.symbol === s) : { model: 0, octave: 7 }[s]);
+  X.rig_init(48000); const tx = new Uint8Array(X.memory.buffer, X.rig_text(), 64); tx.fill(0); tx.set(new TextEncoder().encode('polyv - 0')); const pv = X.rig_fx_add();
+  for (let m = 0; m <= 5; m++) if (m !== pv) X.rig_bypass(m, 1);
+  const o = new Float32Array(inp.length), pm = new Float32Array(natM.length); let w = 0;
+  const t1 = performance.now();
+  for (let i = 0; i < inp.length; i += 128) {
+    if (i === 48000 * 5) X.rig_param(pv, pi('model'), 3 / 5);
+    if (i === 48000 * 9) { X.rig_param(pv, pi('model'), 1); X.rig_param(pv, pi('octave'), 1); }
+    view(X.rig_in()).set(inp.subarray(i, i + 128)); X.rig_process(128); o.set(view(X.rig_out_l()), i);
+    const M = new Float32Array(X.memory.buffer, X.rig_meters(), X.rig_meters_len()), L = desc.meters;
+    pm[w++] = M[L.mod + pv * L.perMod]; pm[w++] = M[L.mod + pv * L.perMod + 1];
+  }
+  const pms = performance.now() - t1;
+  let sd = 0, ss = 0, same = 0; for (let i = 0; i < o.length; i++) { const d = o[i] - natO[i]; sd += d * d; ss += natO[i] * natO[i]; }
+  for (let i = 1; i < natM.length; i += 2) same += pm[i] === natM[i];
+  const db = 10 * Math.log10(sd / ss + 1e-30), share = 100 * same / (natM.length / 2);
+  check(pv >= 0 && db < -60 && share > 99, `POLY VOICE (tape strings, synth saw, synth brass +1 oct): output ${db.toFixed(1)} dB from native; the same notes in ${share.toFixed(2)}% of ${natM.length / 2} blocks`);
+  console.log(`      wasm POLY VOICE alone: ${(100 * pms / 1000 / (inp.length / 48000)).toFixed(2)}% of one core`);
+}
+
 // What files cost in WebAssembly (the browser): one file loaded, the riff played through the chain.
 // "99.9%" = 99.9% of 128-sample blocks finish within this share of their 2.67 ms (this machine).
 const irFile = (secs, ch) => {

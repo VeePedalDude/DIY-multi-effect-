@@ -16,10 +16,24 @@ const WASM_BYTES = b64ToBytes(RIG_WASM_B64);
 
 function cStringMain(mem, ptr) { const u = new Uint8Array(mem.buffer, ptr); let n = 0; while (u[n]) n++; return new TextDecoder().decode(u.subarray(0, n)); }
 
+// A knob's real value, its readout and, for a knob with named stops (an LFO's RATE "1/4", WAVE "SAW UP"),
+// snap(v): the nearest stop, which turning it by hand lands on. A whole-number knob without a unit is a
+// selector (the engine rounds it), so its readout names the position it's on; others show a stop's
+// name only when they sit on it (cross-modulation glides between).
 function formatter(q) {
   const unit = q.unit ? (q.unit === '%' ? '%' : ' ' + q.unit) : '';
   const real = (v) => q.curve === 'log' ? q.min * Math.pow(q.max / q.min, v) : q.min + (q.max - q.min) * v;
-  return { real, fmt: (v) => { const r = real(v); return (q.sign && r >= 0 ? '+' : '') + r.toFixed(q.decimals) + unit; } };
+  const norm = (r) => q.curve === 'log' ? Math.log(r / q.min) / Math.log(q.max / q.min) : (r - q.min) / (q.max - q.min);
+  const stops = q.stops || [], selector = !q.unit && q.decimals === 0;
+  const num = (r) => (q.sign && r >= 0 ? '+' : '') + r.toFixed(q.decimals) + unit;
+  const fmt = (v) => {
+    const r = real(v); if (!stops.length) return num(r);
+    if (selector) { const w = Math.round(r), s = stops.find((x) => x[0] === w); return s ? s[1] : String(w); }
+    const s = stops.find((x) => Math.abs(x[0] - r) <= Math.abs(x[0]) * 0.005); return s ? s[1] : num(r);
+  };
+  const snap = (v) => { if (!stops.length) return v; const r = real(v); let b = stops[0];
+    for (const s of stops) if (Math.abs(norm(s[0]) - norm(r)) < Math.abs(norm(b[0]) - norm(r))) b = s; return clamp(norm(b[0]), 0, 1); };
+  return { real, fmt, snap };
 }
 
 async function loadModel() {
@@ -50,7 +64,7 @@ function makeModule(id, type, slot) {
   const m = { id, type, inst: id, slot: slot ?? null, idx: 0, mi: 0, name: moduleNameFor(id, type), kind: d.kind, meterNames: d.meters, asset: d.asset || null, params: [] };
   m.params = d.params.map((q, pi) => {
     const f = formatter(q);
-    return { id: `${id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, mod: m, mi: 0, pi };
+    return { id: `${id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, snap: f.snap, mod: m, mi: 0, pi };
   });
   return m;
 }
@@ -67,7 +81,7 @@ function setChain(list) {
 function reindexModules() {
   MODS.forEach((m, i) => { m.idx = i; m.mi = i; m.name = moduleNameFor(m.id, m.type); m.params.forEach((p) => { p.mi = i; }); });
   PARAMS = {}; MODS.forEach((m) => m.params.forEach((p) => { PARAMS[p.id] = p; }));
-  Object.keys(state.conns).forEach((pid) => { if (SRC.length && (!knobOf(pid) || !SRCMAP[state.conns[pid]])) { delete state.conns[pid]; delete state.depths[pid]; } });
+  Object.keys(state.conns).forEach((pid) => { if (SRC.length && (!knobOf(pid) || !SRCMAP[state.conns[pid]])) { delete state.conns[pid]; delete state.depths[pid]; delete state.taps[pid]; } });
   CHAIN_HOOKS.forEach((f) => f());
 }
 // The next free id for a type: "holo", "holo2"... (never a source's id)
@@ -88,7 +102,7 @@ function makeSource(id, type, slot) {
   const s = { id, type, name: sourceNameFor(id, type), sub: d.sub, ext: d.ext, meterNames: d.meters, slot: slot ?? null, idx: 0, color: null, params: [], hist: [] };
   s.params = (d.params || []).map((q, pi) => {           // the source's own knobs (src_set), same shape as module params
     const f = formatter(q);
-    return { id: `${id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, src: s, pi };
+    return { id: `${id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, snap: f.snap, src: s, pi };
   });
   return s;
 }
@@ -108,7 +122,7 @@ function reindexSources() {
   SRCMAP = Object.fromEntries(SRC.map((s) => [s.id, s]));
   SPARAMS = {}; SRC.forEach((s) => s.params.forEach((q) => { SPARAMS[q.id] = q; }));
   // patches whose source or target left the rack go with it
-  Object.keys(state.conns).forEach((pid) => { if (!knobOf(pid) || !SRCMAP[state.conns[pid]]) { delete state.conns[pid]; delete state.depths[pid]; } });
+  Object.keys(state.conns).forEach((pid) => { if (!knobOf(pid) || !SRCMAP[state.conns[pid]]) { delete state.conns[pid]; delete state.depths[pid]; delete state.taps[pid]; } });
   RACK_HOOKS.forEach((f) => f());
 }
 // The next free id for a type: "lfo", "lfo2", "lfo3"... (never a module's id)
@@ -118,6 +132,9 @@ function nextSourceId(type) {
 }
 // Any patch target by id: a module knob or a source knob.
 const knobOf = (pid) => PARAMS[pid] || SPARAMS[pid];
+// Does the patch on this knob come from a source that taps (its own PHASE and DIV per patch)?
+const tapsAt = (pid) => { const s = SRCMAP[state.conns[pid]]; return !!(s && TYPES[s.type].taps); };
+const divName = (d) => { const e = (DESC.tapDivs || []).find((x) => Math.abs(x[0] - d) < 1e-3); return e ? e[1] : String(d); };
 const ownerName = (k) => (k.mod ? k.mod.name : k.src.name);
 const targetLabel = (pid) => { const k = knobOf(pid); return k ? `${ownerName(k)} · ${k.label}` : pid; };
 

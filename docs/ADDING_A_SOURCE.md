@@ -71,6 +71,7 @@ struct RandomSH : Source {
 | `def` | the default, **normalised** 0..1. Centre the range on it: on a log curve, a default value of √(min × max) sits at 0.5 |
 | `unit` | one of `"" dB ms s Hz % x bpm beats "per beat" st ct` |
 | `decimals` | 0–4 digits in the readout; `sign` shows a leading `+` |
+| `stops`, `nstops` | optional named stops in real units, ascending (`{0.5f, "1/8"}, {1.f, "1/4"}`). Turning the knob by hand lands on them and the readout shows the name; cross-modulation still moves it continuously. A whole-number knob with no unit (`""`, 0 decimals) is a selector: round it in `update()` (`lrintf`) and crossfade a change, since cross-modulation can switch it every block. See `time/lfo.h` |
 
 ### Behaviour (`update()`)
 
@@ -83,6 +84,16 @@ struct RandomSH : Source {
 | A jumping knob must not make the output jump on its own | phase-accumulate rates (`ph += dt × rate`), smooth what would click |
 | Use the full −1..1 range; centre "nothing happening" sensibly | bipolar (LFO: −1..1 around 0) or unipolar (envelope: −1 at rest, +1 at full); say which in the header |
 | `c.dt` is the block length in seconds; `c.bpm` the tempo; `c.in`/`c.n` the dry guitar | tempo-synced sources follow tap tempo for free |
+
+### Per-destination phase and multiple (`taps`)
+
+A source with a repeating shape (the LFO) can set `taps = true` at the end of its `SourceDesc` and
+implement `cycle(n, ph)` (whole cycles done and the phase 0..1 after this block's `update()`) and
+`at(ph, n)` (its output at phase `ph` of cycle `n`, with this block's settings; `n` picks random
+values). Then every patch from it gets its own PHASE and DIV (`core/tap.h`): the rack and the chain read
+it at `frac(cycles x DIV + PHASE/360)`, locked to the source's cycle, and glide when either changes.
+A patch at 0 degrees, 1x reads the source's own value, so nothing changes for anyone who doesn't use
+them. Test 91 checks `at()` stays in -1..1 and finite for every phase.
 
 `ext(float)` receives outside values (a strap, a gamepad) on the control thread: store them, and
 use them in `update()`. Sources that only need slow outside data can also live outside the engine

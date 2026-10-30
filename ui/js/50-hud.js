@@ -1,5 +1,13 @@
 // 50-hud.js - focus panel, mod matrix, hint line, view switch, bottom bar and settings drawer.
 const panel = $('panel'), matrix = $('matrix'), hint = $('hint');
+// PHASE and DIV of one patch, under its depth, when the source taps (an LFO): this destination's own
+// offset and multiple of the source's cycle.
+function tapRowHtml(pid, color) {
+  if (!tapsAt(pid)) return '';
+  const t = tapOf(pid);
+  return `<label class="depth" for="tp-${pid}"><span>Phase</span><input type="range" id="tp-${pid}" data-tphase="${pid}" min="0" max="359" step="1" value="${t.phase}" style="accent-color:${color}"><span class="mono" data-tpdisp="${pid}">${Math.round(t.phase)}°</span></label>
+    <label class="depth" for="tv-${pid}"><span>Div</span><select id="tv-${pid}" data-tdiv="${pid}" style="min-height:32px;width:auto">${(DESC.tapDivs || []).map(([d, n]) => `<option value="${d}"${Math.abs(d - t.div) < 1e-3 ? ' selected' : ''}>${n}×</option>`).join('')}</select><span class="mono"></span></label>`;
+}
 let fxRemoveArmed = null;                // the module whose Remove was clicked once (click again to confirm)
 function renderPanel() {
   if (state.focus === 'add') { renderAddPanel(); return; }
@@ -21,7 +29,7 @@ function renderPanel() {
     h += `<div class="param"><div class="prow"><b><label for="r-${p.id}" style="color:inherit;font:inherit;display:inline">${p.label}</label></b><span class="num" data-disp="${p.id}"></span></div>
     <input type="range" id="r-${p.id}" data-pid="${p.id}" min="0" max="1" step="0.001" value="${p.v}">`;
     if (S) h += `<div class="mod"><span class="dot" style="background:${S.color}"></span><button class="linkbtn grow" data-act="edit-src" data-sid="${S.id}" title="Edit ${S.name}">${S.name}</button><button class="btn mini" data-act="unplug" data-pid="${p.id}">Unplug</button></div>
-      <label class="depth" for="dp-${p.id}"><span>Depth</span><input type="range" id="dp-${p.id}" data-depth="${p.id}" min="0" max="1" step="0.01" value="${depthOf(p.id)}" style="accent-color:${S.color}"><span class="mono" data-ddisp="${p.id}">±${Math.round(depthOf(p.id) * 100)}%</span></label>`;
+      <label class="depth" for="dp-${p.id}"><span>Depth</span><input type="range" id="dp-${p.id}" data-depth="${p.id}" min="0" max="1" step="0.01" value="${depthOf(p.id)}" style="accent-color:${S.color}"><span class="mono" data-ddisp="${p.id}">±${Math.round(depthOf(p.id) * 100)}%</span></label>${tapRowHtml(p.id, S.color)}`;
     else h += `<div class="mod"><label for="m-${p.id}" class="muted" style="flex-direction:row;align-items:center;gap:8px;font-size:13px">Patch <select id="m-${p.id}" data-patch="${p.id}" style="min-height:32px;width:auto"><option value="">—</option>${SRC.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}</select></label></div>`;
     h += `</div>`;
   });
@@ -99,7 +107,7 @@ function wireHud() {
   });
   panel.addEventListener('click', (e) => { const a = e.target.closest('[data-addfx-type]'); if (a) { const m = addModule(a.dataset.addfxType); if (m) { state.focus = m.id; update(); flyTo(m); } } });
   matrix.addEventListener('click', (e) => { if (e.target.closest('[data-matrix-addfx]')) { state.focus = 'addfx'; update(); } });
-  panel.addEventListener('input', (e) => { const pid = e.target.dataset && e.target.dataset.pid; if (pid) setParam(PARAMS[pid], Number(e.target.value)); });
+  panel.addEventListener('input', (e) => { const pid = e.target.dataset && e.target.dataset.pid; if (pid) { const p = PARAMS[pid]; setParam(p, p.snap(Number(e.target.value))); } });
   panel.addEventListener('change', (e) => { const pid = e.target.dataset && e.target.dataset.patch; if (pid && e.target.value) { connect(pid, e.target.value); update(); } });
   matrix.addEventListener('click', (e) => { const b = e.target.closest('.cell'); if (!b) return; const { pid, sid } = b.dataset; connect(pid, state.conns[pid] === sid ? null : sid); update(); });
   $('panelToggle').onclick = () => setPanelHidden(!panelHidden);

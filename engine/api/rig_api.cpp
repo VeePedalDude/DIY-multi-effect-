@@ -32,7 +32,9 @@ EXPORT(rig_bypass) void rig_bypass(int m, int on) { if (E().used(m)) E().byp[m] 
 // src = -1 disconnects; depth is the +/- swing in normalised units around the knob
 EXPORT(rig_mod) void rig_mod(int m, int p, int src, float depth) {
   if (!E().used(m) || p < 0 || p >= E().nparams(m)) return;
-  E().conn[m][p] = E().rack.used(src) ? src : -1;
+  const int c = E().rack.used(src) ? src : -1;
+  if (c != E().conn[m][p]) E().tap[m][p].reset();               // a new patch starts at 0 degrees, 1x
+  E().conn[m][p] = c;
   E().depth[m][p] = rig::clampf(depth, 0.f, 1.f);
 }
 // Sources are addressed by rack slot (rig_rack() lists them; a fresh rack has one of each type in
@@ -58,6 +60,13 @@ EXPORT(rig_src_add) int rig_src_add() {
 EXPORT(rig_src_remove) int rig_src_remove(int src) { return E().removeSource(src); }
 // Cross-modulation: knob p of source `src` moved by source `from` (-1 unpatches), +/- depth.
 EXPORT(rig_src_mod) int rig_src_mod(int src, int p, int from, float depth) { return E().rack.patch(src, p, from, depth); }
+// Per-destination PHASE (degrees) and DIV (multiple of the source's cycle: 1/4, 1/3, 1/2, 2/3, 1, 3/2,
+// 2, 3, 4, 8; the nearest is taken) of a patch from a tapping source (an LFO). Other sources ignore it.
+EXPORT(rig_mod_tap) void rig_mod_tap(int m, int p, float deg, float div) {
+  if (!E().used(m) || p < 0 || p >= E().nparams(m)) return;
+  E().tap[m][p].set(deg, div);
+}
+EXPORT(rig_src_tap) int rig_src_tap(int src, int p, float deg, float div) { return E().rack.tapSet(src, p, deg, div); }
 EXPORT(rig_rack) const char* rig_rack() { return E().rackJson; }
 // The effect chain (control thread; allocates). Modules are addressed by slot (rig_chain() lists the
 // chain in order with each instance's slot; a fresh chain is one of each type, slots 0.. in order).

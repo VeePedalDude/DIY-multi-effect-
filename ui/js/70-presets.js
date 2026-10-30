@@ -5,6 +5,7 @@ function applySnapshot(s) {
   state.bypass = { ...(s.bypass || {}) };
   state.conns = Object.fromEntries(Object.entries(s.conns || {}).filter(([pid, sid]) => knobOf(pid) && SRCMAP[sid]));
   state.depths = { ...(s.depths || {}) };
+  state.taps = { ...(s.taps || {}) };
   SRC.forEach((src) => src.params.forEach((q) => { q.v = s.srcParams && s.srcParams[q.id] !== undefined ? s.srcParams[q.id] : q.def; }));
   if (s.bpm) { state.bpm = s.bpm; $('bpm').textContent = Math.round(s.bpm); }
   sendAll(); syncCables(); update();

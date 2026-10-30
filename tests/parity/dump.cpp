@@ -23,6 +23,7 @@ int main() {
   for (size_t i = 0; i < g.size(); i += 128) {
     if (i == 48000 * 5) { rig_param(3, 0, 0.8f); rig_bypass(1, 1); rig_tempo(90); }
     if (i == 48000 * 8) { rig_bypass(1, 0); rig_ext(5, 0.7f); rig_mod(2, 1, 5, 0.3f); }
+    if (i == 48000 * 10) { rig_src_param(0, 2, 0.875f); rig_src_param(0, 4, 0.25f); rig_mod_tap(3, 0, 90.f, 1.5f); }   // LFO: SMOOTH RANDOM, 8 STEPS; HOLOGRAM's patch at 90 degrees, 3/2
     memcpy(rig_in(), &g[i], 512); rig_process(128);
     for (int k = 0; k < 128; k++) { out[2 * (i + k)] = rig_out_l()[k]; out[2 * (i + k) + 1] = rig_out_r()[k]; }
   }

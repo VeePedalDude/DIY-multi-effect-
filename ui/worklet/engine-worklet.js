@@ -3,13 +3,15 @@
 // modules and sources need no changes here. Same text commands as the future Linux host:
 //
 //   param_set <inst> <symbol> <0..1>          bypass <inst> <0|1>
-//   mod_connect <inst> <symbol> <source> <depth>
+//   mod_connect <inst> <symbol> <source> <depth> [phase] [div]
 //   mod_disconnect <inst> <symbol>            set_bpm <bpm>
 //   master <dB>                               ext <source> <value>
 //   input_channel <0|1>                       src_set <source> <symbol> <0..1>
 //   tuner <0|1> [mute 0|1]                    tuner_ref <A4 Hz, 400..480>
 //   src_add <type> [id]                       src_remove <source>
-//   src_mod <source> <symbol> <from source> <depth>
+//   src_mod <source> <symbol> <from source> <depth> [phase] [div]
+//     phase (degrees, default 0) and div (1/4 1/3 1/2 2/3 1 3/2 2 3 4 8, default 1) are the patch's own
+//     offset and multiple of the source's cycle, for sources that tap (the LFO); others ignore them.
 //   src_unmod <source> <symbol>
 //   fx_add <type> [id] [position]             fx_remove <inst>             fx_move <inst> <position>
 // Sources are rack instances, named by id ("lfo", "lfo2"); every change to the rack is answered
@@ -78,6 +80,12 @@ class RigEngine extends AudioWorkletProcessor {
   sendRack() { this.port.postMessage({ type: 'rack', rack: this.rack }); }
   source(tok) { const r = this.rack.find((s) => s.id === tok); return r ? r.slot : -1; }      // rack slot of an instance id
   sourceKnob(slot, sym) { const r = this.rack.find((s) => s.slot === slot), t = r && this.types[r.type]; return t ? t.params.findIndex((q) => q.symbol === sym) : -1; }
+  // [phase] [div] after a patch's depth: degrees, and a multiple of the cycle written 3/2 or 1.5.
+  tapArgs(a, b) {
+    const deg = a === undefined ? 0 : Number(a);
+    let div = 1; if (b !== undefined) { const f = /^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/.exec(b); div = f ? Number(f[1]) / Number(f[2]) : Number(b); }
+    return Number.isFinite(deg) && Number.isFinite(div) && div > 0 ? [deg, div] : null;
+  }
   exec(line) {
     const t = String(line).trim().split(/\s+/), c = t[0], X = this.x;
     if (c === 'param_set' || c === 'mod_connect' || c === 'mod_disconnect') {
@@ -85,9 +93,9 @@ class RigEngine extends AudioWorkletProcessor {
       const p = this.modParams(m).findIndex((q) => q.symbol === t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
       if (c === 'param_set') { const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE; X.rig_param(m, p, v); return 0; }
       if (c === 'mod_disconnect') { X.rig_mod(m, p, -1, 0); return 0; }
-      const s = this.source(t[3]), d = Number(t[4]);
-      if (s < 0 || !(d >= 0 && d <= 1)) return ERR.VALUE_OUT_OF_RANGE;
-      X.rig_mod(m, p, s, d); return 0;
+      const s = this.source(t[3]), d = Number(t[4]), tap = this.tapArgs(t[5], t[6]);
+      if (s < 0 || !(d >= 0 && d <= 1) || !tap) return ERR.VALUE_OUT_OF_RANGE;
+      X.rig_mod(m, p, s, d); X.rig_mod_tap(m, p, tap[0], tap[1]); return 0;
     }
     if (c === 'tuner') {                         // tuner <0|1> [mute 0|1]: strobe tuner on the dry input
       if (t[1] !== '0' && t[1] !== '1') return ERR.VALUE_OUT_OF_RANGE;
@@ -118,8 +126,9 @@ class RigEngine extends AudioWorkletProcessor {
       const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
       const p = this.sourceKnob(k, t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
       if (c === 'src_unmod') { X.rig_src_mod(k, p, -1, 0); return 0; }
-      const f = this.source(t[3]), d = Number(t[4]); if (f < 0 || !(d >= 0 && d <= 1)) return ERR.VALUE_OUT_OF_RANGE;
-      return X.rig_src_mod(k, p, f, d) === 0 ? 0 : ERR.INSTANCE_INVALID;
+      const f = this.source(t[3]), d = Number(t[4]), tap = this.tapArgs(t[5], t[6]); if (f < 0 || !(d >= 0 && d <= 1) || !tap) return ERR.VALUE_OUT_OF_RANGE;
+      if (X.rig_src_mod(k, p, f, d) !== 0) return ERR.INSTANCE_INVALID;
+      X.rig_src_tap(k, p, tap[0], tap[1]); return 0;
     }
     if (c === 'src_set') {                       // src_set <source> <symbol> <0..1>
       const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;

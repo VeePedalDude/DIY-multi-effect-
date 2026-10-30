@@ -19,6 +19,7 @@
 #include <atomic>
 #include <cstring>
 #include "sources/registry.h"
+#include "core/tap.h"
 
 namespace rig {
 
@@ -53,6 +54,7 @@ struct SrcSlot {
   float eff[MAXPAR] = {0};                 // knobs after cross-modulation (what the source runs with)
   int conn[MAXPAR];                        // slot of the source moving each knob, or -1
   float depth[MAXPAR];                     // its swing, +/- in normalised units
+  Tap tap[MAXPAR];                         // its PHASE and DIV, for a tapping source (core/tap.h)
   float val = 0;                           // output this block, -1..1
   int nparams() const { return type >= 0 ? sourceTypeDesc(type).nparams : 0; }
 };
@@ -104,7 +106,7 @@ struct ModRack {
     Source* src = sourceTypes()[t].make(); src->init(sr);
     SrcSlot& S = slot[k];
     const SourceDesc& d = sourceTypeDesc(t);
-    for (int p = 0; p < MAXPAR; p++) { S.base[p] = S.eff[p] = p < d.nparams ? d.params[p].def : 0.f; S.conn[p] = -1; S.depth[p] = 0.22f; }
+    for (int p = 0; p < MAXPAR; p++) { S.base[p] = S.eff[p] = p < d.nparams ? d.params[p].def : 0.f; S.conn[p] = -1; S.depth[p] = 0.22f; S.tap[p].reset(); }
     memcpy(S.id, want, SRC_ID_LEN); S.val = 0; S.type = t;
     S.s.store(src, std::memory_order_release);       // the audio thread sees it from its next block
     return k;
@@ -115,7 +117,7 @@ struct ModRack {
     collect(false);
     if (!used(k)) return RACK_NO_SUCH;
     Source* old = slot[k].s.exchange(nullptr, std::memory_order_acq_rel);
-    for (int j = 0; j < MAXSRC; j++) for (int p = 0; p < MAXPAR; p++) if (slot[j].conn[p] == k) slot[j].conn[p] = -1;
+    for (int j = 0; j < MAXSRC; j++) for (int p = 0; p < MAXPAR; p++) if (slot[j].conn[p] == k) { slot[j].conn[p] = -1; slot[j].tap[p].reset(); }
     slot[k].type = -1; slot[k].id[0] = 0; slot[k].val = 0;
     for (int p = 0; p < MAXPAR; p++) { slot[k].conn[p] = -1; slot[k].base[p] = slot[k].eff[p] = 0.f; }
     if (old) { if (nRetired == MAXSRC * 2) collect(true); retired[nRetired] = old; retiredAt[nRetired++] = blocks.load(std::memory_order_acquire); }
@@ -136,8 +138,23 @@ struct ModRack {
   int patch(int k, int p, int from, float depth) {
     if (!used(k) || p < 0 || p >= slot[k].nparams()) return RACK_NO_SUCH;
     if (from >= 0 && !used(from)) return RACK_NO_SUCH;
+    if (from != slot[k].conn[p]) slot[k].tap[p].reset();       // a new patch starts at 0 degrees, 1x
     slot[k].depth[p] = clampf(depth, 0.f, 1.f); slot[k].conn[p] = from;
     return 0;
+  }
+  // PHASE (degrees) and DIV (a TAP_DIVS value; the nearest is taken) of the patch on knob p of slot k.
+  int tapSet(int k, int p, float deg, float div) {
+    if (!used(k) || p < 0 || p >= slot[k].nparams()) return RACK_NO_SUCH;
+    slot[k].tap[p].set(deg, div);
+    return 0;
+  }
+  // What a patch from slot c gives this block: the source's value, or its value at the patch's own
+  // PHASE and DIV when the source taps and the patch is set (audio thread).
+  float patchValue(int c, Tap& t, float dt) {
+    if (t.plain()) { t.follow(); return slot[c].val; }
+    Source* s = slot[c].s.load(std::memory_order_acquire);
+    if (!s || !s->desc().taps) { t.follow(); return slot[c].val; }
+    return t.eval(*s, dt);
   }
 
   // Audio thread: every instance's knobs from last block's values, then this block's values.
@@ -150,7 +167,7 @@ struct ModRack {
       for (int p = 0; p < MAXPAR; p++) {
         float v = S.base[p];
         const int c = S.conn[p];
-        if (c >= 0 && c < MAXSRC) v += S.depth[p] * slot[c].val;
+        if (c >= 0 && c < MAXSRC) v += S.depth[p] * patchValue(c, S.tap[p], (float)n / sr);
         S.eff[p] = clampf(v, 0.f, 1.f);
       }
     }

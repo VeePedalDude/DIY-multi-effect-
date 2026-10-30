@@ -225,7 +225,7 @@ function wireStageInput() {
     setNdc(e);
     if (!drag) { const h = pick(e); canvas.style.cursor = h ? 'pointer' : (state.carrying ? 'crosshair' : 'grab'); return; }
     const dy = e.clientY - drag.y; if (Math.hypot(e.clientX - drag.x, dy) > 5) drag.moved = true;
-    if (drag.mode === 'knob') { if (drag.moved) { setParam(drag.hit.knob, drag.start - dy / 220); state.focus = drag.hit.mod.id; renderPanelSoon(); } }
+    if (drag.mode === 'knob') { if (drag.moved) { setParam(drag.hit.knob, drag.hit.knob.snap(clamp(drag.start - dy / 220, 0, 1))); state.focus = drag.hit.mod.id; renderPanelSoon(); } }
     else if (drag.moved) { cam.theta -= e.movementX * .005; cam.phi = clamp(cam.phi - e.movementY * .004, .45, 1.45); canvas.style.cursor = 'grabbing'; }
   });
   canvas.addEventListener('pointerup', () => { if (drag && !drag.moved) stageClick(drag.hit); drag = null; canvas.style.cursor = 'grab'; });

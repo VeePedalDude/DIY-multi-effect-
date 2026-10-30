@@ -49,7 +49,7 @@ table; the layout never changes. Reference: [docs/SKINS.md](docs/SKINS.md).
 
 ```
 engine/
-  core/        dsp.h (filters, delays, smoothing) · eq.h (EQ filters) · vaf.h (synth filters) · module.h · source.h
+  core/        dsp.h (filters, delays, smoothing) · eq.h (EQ filters) · vaf.h (synth filters) · module.h · source.h · tap.h (per-patch phase and DIV)
                nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps) · tuner.h (strobe tuner)
   modules/     <category>/<id>.h: dynamics/gate.h drive/amp.h cab/cab.h delay/holo.h reverb/tess.h
                filter/tilt.h bax.h geq.h peq.h stack.h prog.h dyneq.h (+ order.txt: their order in the tab)
@@ -157,9 +157,11 @@ cutoff follows your picking, up to 4 octaves either way), DRIVE and LEVEL; the s
 
 Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate
 (simulated, or a Bluetooth strap), controller (gamepad stick or slider). Each has its own knobs (LFO
-rate and shape, envelope attack/release/floor, ADSR times, orbit speed, heart rest rate, controller
+rate as note values when synced or Hz when free, nine waves, depth, steps for a staircase, and
+bipolar or unipolar output; envelope attack/release/floor, ADSR times, orbit speed, heart rest rate, controller
 smoothing and dead zone): click a source's orb or name to open them, along with everything it moves
-and the depths. **P** (or the tab beside it) hides the side panel.
+and the depths. Each patch from an LFO also has its own **Phase** and **Div** (¼× … 8× the LFO's
+cycle), so one LFO can move several knobs at different offsets and speeds, locked together. **P** (or the tab beside it) hides the side panel.
 
 ### The effect chain
 

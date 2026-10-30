@@ -46,10 +46,18 @@ function sendAll() {
 }
 function setSrcParam(q, v) { q.v = clamp(v, 0, 1); rig.cmd(`src_set ${q.src.id} ${q.sym} ${q.v.toFixed(6)}`); }
 // One patch, as the engine should have it: a module knob (mod_connect) or a source knob (src_mod).
+// A patch from a tapping source (an LFO) also carries its PHASE and DIV when they aren't 0 degrees, 1x.
 function sendPatch(pid) {
   const k = knobOf(pid), s = state.conns[pid]; if (!k) return;
-  if (k.mod) rig.cmd(s ? `mod_connect ${k.mod.inst} ${k.sym} ${s} ${depthOf(pid).toFixed(4)}` : `mod_disconnect ${k.mod.inst} ${k.sym}`);
-  else rig.cmd(s ? `src_mod ${k.src.id} ${k.sym} ${s} ${depthOf(pid).toFixed(4)}` : `src_unmod ${k.src.id} ${k.sym}`);
+  const t = tapOf(pid), tap = s && tapsAt(pid) && (t.phase || t.div !== 1) ? ` ${Math.round(t.phase)} ${divName(t.div)}` : '';
+  if (k.mod) rig.cmd(s ? `mod_connect ${k.mod.inst} ${k.sym} ${s} ${depthOf(pid).toFixed(4)}${tap}` : `mod_disconnect ${k.mod.inst} ${k.sym}`);
+  else rig.cmd(s ? `src_mod ${k.src.id} ${k.sym} ${s} ${depthOf(pid).toFixed(4)}${tap}` : `src_unmod ${k.src.id} ${k.sym}`);
+}
+function setTap(pid, phase, div) {             // a patch's own PHASE (0..360 degrees) and DIV
+  if (!knobOf(pid) || !state.conns[pid]) return;
+  const t = { phase: ((Math.round(phase) % 360) + 360) % 360, div };
+  if (!t.phase && t.div === 1) delete state.taps[pid]; else state.taps[pid] = t;
+  sendPatch(pid);
 }
 function setDepth(pid, d) {                     // swing of one patch, 0..1 either side of the knob
   if (!knobOf(pid) || !state.conns[pid]) return;
@@ -59,6 +67,7 @@ function setParam(p, v) { p.v = clamp(v, 0, 1); rig.cmd(`param_set ${p.mod.inst}
 // Patch a knob (a module's or a source's) from a source, or unpatch it (sid null).
 function connect(pid, sid) {
   if (!knobOf(pid)) return;
+  if (state.conns[pid] !== sid) delete state.taps[pid];          // a new patch starts at 0 degrees, 1x
   if (sid) state.conns[pid] = sid; else { delete state.conns[pid]; delete state.depths[pid]; }
   sendPatch(pid); syncCables();
 }

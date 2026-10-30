@@ -21,6 +21,12 @@ static std::string knobProblems(int n, const ParamDesc* ps) {
     if (q.curve == Curve::Log && !(q.min > 0)) out += w + " a log knob needs min > 0;";
     if (!(q.def >= 0 && q.def <= 1)) out += w + " default must be 0..1 (normalised);";
     if (q.decimals < 0 || q.decimals > 4) out += w + " decimals 0..4;";
+    if (q.nstops < 0 || (q.nstops > 0) != (q.stops != nullptr)) out += w + " nstops and stops must agree;";
+    for (int k = 0; k < q.nstops && q.stops; k++) {
+      if (!q.stops[k].name || !q.stops[k].name[0]) out += w + " a stop without a name;";
+      if (!(q.stops[k].v >= q.min && q.stops[k].v <= q.max)) out += w + " a stop outside min..max;";
+      if (k && !(q.stops[k].v > q.stops[k - 1].v)) out += w + " stops must ascend;";
+    }
     bool unit = false; for (auto u : UNITS) unit = unit || (q.unit && !strcmp(q.unit, u)); if (!unit) out += w + " unit not in the list (docs);";
   }
   return out;
@@ -59,7 +65,10 @@ static bool torture(int t, std::string& why) {
       for (int j = 0; j < blk; j++) { n = n * 1664525u + 1013904223u;
         buf[j] = in == 0 ? 0.f : in == 1 ? g[(pos + j) % g.size()] : in == 2 ? (n >> 8) / 8388608.f - 1.f : in == 3 ? 1.f : (((pos + j) / 50) % 2 ? 1.f : -1.f); }
       SourceContext c{buf, blk, sr, blk / sr, 120.f, knobSets[ks].data()};
-      const float v = s->update(c);
+      float v = s->update(c);
+      if (d.taps) { unsigned cn; float cp; s->cycle(cn, cp);    // a tapping source: every phase of this cycle and the next, too
+        if (!(cp >= 0.f && cp < 1.f)) v = NAN;
+        for (float q : {0.f, 0.25f, 0.5f, 0.75f, 0.999f}) for (unsigned dn : {0u, 1u}) { const float a = s->at(q, cn + dn); if (!std::isfinite(a) || a < -1.f || a > 1.f) v = a; } }
       if (!std::isfinite(v) || v < -1.f || v > 1.f) {
         char m[200]; snprintf(m, sizeof m, "%s returned %g (%s, knob set %zu, block %d, %.0f Hz)", d.id, v, inputs[in], ks, blk, sr); why = m; delete s; return false;
       }

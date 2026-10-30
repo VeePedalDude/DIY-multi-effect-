@@ -39,6 +39,11 @@ check('#include "modulation/trem.h"' in reg and 'X(Trem,' in reg and 'trem, modu
 check('"trem"' not in reg.split('RIG_DEFAULT_CHAIN')[1], 'a new effect is not added to the fresh chain')
 shutil.rmtree(d)
 
+d = tree(); put(d, 'modules/delay/echo.h', MOD.format(S='Echo', id='echo')); put(d, 'modules/delay/order.txt', '# simple first\necho\n'); g.generate(d)
+reg = open(os.path.join(d, 'engine/modules/registry.h')).read()
+check(reg.index('X(Echo,') < reg.index('X(Holo,'), 'order.txt sets the order inside a tab (echo before holo); ids it leaves out follow')
+shutil.rmtree(d)
+
 print('mistakes are refused, with the fix')
 cases = [
     ('a file loose in engine/modules/', lambda d: put(d, 'modules/fuzz.h', MOD.format(S='Fuzz', id='fuzz')), 'put it in a category folder'),
@@ -49,6 +54,7 @@ cases = [
     ('a struct name already used', lambda d: put(d, 'modules/reverb/room.h', MOD.format(S='Holo', id='room')), 'already declared'),
     ('a bad id', lambda d: put(d, 'modules/delay/Big.h', MOD.format(S='Big', id='Big')), 'must be [a-z]'),
     ('a default chain naming a missing id', lambda d: open(os.path.join(d, 'engine/modules/default_chain.txt'), 'a').write('\nflanger\n'), '"flanger" isn\'t a module id'),
+    ('an order.txt naming a missing id', lambda d: put(d, 'modules/delay/order.txt', 'holo\nflanger\n'), '"flanger" isn\'t in'),
     ('a bad categories line', lambda d: open(os.path.join(d, 'engine/sources/categories.txt'), 'a').write('\nwobble only two | fields\n'), 'expected "folder | tab label'),
 ]
 for what, mutate, want in cases:

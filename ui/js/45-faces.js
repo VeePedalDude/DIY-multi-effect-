@@ -59,7 +59,7 @@ function drawScreen(m, c, st) {
   const g = c.createLinearGradient(0, b.y, 0, b.y + b.h); g.addColorStop(0, 'rgba(255,255,255,.07)'); g.addColorStop(.4, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(b.x, b.y, b.w, b.h);
   c.strokeStyle = ACC; c.fillStyle = ACC; c.lineWidth = 3; c.font = `500 18px ${SKIN.ui.fontMono}`;
   try { (SCREENS[m.type] || genericScreen)(c, b, m, screenHelper(m)); }
-  catch (err) { c.fillStyle = SKIN.ui.bad; c.fillText('screen error: ' + err.message.slice(0, 30), b.x + 20, b.y + 26); }
+  catch (err) { c.fillStyle = SKIN.ui.bad; c.fillText('screen error: ' + err.message.slice(0, 30), b.x + 20, b.y + 26); rig.screenErrors.push(`${m.type}: ${err.message}`); }
   c.restore();
 }
 // Subtitle under a module's name: the loaded file if there is one, otherwise the module's kind.
@@ -85,5 +85,7 @@ function drawLabel(s) {
   c.beginPath(); s.hist.forEach((v, i) => { const px = 16 + i * (224 / 119), py = 96 - v * 20; i ? c.lineTo(px, py) : c.moveTo(px, py); }); c.strokeStyle = s.color; c.lineWidth = 2.5; c.stroke();
   s.tex.needsUpdate = true;
 }
-// Test helper: one pixel of a module's face canvas, [r, g, b, a].
+// Test helpers: face screens that threw (type: message); redraw one face now; one pixel of a face canvas, [r, g, b, a].
+rig.screenErrors = [];
+rig.redrawFace = (id) => { const m = MODS.find((q) => q.id === id); if (m) drawFace(m); return !!m; };
 rig.facePixel = (id, x, y) => { const m = MODS.find((q) => q.id === id); return m ? Array.from(m.ctx.getImageData(x, y, 1, 1).data) : null; };

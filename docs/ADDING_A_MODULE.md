@@ -13,15 +13,21 @@ engine/modules/
   cab/cab.h
   delay/holo.h
   reverb/tess.h
+  filter/tilt.h …       seven equalisers; filter/order.txt lists them simple to sophisticated
   registry.h            GENERATED from the folders by tools/gen_registry.py (./build.sh runs it)
 ```
 
 Each folder is a tab in the **Add an effect** panel: Dynamics, Amps & drive, Cabs & IRs,
 Filter & EQ, Modulation, Pitch, Delay, Reverb, Utility, Experimental. A tab with no effects yet
 still shows, and says which folder new ones go in. A new category is one line in `categories.txt`
-plus its folder.
+plus its folder. Inside a tab, effects are listed by id, unless the folder has an `order.txt`: the
+ids it names come first, in that order, then any others.
 
 ## 1. Write `engine/modules/<category>/<id>.h`
+
+Building an equaliser or a filter? `engine/core/eq.h` has state-variable bells, shelves and passes
+that stay clean while their knobs move, first-order shelves, and a third-order filter from s-domain
+coefficients; the seven in `filter/` are worked examples, from one knob (`tilt.h`) to a dynamic EQ.
 
 Start from [`templates/module_template.h`](templates/module_template.h): a tremolo that was put in
 `modulation/`, built, and run through every test. The shape:

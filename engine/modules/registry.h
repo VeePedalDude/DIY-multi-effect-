@@ -5,16 +5,30 @@
 #include "dynamics/gate.h"
 #include "drive/amp.h"
 #include "cab/cab.h"
+#include "filter/tilt.h"
+#include "filter/bax.h"
+#include "filter/geq.h"
+#include "filter/peq.h"
+#include "filter/stack.h"
+#include "filter/prog.h"
+#include "filter/dyneq.h"
 #include "delay/holo.h"
 #include "reverb/tess.h"
 
-// X(Type, id, category): every module type, by category (the order of categories.txt), then by id
+// X(Type, id, category): every module type, by category (the order of categories.txt), then by id or order.txt
 #define RIG_MODULES(X) \
-  X(Gate, gate, dynamics) \
-  X(Amp,  amp, drive) \
-  X(Cab,  cab, cab) \
-  X(Holo, holo, delay) \
-  X(Tess, tess, reverb)
+  X(Gate,  gate, dynamics) \
+  X(Amp,   amp, drive) \
+  X(Cab,   cab, cab) \
+  X(Tilt,  tilt, filter) \
+  X(Bax,   bax, filter) \
+  X(Geq,   geq, filter) \
+  X(Peq,   peq, filter) \
+  X(Stack, stack, filter) \
+  X(Prog,  prog, filter) \
+  X(Dyneq, dyneq, filter) \
+  X(Holo,  holo, delay) \
+  X(Tess,  tess, reverb)
 
 // X(id, "tab label", "what goes here"): the categories, in tab order
 #define RIG_MODULE_CATEGORIES(X) \

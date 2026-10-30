@@ -16,9 +16,9 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 
 | Folder | What lives there | Knows about |
 |---|---|---|
-| `engine/core/` | DSP building blocks (`dsp.h`), the `Module` and `Source` contracts, the NAM glue (`nam.h`: captures and IRs), the click-free model swap (`model_slot.h`) and the strobe tuner (`tuner.h`) | nothing project-specific; `nam.h` and `tuner.h` use `third_party/` |
+| `engine/core/` | DSP building blocks (`dsp.h`, and `eq.h` for the equalisers), the `Module` and `Source` contracts, the NAM glue (`nam.h`: captures and IRs), the click-free model swap (`model_slot.h`) and the strobe tuner (`tuner.h`) | nothing project-specific; `nam.h` and `tuner.h` use `third_party/` |
 | `third_party/` | NeuralAmpModelerCore (plays every `.nam`, convolves IRs), Eigen, nlohmann/json, Q (the tuner's pitch detector): vendored, never edited ([README](../third_party/README.md)) | nothing |
-| `engine/modules/` | one effect per file, in category folders (`delay/holo.h`); `categories.txt` (the tabs), `default_chain.txt` (a fresh rig); `registry.h` is generated from the folders | `core/` only |
+| `engine/modules/` | one effect per file, in category folders (`delay/holo.h`); `categories.txt` (the tabs), `default_chain.txt` (a fresh rig), an optional `order.txt` per folder (the order inside its tab); `registry.h` is generated from the folders | `core/` only |
 | `engine/sources/` | one modulation source type per file, in category folders (`time/lfo.h`), the same way ([format](ADDING_A_SOURCE.md)) | `core/` only |
 | `tools/gen_registry.py` | makes both `registry.h` files from the folders and checks them (tested by `tests/tools/gen_registry.test.py`) | the folders |
 | `engine/fx_chain.h` | the effect chain's building blocks: module types as a table, the chain order packed into one atomic word | the modules registry, never a specific module |
@@ -32,6 +32,7 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `ui/js/04-skin-core.js`, `57-skins.js` | skins: the default skin (also the schema), validation, `.rigskin` zips; applying a skin and the Skins menu ([SKINS.md](SKINS.md)) | the default skin |
 | `ui/js/58-tuner.js` | the strobe tuner: the face-down mini card in the top bar, the sideways card it opens, T to open and collapse | the engine's meter layout, the skin's `tuner` section |
 | `ui/js/24-chain.js` | the chain from the page's side: add, remove, duplicate, move, keeping in step with the engine's slots | the engine's description |
+| `ui/js/46-eq-plot.js` | the equalisers' face screens: their analog responses (as in `engine/core/eq.h`) and the log-frequency plot | the skin's `screen` colours |
 | `ui/js/49-picker.js` | the add panels' picker: a tab per category from the engine's description, a list per tab, search across all | the engine's description |
 | `ui/js/22-rack.js` | the rack from the page's side: add, remove, duplicate, keeping in step with the engine's slots | the engine's description |
 | `ui/js/51-source-panel.js` | the side panel for a modulation source (knobs, what moves each of them, live trace, what it moves) and the "+ Add a source" panel | the engine's description |

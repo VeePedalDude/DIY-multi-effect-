@@ -4,13 +4,15 @@
 The file system is the registry: every header in a category folder (engine/modules/<category>/<id>.h,
 engine/sources/<category>/<id>.h) is one type. categories.txt in each tree lists the categories (the
 tabs of the add panels) in order; default_chain.txt / default_rack.txt list what a fresh rig starts with.
+Inside a tab, types are listed by id, unless the folder has an order.txt: the ids it names come first,
+in that order (simple to sophisticated, say), then any others by id.
 
 Checks, each failing with a message that says what to fix:
   - a header sits in a folder that categories.txt doesn't list, or loose in the tree's top folder
   - a header doesn't declare exactly one `struct <Type> : Module` (or `: Source`)
   - its description's id isn't its file name (holo.h -> "holo"), or isn't [a-z][a-z0-9_]*
   - two types share an id or a struct name
-  - a default list names an id that doesn't exist, or one twice
+  - a default list or an order.txt names an id that doesn't exist (there), or one twice
 
 Usage: gen_registry.py [--check] [root]   (--check: fail if a registry.h is out of date, write nothing)
 """
@@ -72,6 +74,7 @@ def scan(tree, base, desc_type, defaults_file):
         folder = os.path.join(tree, cat)
         if not os.path.isdir(folder):
             continue
+        found = []
         for f in sorted(os.listdir(folder)):
             if not f.endswith('.h'):
                 continue
@@ -93,7 +96,17 @@ def scan(tree, base, desc_type, defaults_file):
                     raise RegistryError(f'{path}: id "{tid}" is already used by {t[3]}')
                 if t[0] == structs[0]:
                     raise RegistryError(f'{path}: struct {structs[0]} is already declared in {t[3]}')
-            types.append((structs[0], tid, cat, f'{cat}/{f}'))
+            found.append((structs[0], tid, cat, f'{cat}/{f}'))
+        order_file = os.path.join(folder, 'order.txt')
+        if os.path.isfile(order_file):
+            order = read_defaults(order_file)
+            for i, o in enumerate(order):
+                if not any(t[1] == o for t in found):
+                    raise RegistryError(f'{order_file}: "{o}" isn\'t in {folder}/ (have: {", ".join(t[1] for t in found)})')
+                if o in order[:i]:
+                    raise RegistryError(f'{order_file}: "{o}" listed twice')
+            found.sort(key=lambda t: (order.index(t[1]) if t[1] in order else len(order), t[1]))
+        types += found
     if not types:
         raise RegistryError(f'{tree}: no types found')
     defaults = read_defaults(os.path.join(tree, defaults_file))
@@ -112,7 +125,7 @@ def render(kind, cats, types, defaults):
            f'// run ./build.sh. To change what a fresh rig starts with: {dfile}.',
            '#pragma once']
     out += [f'#include "{t[3]}"' for t in types]
-    out += ['', f'// X(Type, id, category): every {base.lower()} type, by category (the order of categories.txt), then by id',
+    out += ['', f'// X(Type, id, category): every {base.lower()} type, by category (the order of categories.txt), then by id or order.txt',
             f'#define {macro}(X) \\']
     out += [f'  X({(t[0] + ",").ljust(w + 1)} {t[1]}, {t[2]}) \\' for t in types]
     out[-1] = out[-1].rstrip(' \\')

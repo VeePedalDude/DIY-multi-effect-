@@ -35,8 +35,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const plus = await page.evaluate(() => window.__rig.fxAddScreen());
   await page.mouse.click(plus.x, plus.y); await sleep(500);
   const tabs = await page.evaluate(() => [...document.querySelectorAll('[data-pick-tabs="fx"] [role=tab]')].map((t) => [t.textContent.trim(), t.getAttribute('aria-selected'), t.classList.contains('empty')]));
-  check(/Add an effect/.test(await page.textContent('#panel')) && tabs.length === 10 && tabs[0][0].startsWith('Dynamics') && tabs[0][1] === 'true' && tabs.filter((t) => t[2]).length === 5,
-    `the “+ ADD EFFECT” card opens a tab per kind of effect (${tabs.map((t) => t[0].replace(/\s+\d+$/, '')).join(', ')}); the first with something in it is open; 5 are empty for now`);
+  check(/Add an effect/.test(await page.textContent('#panel')) && tabs.length === 10 && tabs[0][0].startsWith('Dynamics') && tabs[0][1] === 'true' && tabs.filter((t) => t[2]).length === 4,
+    `the “+ ADD EFFECT” card opens a tab per kind of effect (${tabs.map((t) => t[0].replace(/\s+\d+$/, '')).join(', ')}); the first with something in it is open; 4 are empty for now`);
   await page.click('[data-pick-tab="fx:pitch"]'); await sleep(200);
   check(/Nothing in Pitch yet/.test(await page.textContent('[data-pick-list="fx"]')) && /engine\/modules\/pitch\//.test(await page.textContent('[data-pick-list="fx"]')), 'an empty tab says so, and which folder new ones go in');
   await page.fill('[data-pick-q="fx"]', 'reverb'); await sleep(300);
@@ -48,6 +48,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const arrow = await page.evaluate(() => window.__rig.picker.tab('fx'));
   await page.keyboard.press('ArrowLeft'); await sleep(200);
   check(arrow === 'reverb' && (await page.evaluate(() => window.__rig.picker.tab('fx'))) === 'delay' && await page.isVisible('[data-addfx-type="holo"]'), 'arrow keys move between tabs; Delay lists HOLOGRAM');
+  await page.click('[data-pick-tab="fx:filter"]'); await sleep(200);
+  const eqs = await page.evaluate(() => [...document.querySelectorAll('[data-pick-list="fx"] [data-addfx-type]')].map((b) => b.dataset.addfxType).join(' '));
+  check(eqs === 'tilt bax geq peq stack prog dyneq', `Filter & EQ lists its seven, simple to sophisticated (engine/modules/filter/order.txt): ${eqs}`);
+  await page.click('[data-pick-tab="fx:delay"]'); await sleep(200);
 
   console.log('2. Add a second HOLOGRAM: it plays, with its own knobs');
   await page.click('[data-addfx-type="holo"]'); await sleep(800); await fresh();
@@ -107,7 +111,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(ids(c.ui) === saved && inStep(c) && Math.abs(fb2 - 0.8) < 1e-3 && c.conns['holo2.halo'] === 'lfo', `loading it restores ${ids(c.ui)} in the page and the engine, HOLOGRAM 2's knobs and its patch`);
   await page.click('#settingsBtn');
 
-  console.log('9. A full chain');
+  console.log('9. Each EQ added live draws its curve');
+  const drawn = [];
+  for (const t of ['tilt', 'bax', 'geq', 'peq', 'stack', 'prog', 'dyneq']) {
+    const id = await page.evaluate((t) => { const m = window.__rig.chain.add(t); return m && m.id; }, t); await sleep(600);
+    const ok = await page.evaluate((id) => window.__rig.redrawFace(id), id);
+    if (t === 'stack') { await open(id); await setSlider(`[data-pid="${id}.bass"]`, 0.9); await setSlider(`[data-pid="${id}.model"]`, 0.25); await sleep(400);
+      await page.evaluate((id) => window.__rig.redrawFace(id), id); await page.screenshot({ path: path.join(shots, 'shot-eq-stack.png') }); }
+    if (ok) drawn.push(id);
+    await page.evaluate((id) => window.__rig.chain.remove(id), id); await sleep(600);
+  }
+  const se = await page.evaluate(() => window.__rig.screenErrors);
+  check(drawn.length === 7 && se.length === 0 && ids((await C()).ui) === saved, `added and removed ${drawn.join(', ')}: every face screen drew${se.length ? ' (errors: ' + se.join(' | ') + ')' : ''}; the chain is back to ${saved}`);
+
+  console.log('10. A full chain');
   for (let i = 0; i < 8; i++) await page.evaluate(() => window.__rig.chain.add('gate'));
   await sleep(1000); c = await C();
   const extra = await page.evaluate(() => window.__rig.chain.add('gate'));

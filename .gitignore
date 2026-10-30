@@ -3,3 +3,4 @@ test/harness
 test/dump
 node_modules/
 *.o
+__pycache__/

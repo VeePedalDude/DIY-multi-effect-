@@ -8,6 +8,7 @@ drive          | Amps & drive  | amp captures, overdrive, distortion, fuzz
 cab            | Cabs & IRs    | speaker cabinets, impulse responses
 filter         | Filter & EQ   | EQs, wahs, filters
 synth          | Synth filters | filters from classic synths: ladders, state-variable, diode, Sallen-Key, comb, formant
+voice          | Synth voices  | your chords played by other instruments: tape keyboards, polysynths
 modulation     | Modulation    | chorus, flanger, phaser, tremolo, vibrato
 pitch          | Pitch         | octaves, harmonies, pitch shifting
 delay          | Delay         | echoes and repeats

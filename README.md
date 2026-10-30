@@ -51,9 +51,11 @@ table; the layout never changes. Reference: [docs/SKINS.md](docs/SKINS.md).
 engine/
   core/        dsp.h (filters, delays, smoothing) · eq.h (EQ filters) · vaf.h (synth filters) · module.h · source.h · tap.h (per-patch phase and DIV)
                nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps) · tuner.h (strobe tuner)
+               fft.h (a small FFT) · polytrack.h (finds the notes of a chord, and voices for them)
   modules/     <category>/<id>.h: dynamics/gate.h drive/amp.h cab/cab.h delay/holo.h reverb/tess.h
                filter/tilt.h bax.h geq.h peq.h stack.h prog.h dyneq.h (+ order.txt: their order in the tab)
                synth/svf.h comb.h formant.h ota.h ladder.h diode.h sallen.h (+ order.txt)
+               voice/polyv.h (POLY VOICE: your chords on tape keys or a polysynth)
                categories.txt (the tabs) · default_chain.txt (a fresh rig) · registry.h (generated)
   sources/     time/lfo.h playing/env.h playing/adsr.h chaos/orbit.h outside/heart.h outside/ctrl.h
                categories.txt · default_rack.txt · registry.h (generated)
@@ -69,11 +71,11 @@ ui/
                60-controllers (USB gamepads, joysticks and MIDI for CONTROLLER sources; 12-inputs-core reads them) 70-presets 72-preset-format 90-main
   screens/     one face display per module type: gate.js amp.js cab.js holo.js tess.js, and the EQs' curves
                tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js, and the synth filters'
-               svf.js comb.js formant.js ota.js ladder.js diode.js sallen.js
+               svf.js comb.js formant.js ota.js ladder.js diode.js sallen.js, and polyv.js (a keyboard of the notes it plays)
   assets/      images of the built-in skins: hall background, card frames (embedded into the page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
-  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, eq, synth, sources, lfo, orbit, geo, seq, tuner, rack)
+  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, eq, synth, polyv, sources, lfo, orbit, geo, seq, tuner, rack)
                + test_conformance.cpp: the format and safety of every module and source type
   parity/      native vs WebAssembly comparison
   ui/          Node unit tests: library and preset format

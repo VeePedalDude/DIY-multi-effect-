@@ -81,5 +81,20 @@ int main() {
   }
   f = fopen("build/seq_native.f32", "wb"); fwrite(st.data(), 4, st.size(), f); fclose(f);
   printf("native dump 4 (GATE SEQ): %zu blocks, %d hits fired\n", st.size() / 3, (int)(st.back() / 32));
+
+  // Scenario 5 (mirrored in parity.mjs): POLY VOICE first in the chain, the rest bypassed: TAPE STRINGS,
+  // at 5 s SYNTH SAW, at 9 s SYNTH BRASS an octave up. Output, and both meters every block.
+  rig_init(48000); strcpy(rig_text(), "polyv - 0"); const int pv = rig_fx_add();
+  for (int m = 0; m <= 5; m++) if (m != pv) rig_bypass(m, 1);
+  std::vector<float> po(g.size()), pm; pm.reserve(g.size() / 64 + 8);
+  for (size_t i = 0; i < g.size(); i += 128) {
+    if (i == 48000 * 5) rig_param(pv, rig::PV_MODEL, 3.f / 5.f);
+    if (i == 48000 * 9) { rig_param(pv, rig::PV_MODEL, 1.f); rig_param(pv, rig::PV_OCTAVE, 1.f); }
+    memcpy(rig_in(), &g[i], 512); rig_process(128); memcpy(&po[i], rig_out_l(), 512);
+    pm.push_back(rig_meters()[rig::M_MOD + pv * rig::MAXMODMETERS]); pm.push_back(rig_meters()[rig::M_MOD + pv * rig::MAXMODMETERS + 1]);
+  }
+  f = fopen("build/polyv_native.f32", "wb"); fwrite(po.data(), 4, po.size(), f); fclose(f);
+  f = fopen("build/polyv_meters.f32", "wb"); fwrite(pm.data(), 4, pm.size(), f); fclose(f);
+  { int most = 0; for (size_t i = 0; i < pm.size(); i += 2) most = std::max(most, (int)pm[i]); printf("native dump 5 (POLY VOICE): %zu blocks, up to %d voices\n", pm.size() / 2, most); }
   return s1 || s2;
 }

@@ -19,6 +19,7 @@
 #include "synth/ladder.h"
 #include "synth/diode.h"
 #include "synth/sallen.h"
+#include "voice/polyv.h"
 #include "delay/holo.h"
 #include "reverb/tess.h"
 
@@ -41,6 +42,7 @@
   X(Ladder,    ladder, synth) \
   X(Diode,     diode, synth) \
   X(Sallen,    sallen, synth) \
+  X(PolyVoice, polyv, voice) \
   X(Holo,      holo, delay) \
   X(Tess,      tess, reverb)
 
@@ -51,6 +53,7 @@
   X(cab, "Cabs & IRs", "speaker cabinets, impulse responses") \
   X(filter, "Filter & EQ", "EQs, wahs, filters") \
   X(synth, "Synth filters", "filters from classic synths: ladders, state-variable, diode, Sallen-Key, comb, formant") \
+  X(voice, "Synth voices", "your chords played by other instruments: tape keyboards, polysynths") \
   X(modulation, "Modulation", "chorus, flanger, phaser, tremolo, vibrato") \
   X(pitch, "Pitch", "octaves, harmonies, pitch shifting") \
   X(delay, "Delay", "echoes and repeats") \

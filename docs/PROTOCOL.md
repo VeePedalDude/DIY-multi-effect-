@@ -62,8 +62,12 @@ Types in the library but not a fresh chain (add them with `fx_add`):
 | ladder | cutoff, reso, env, drive, comp, level |
 | diode | cutoff, reso, env, drive, level |
 | sallen | hpcut, hppeak, lpcut, lppeak, env, drive, level |
+| polyv | model, effect, dry, attack, release, tone, mod, octave (meters: voices, notes) |
 
 The synth filters' meters: `cutoff` (Hz, where it is now, after ENV) and `env` (0..1, the level ENV reads).
+POLY VOICE's: `voices` (how many are sounding) and `notes`, its three loudest as MIDI note numbers packed
+into one number, `(n1 + 1) + 129 (n2 + 1) + 129² (n3 + 1)` (0 for none). Its `model` has named stops
+(TAPE STRINGS, TAPE FLUTE, TAPE CHOIR, SYNTH SAW, SYNTH PULSE, SYNTH BRASS) and `octave` is -1, 0 or +1.
 
 Source types and their knobs (`src_set`, `src_mod`). A knob may have named stops (`stops` in the
 description: `[[real value, "name"], ...]`): turning it by hand lands on them and its readout shows the

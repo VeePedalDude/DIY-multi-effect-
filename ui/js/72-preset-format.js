@@ -9,6 +9,8 @@
 //     "sources": [ { "id": "lfo", "type": "lfo", "params": { "rate": 8, "shape": 0 } },        the rack, in order (version 3)
 //                  { "id": "lfo2", "type": "lfo", "params": { "rate": 0.5 } } ],
 //     "mods":   [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 },              a module knob
+//                 { "target": "tess.fold", "source": "lfo", "depth": 0.3, "phase": 90, "div": 1.5 },   this patch's own PHASE (degrees)
+//                                                                                              and DIV, only when not 0 / 1 (a tapping source)
 //                 { "target": "lfo.rate", "source": "env", "depth": 0.3 } ],                 a source knob (cross-modulation)
 //     "tempo": 120, "master": -12,
 //     "scenes": { "A": { "chain": [...without assets], "mods": [...], "sources": [ { "id": "lfo", "params": {...} } ], "tempo": 120 } } }
@@ -50,17 +52,21 @@ function toNorm(q, r) { return q.curve === 'log' ? Math.log(r / q.min) / Math.lo
 const unitText = (q, r) => `${round6(r)}${q.unit ? (q.unit === '%' ? '%' : ' ' + q.unit) : ''}`;
 
 // Normalised in-memory snapshot: { params: {pid: 0..1}, bypass: {id: bool}, conns: {pid: sid}, depths: {pid: d},
-// srcParams: {"lfo.rate": 0..1}, bpm }
+// taps: {pid: {phase, div}}, srcParams: {"lfo.rate": 0..1}, bpm }
 function currentSnapshot() {
   return { params: Object.fromEntries(Object.values(PARAMS).map((p) => [p.id, p.v])), bypass: { ...state.bypass },
-    conns: { ...state.conns }, depths: { ...state.depths }, bpm: state.bpm,
+    conns: { ...state.conns }, depths: { ...state.depths }, taps: { ...state.taps }, bpm: state.bpm,
     srcParams: Object.fromEntries(SRC.flatMap((s) => s.params.map((q) => [q.id, q.v]))) };
 }
 // top: the preset's own section (sources carry their type: that's the rack); scenes list knob values only.
 function sectionFromSnapshot(s, top) {
   return {
     chain: MODS.map((m) => ({ id: m.id, ...(top ? { type: m.type } : {}), bypass: !!s.bypass[m.id], params: Object.fromEntries(m.params.map((p) => [p.sym, round6(p.real(s.params[p.id] ?? p.v))])) })),
-    mods: Object.entries(s.conns).filter(([pid, sid]) => knobOf(pid) && SRCMAP[sid]).map(([pid, sid]) => ({ target: pid, source: sid, depth: round6((s.depths || {})[pid] ?? DEPTH) })),
+    mods: Object.entries(s.conns).filter(([pid, sid]) => knobOf(pid) && SRCMAP[sid]).map(([pid, sid]) => {
+      const m = { target: pid, source: sid, depth: round6((s.depths || {})[pid] ?? DEPTH) }, t = (s.taps || {})[pid];
+      if (t && (t.phase || t.div !== 1)) { m.phase = round6(t.phase); m.div = round6(t.div); }       // only when set: older files and builds see nothing new
+      return m;
+    }),
     sources: SRC.filter((src) => top || src.params.length).map((src) => ({ id: src.id, ...(top ? { type: src.type } : {}), params: Object.fromEntries(src.params.map((q) => [q.sym, round6(q.real((s.srcParams || {})[q.id] ?? q.def))])) })),
     tempo: s.bpm,
   };
@@ -113,7 +119,7 @@ function presetKnob(pid, ctx, renames) {
 }
 function readSection(sec, renames, warn, ctx) {
   const { rackTypes, extraIds } = ctx;
-  const snap = { params: {}, bypass: {}, conns: {}, depths: {}, srcParams: {}, bpm: undefined }, assets = {};
+  const snap = { params: {}, bypass: {}, conns: {}, depths: {}, taps: {}, srcParams: {}, bpm: undefined }, assets = {};
   for (const entry of Array.isArray(sec.chain) ? sec.chain : []) {
     const id = entry && entry.id, type = ctx.chainTypes[id];
     if (!type) { if (!extraIds.has(id)) warn(`module ${id}: not in this preset's chain; its settings were skipped`); continue; }
@@ -133,6 +139,11 @@ function readSection(sec, renames, warn, ctx) {
     if (!k || !rackTypes[c.source]) { if (!extraIds.has(c.source) && !extraIds.has(String(c.target).split('.')[0])) warn(`modulation ${c.source} → ${c.target}: not available in this build; skipped`); continue; }
     snap.conns[k.pid] = c.source;
     if (typeof c.depth === 'number' && c.depth >= 0 && c.depth <= 1) snap.depths[k.pid] = c.depth;
+    if (c.phase !== undefined || c.div !== undefined) {           // PHASE and DIV (sources that tap; others ignore them)
+      const ph = c.phase ?? 0, dv = c.div ?? 1;
+      if (typeof ph !== 'number' || !isFinite(ph) || typeof dv !== 'number' || !(dv > 0)) warn(`modulation ${c.source} → ${c.target}: phase ${ph} / div ${dv} isn't usable; 0 degrees, 1x`);
+      else snap.taps[k.pid] = { phase: ((ph % 360) + 360) % 360, div: dv };
+    }
   }
   for (const entry of Array.isArray(sec.sources) ? sec.sources : []) {      // knobs left out stay at their defaults
     const id = entry && entry.id, type = rackTypes[id];

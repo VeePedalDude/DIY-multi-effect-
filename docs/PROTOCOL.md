@@ -7,14 +7,14 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 |---|---|
 | `param_set <inst> <symbol> <0..1>` | set a knob (normalised) |
 | `bypass <inst> <0\|1>` | bypass with a 10 ms crossfade |
-| `mod_connect <inst> <symbol> <source> <depth>` | patch a source; the knob swings ±depth |
+| `mod_connect <inst> <symbol> <source> <depth> [phase] [div]` | patch a source; the knob swings ±depth. From a source that taps (the LFO), `phase` (degrees, default 0) and `div` (`1/4 1/3 1/2 2/3 1 3/2 2 3 4 8`, or a number; default 1) give this patch its own offset and multiple of the source's cycle: `mod_connect holo feedback lfo 0.3 90 3/2`. Other sources ignore them. Leaving them out means 0 and 1 |
 | `mod_disconnect <inst> <symbol>` | unpatch |
 | `set_bpm <30..300>` | tempo for synced effects and the LFO |
 | `master <-60..6>` | master gain in dB |
 | `src_set <source> <symbol> <0..1>` | set a modulation source's knob (`src_set lfo rate 0.25`) |
 | `src_add <type> [id]` | add a source to the modulation rack (`src_add lfo lfo2`). Without an id the engine picks the next free one (`lfo2`, `lfo3`...) |
 | `src_remove <source>` | take a source out of the rack, with every patch to and from it |
-| `src_mod <source> <symbol> <from source> <depth>` | cross-modulation: `from` moves this source's knob ±depth (`src_mod lfo rate env 0.3`); a source may move its own knobs |
+| `src_mod <source> <symbol> <from source> <depth> [phase] [div]` | cross-modulation: `from` moves this source's knob ±depth (`src_mod lfo rate env 0.3`); a source may move its own knobs. `phase` and `div` as for `mod_connect` |
 | `src_unmod <source> <symbol>` | unpatch a source's knob |
 | `ext <source> <value>` | feed an outside value to a source (`ext heart 72`, `ext ctrl -0.4`) |
 | `tuner <0\|1> [mute 0\|1]` | strobe tuner on the dry input; with mute (the default) the output fades out while it's on |
@@ -63,14 +63,16 @@ Types in the library but not a fresh chain (add them with `fx_add`):
 
 The synth filters' meters: `cutoff` (Hz, where it is now, after ENV) and `env` (0..1, the level ENV reads).
 
-Source types and their knobs (`src_set`, `src_mod`):
+Source types and their knobs (`src_set`, `src_mod`). A knob may have named stops (`stops` in the
+description: `[[real value, "name"], ...]`): turning it by hand lands on them and its readout shows the
+name; a whole-number knob without a unit (WAVE, SYNC, POLAR) is a selector the engine rounds.
 
 | type | knobs |
 |---|---|
-| lfo | rate (beats per cycle), shape (sine → triangle → square) |
+| lfo | rate (beats per cycle, used with sync; stops on note values 1/8 … 32 bars), shape (sine → triangle → square: the MORPH wave), wave (MORPH, SINE, TRIANGLE, SQUARE, SAW UP, SAW DOWN, STEP RANDOM, SMOOTH RANDOM, EXP RISE), depth (0–100 %), steps (OFF, 2–32 per cycle: a staircase), hz (0.05–20 Hz, used when free), sync (FREE / SYNC), polar (BIPOLAR / UNI + / UNI −). Each patch from it can have its own phase and div. Meter: `hz` |
 | env | attack, release, floor |
 | adsr | attack, decay, sustain, release |
-| orbit | speed |
+| orbit | speed (simulated time when free), orbit (CLASSIC: today's wandering figure-eight; or a known periodic solution with its own masses: FIGURE-8, BUTTERFLY I, BUTTERFLY III, MOTH I, GOGGLES, YIN-YANG, DRAGONFLY, BUMBLEBEE, YARN, HEAVY THIRD, LIGHT THIRD), out (DISTANCE, BODY X, SPEED, CLOSENESS), rate (beats per orbit when synced, note-value stops), sync (FREE / SYNC), chaos (0 % repeats the orbit exactly, more nudges each cycle, 100 % runs free). Meters: `period` (s), `cycles` |
 | heart | rest (simulated bpm when no strap is connected) |
 | ctrl | smooth, deadzone |
 
@@ -113,7 +115,9 @@ then `rig_fx_add()` returns the slot (or −1 unknown type, −2 full, −3 bad 
 once the audio thread has finished with it; the browser calls it about 30 times a second. Sources by rack slot: `rig_src_param(slot, p, v)`, `rig_ext(slot, v)`, `rig_mod(m, p, slot, depth)`;
 the rack: write `"<type> [id]"` to `rig_text()`, then `rig_src_add()` returns the slot (or −1 unknown
 type, −2 full, −3 bad id); `rig_src_remove(slot)`, `rig_src_mod(slot, p, fromSlot, depth)` (−1
-unpatches), `rig_rack()` (JSON: what's in the rack and where). Adding and removing allocate: call
+unpatches), `rig_mod_tap(m, p, degrees, div)` and `rig_src_tap(slot, p, degrees, div)` (a patch's
+PHASE and DIV; `tapDivs` in the description lists the choices, the nearest is taken; a new source on
+the knob starts again at 0 degrees, 1×), `rig_rack()` (JSON: what's in the rack and where). Adding and removing allocate: call
 them between `rig_process` calls or from a control thread (a removed instance is freed once the
 audio thread has moved on). For files:
 `p = rig_asset_buf(m, bytes)` reserves room (call it before taking a view of WebAssembly memory,

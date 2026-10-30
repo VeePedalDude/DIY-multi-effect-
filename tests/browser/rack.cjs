@@ -70,7 +70,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const want = await page.evaluate(() => Object.keys(window.__rig.state.conns).length >= 0 && document.querySelectorAll('#matrix tbody tr').length);
   await page.click('.cell[data-pid="lfo.shape"][data-sid="adsr"]'); await sleep(500);
   r = await R();
-  check(cols === 10 + 15 && want === 7 && r.conns['lfo.shape'] === 'adsr', `${cols} columns (10 module knobs + 15 source knobs), 7 rows; a dot patches ADSR -> LFO shape`);
+  check(cols === 10 + 32 && want === 7 && r.conns['lfo.shape'] === 'adsr', `${cols} columns (10 module knobs + 32 source knobs: 2 LFOs x 8, ENV 3, ADSR 4, ORBIT 6, HEART 1, CTRL 2), 7 rows; a dot patches ADSR -> LFO shape`);
   await page.screenshot({ path: path.join(shots, 'shot-rack-matrix.png') });
   await page.click('#vStage'); await sleep(300);
 

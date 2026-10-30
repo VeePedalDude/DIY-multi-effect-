@@ -16,7 +16,7 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 
 | Folder | What lives there | Knows about |
 |---|---|---|
-| `engine/core/` | DSP building blocks (`dsp.h`, `eq.h` for the equalisers, `vaf.h` for the synth filters), the `Module` and `Source` contracts, the NAM glue (`nam.h`: captures and IRs), the click-free model swap (`model_slot.h`) and the strobe tuner (`tuner.h`) | nothing project-specific; `nam.h` and `tuner.h` use `third_party/` |
+| `engine/core/` | DSP building blocks (`dsp.h`, `eq.h` for the equalisers, `vaf.h` for the synth filters), the `Module` and `Source` contracts, per-patch PHASE and DIV for sources that tap (`tap.h`), the NAM glue (`nam.h`: captures and IRs), the click-free model swap (`model_slot.h`) and the strobe tuner (`tuner.h`) | nothing project-specific; `nam.h` and `tuner.h` use `third_party/` |
 | `third_party/` | NeuralAmpModelerCore (plays every `.nam`, convolves IRs), Eigen, nlohmann/json, Q (the tuner's pitch detector): vendored, never edited ([README](../third_party/README.md)) | nothing |
 | `engine/modules/` | one effect per file, in category folders (`delay/holo.h`); `categories.txt` (the tabs), `default_chain.txt` (a fresh rig), an optional `order.txt` per folder (the order inside its tab); `registry.h` is generated from the folders | `core/` only |
 | `engine/sources/` | one modulation source type per file, in category folders (`time/lfo.h`), the same way ([format](ADDING_A_SOURCE.md)) | `core/` only |
@@ -43,7 +43,7 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `tests/parity/` | proves the WebAssembly build matches native | C API |
 | `tests/browser/` | headless Chromium tests of the built page | `dist/rig-test.html` |
 | `hosts/linux/` | (next) native JACK host for the iMac | C API + protocol |
-| `tools/` | build helpers; `tools/wasm/` holds the shims that let NAM core build for WebAssembly ([README](../tools/wasm/README.md)) | |
+| `tools/` | build helpers; `tools/wasm/` holds the shims that let NAM core build for WebAssembly ([README](../tools/wasm/README.md)); `tools/orbits/refine_orbits.cpp` re-derives THREE-BODY's table of periodic orbits with its own integrator | |
 | `tests/models/` | `.nam` captures of every architecture, used by the native, parity and browser tests ([README](../tests/models/README.md)) | |
 
 ## The self-description

@@ -13,7 +13,7 @@ let srcRemoveArmed = null;                    // the source whose Remove was cli
 function patchRowHtml(pid, S) {            // one patched knob: who moves it, unplug, depth
   const d = depthOf(pid);
   return `<div class="mod"><span class="dot" style="background:${S.color}"></span><button class="linkbtn grow" data-act="edit-src" data-sid="${S.id}" title="Edit ${srcEsc(S.name)}">${srcEsc(S.name)}</button><button class="btn mini" data-act="unplug" data-pid="${pid}">Unplug</button></div>
-    <label class="depth" for="dp-${pid}"><span>Depth</span><input type="range" id="dp-${pid}" data-depth="${pid}" min="0" max="1" step="0.01" value="${d}" style="accent-color:${S.color}"><span class="mono" data-ddisp="${pid}">±${Math.round(d * 100)}%</span></label>`;
+    <label class="depth" for="dp-${pid}"><span>Depth</span><input type="range" id="dp-${pid}" data-depth="${pid}" min="0" max="1" step="0.01" value="${d}" style="accent-color:${S.color}"><span class="mono" data-ddisp="${pid}">±${Math.round(d * 100)}%</span></label>${tapRowHtml(pid, S.color)}`;
 }
 function renderSourcePanel(s) {
   const targets = Object.keys(state.conns).filter((pid) => state.conns[pid] === s.id && knobOf(pid));
@@ -46,13 +46,13 @@ function renderSourcePanel(s) {
   targets.forEach((pid) => {
     const d = depthOf(pid);
     h += `<div class="patch"><div class="prow"><span>${srcEsc(targetLabel(pid))}</span><button class="btn mini" data-act="unplug" data-pid="${pid}">Unplug</button></div>
-      <label class="depth" for="dt-${pid}"><span>Depth</span><input type="range" id="dt-${pid}" data-depth="${pid}" min="0" max="1" step="0.01" value="${d}" style="accent-color:${s.color}"><span class="mono" data-ddisp="${pid}">±${Math.round(d * 100)}%</span></label></div>`;
+      <label class="depth" for="dt-${pid}"><span>Depth</span><input type="range" id="dt-${pid}" data-depth="${pid}" min="0" max="1" step="0.01" value="${d}" style="accent-color:${s.color}"><span class="mono" data-ddisp="${pid}">±${Math.round(d * 100)}%</span></label>${tapRowHtml(pid, s.color)}</div>`;
   });
   if (free.length) h += `<label class="muted" style="flex-direction:row;align-items:center;gap:8px;font-size:13px">Patch to <select data-srcpatch="${s.id}" style="min-height:32px;width:auto"><option value="">—</option>`
     + `<optgroup label="Module knobs">${free.filter((k) => k.mod).map((k) => `<option value="${k.id}">${srcEsc(k.mod.name)} · ${k.label}</option>`).join('')}</optgroup>`
     + `<optgroup label="Source knobs (cross-modulation)">${free.filter((k) => k.src).map((k) => `<option value="${k.id}">${srcEsc(k.src.name)} · ${k.label}</option>`).join('')}</optgroup></select></label>`;
   h += `</div>`;
-  h += `<div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">${s.params.length ? `src_set ${s.id} ${s.params[0].sym} 0.5<br>src_mod ${s.id} ${s.params[0].sym} &lt;source&gt; 0.3<br>` : ''}src_remove ${s.id}</span></div>`;
+  h += `<div class="hw"><span class="eyebrow">Text protocol</span><span class="mono" style="font-size:12px">${s.params.length ? `src_set ${s.id} ${s.params[0].sym} 0.5<br>src_mod ${s.id} ${s.params[0].sym} &lt;source&gt; 0.3<br>` : ''}${TYPES[s.type].taps ? `mod_connect holo feedback ${s.id} 0.3 90 3/2 <span class="muted">(phase, div)</span><br>` : ''}src_remove ${s.id}</span></div>`;
   panel.innerHTML = h;
 }
 // The add panel for sources: a tab per category (engine/sources/<category>/), search across them all.
@@ -88,13 +88,15 @@ function refreshSourceReadouts() {
 function wireSourcePanel() {
   panel.addEventListener('input', (e) => {
     const t = e.target, ds = t.dataset || {};
-    if (ds.spid) { setSrcParam(SPARAMS[ds.spid], Number(t.value)); refreshSourceReadouts(); }
+    if (ds.spid) { const q = SPARAMS[ds.spid], v = q.snap(Number(t.value)); setSrcParam(q, v); if (v !== Number(t.value)) t.value = v; refreshSourceReadouts(); }
+    if (ds.tphase) { setTap(ds.tphase, Number(t.value), tapOf(ds.tphase).div); document.querySelectorAll(`[data-tpdisp="${ds.tphase}"]`).forEach((el) => { el.textContent = `${Math.round(Number(t.value))}°`; }); }
     if (ds.depth) { setDepth(ds.depth, Number(t.value)); document.querySelectorAll(`[data-ddisp="${ds.depth}"]`).forEach((el) => { el.textContent = `±${Math.round(Number(t.value) * 100)}%`; }); }
   });
   panel.addEventListener('change', (e) => {
     const ds = e.target.dataset || {};
     if (ds.srcpatch && e.target.value) { connect(e.target.value, ds.srcpatch); update(); }
     if (ds.spatch && e.target.value) { connect(ds.spatch, e.target.value); update(); }
+    if (ds.tdiv) setTap(ds.tdiv, tapOf(ds.tdiv).phase, Number(e.target.value));
   });
   panel.addEventListener('click', (e) => {
     const add = e.target.closest('[data-add-type]');

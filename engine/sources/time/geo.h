@@ -41,13 +41,9 @@ namespace rig {
 
 constexpr int GEO_MAXV = 32, GEO_MAXSTEPS = 2 * GEO_MAXV;
 
-inline constexpr ParamStop GEO_RATE_STOPS[] = {
-  {0.125f, "1/32"}, {1.f / 6.f, "1/16T"}, {0.1875f, "1/32."}, {0.25f, "1/16"}, {1.f / 3.f, "1/8T"}, {0.375f, "1/16."},
-  {0.5f, "1/8"}, {2.f / 3.f, "1/4T"}, {0.75f, "1/8."}, {1.f, "1/4"}, {4.f / 3.f, "1/2T"}, {1.5f, "1/4."},
-  {2.f, "1/2"}, {3.f, "1/2."}, {4.f, "1 bar"}, {8.f, "2 bars"}, {16.f, "4 bars"}};
 inline constexpr ParamStop GEO_TIMING_STOPS[] = {{0, "UNIFORM"}, {1, "ANGULAR"}, {2, "GEODESIC"}};
 inline constexpr ParamDesc GEO_PARAMS[] = {
-  {"rate",   "RATE",   0.125f, 16.f,  1.f / 7.f, "beats", Curve::Log, 2, false, GEO_RATE_STOPS, 17},   // 1/16
+  {"rate",   "RATE",   0.125f, 16.f,  1.f / 7.f, "beats", Curve::Log, 2, false, STEP_STOPS, NSTEP_STOPS},   // 1/16
   {"gate",   "GATE",   1.f,    100.f, 49.f / 99.f, "%",   Curve::Lin, 0, false},                     // 50%
   {"prob",   "PROB",   0.f,    100.f, 1.f,       "%",     Curve::Lin, 0, false},
   {"curve",  "CURVE",  0.f,    100.f, 0.f,       "%",     Curve::Lin, 0, false},
@@ -243,7 +239,7 @@ struct GeoPulse : Source {
   }
   double cycleBeats(const SourceContext& c) const {
     const float len = setting(c, GS_LEN); const int L = (int)lrintf(len);
-    return L >= 1 ? (double)L : (double)geo.steps * knob(c, GK_RATE);
+    return L >= 1 ? (double)L : (double)geo.steps * onStop(knob(c, GK_RATE), STEP_STOPS, NSTEP_STOPS);
   }
   void event(const SourceContext& c, unsigned k, int j, double off, double C) {
     const int v = geo.seq[j];

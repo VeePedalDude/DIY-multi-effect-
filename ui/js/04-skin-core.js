@@ -39,7 +39,7 @@ const DEFAULT_SKIN = {
   },
   tileOrder: ['teal', 'gold', 'purple'],                 // modules not listed in `modules` cycle through these
   modules: { gate: 'teal', amp: 'gold', cab: 'gold', holo: 'purple', tess: 'purple' },
-  sources: { lfo: '#4FE3F0', env: '#FFB547', adsr: '#FF5FA2', orbit: '#A78BFA', heart: '#FF7A6B', ctrl: '#9BE15D', geo: '#2EF2A0' },
+  sources: { lfo: '#4FE3F0', env: '#FFB547', adsr: '#FF5FA2', orbit: '#A78BFA', heart: '#FF7A6B', ctrl: '#9BE15D', geo: '#2EF2A0', seq: '#F7E35A' },
   sourceFallback: ['#7DD3FC', '#F9A8D4', '#FDE68A', '#86EFAC', '#C4B5FD', '#FCA5A5'],
   labels: { bg: 'rgba(12,9,22,.88)', text: '#A9B3C9' },
   // the strobe tuner: a card turned sideways (`tile` names one of `tiles`), and the face-down mini card that opens it

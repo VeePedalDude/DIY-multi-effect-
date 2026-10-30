@@ -4,6 +4,7 @@
 #pragma once
 #include "time/geo.h"
 #include "time/lfo.h"
+#include "time/seq.h"
 #include "playing/adsr.h"
 #include "playing/env.h"
 #include "chaos/orbit.h"
@@ -14,6 +15,7 @@
 #define RIG_SOURCES(X) \
   X(GeoPulse,  geo, time) \
   X(Lfo,       lfo, time) \
+  X(GateSeq,   seq, time) \
   X(PickAdsr,  adsr, playing) \
   X(EnvFollow, env, playing) \
   X(Orbit,     orbit, chaos) \

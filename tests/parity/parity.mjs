@@ -86,6 +86,26 @@ console.log(`      wasm render with A2 + 3 s stereo IR: ${(100 * ms2 / 1000 / se
   check(same === natG.length || (worst < 1e-5 && natG.every((x, i) => i % 3 === 0 || x === tr[i])), `GEO PULSE (hyperbolic, random, probability, 3 shape changes, a reset): ${natG.length / 3} blocks, ${events} events; ${same === natG.length ? 'every value and meter identical' : `meters identical, values within ${worst.toExponential(1)} (first difference at block ${Math.floor(firstDiff / 3)})`}`);
 }
 
+// Scenario 4: GATE SEQ, every block's value and meters must match native (see dump.cpp)
+{
+  const natS = new Float32Array(fs.readFileSync('build/seq_native.f32').buffer.slice(0));
+  const T = desc.sourceTypes.find((t) => t.type === 'seq'), si = (s) => T.settings.findIndex((q) => q.symbol === s), ki = (s) => T.params.findIndex((q) => q.symbol === s), ci = (s) => T.table.cols.findIndex((q) => q.symbol === s);
+  X.rig_init(48000); X.rig_tempo(120); const tx = new Uint8Array(X.memory.buffer, X.rig_text(), 64); tx.fill(0); tx.set(new TextEncoder().encode('seq')); const sk = X.rig_src_add();
+  const cfg = (s, real) => { const q = T.settings[si(s)]; X.rig_src_cfg(sk, si(s), (real - q.min) / (q.max - q.min)); };
+  cfg('steps', 12); cfg('seed', 4); cfg('out', 4); X.rig_src_param(sk, ki('swing'), 0.4); X.rig_src_param(sk, ki('prob'), 0.8); X.rig_src_param(sk, ki('slew'), 0.1);
+  for (let r = 0; r < 12; r++) { X.rig_src_cell(sk, r, ci('value'), Math.fround((r * 7 % 12) / 11)); X.rig_src_cell(sk, r, ci('ratchet'), Math.fround((r % 4) / 3)); }
+  X.rig_src_cell(sk, 5, ci('on'), 0); X.rig_mod(4, 1, sk, 0.25);
+  const tr = new Float32Array(natS.length); let w = 0;
+  for (let i = 0; i < inp.length; i += 128) {
+    if (i === 48000 * 6) { cfg('pattern', 1); cfg('dir', 3); cfg('resync', 1); X.rig_src_mod(sk, ki('fill'), 0, 0.4); X.rig_tempo(97); }
+    view(X.rig_in()).set(inp.subarray(i, i + 128)); X.rig_process(128);
+    const M = new Float32Array(X.memory.buffer, X.rig_meters(), X.rig_meters_len()), L = desc.meters;
+    tr[w++] = M[L.src + sk]; tr[w++] = M[L.srcm + sk * L.perSrc]; tr[w++] = M[L.srcm + sk * L.perSrc + 1];
+  }
+  let sameMeters = true, worst = 0; for (let i = 0; i < natS.length; i++) { if (i % 3) sameMeters = sameMeters && tr[i] === natS[i]; else worst = Math.max(worst, Math.abs(tr[i] - natS[i])); }
+  check(sameMeters && worst < 1e-4, `GATE SEQ (swing, ratchets, chance, then EUCLID with FILL moved by the LFO, random order, resync, a tempo change): ${natS.length / 3} blocks, ${Math.floor(natS[natS.length - 1] / 32)} hits; playhead and hits identical, values within ${worst.toExponential(1)}`);
+}
+
 // What files cost in WebAssembly (the browser): one file loaded, the riff played through the chain.
 // "99.9%" = 99.9% of 128-sample blocks finish within this share of their 2.67 ms (this machine).
 const irFile = (secs, ch) => {

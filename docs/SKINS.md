@@ -51,7 +51,7 @@ a colour name. Images and fonts are file names inside the `.rigskin`.
 | `tiles` | named card styles. Each has `image` (a card frame, or `null` for a plain card), `accent` (knob arcs), `rim` (around the display), `glow` (behind the focused card and on the floor), and optional `card` / `knob` overrides with the same keys as above. **Replaces** the default's tiles entirely. |
 | `modules` | which tile each module uses, by type or by instance id: `{ "amp": "gold", "holo2": "teal" }` (an instance id wins over its type). Modules not listed (including future ones) cycle through `tileOrder`. |
 | `tileOrder` | the tile names to cycle through |
-| `sources` | orb, cable and label colour per modulation source id: `lfo env adsr orbit heart ctrl geo` (GEOMETRIC PULSE's 3D view draws in it too) |
+| `sources` | orb, cable and label colour per modulation source id: `lfo env adsr orbit heart ctrl geo seq` (GEO PULSE's 3D view and GATE SEQ's squares draw in it too) |
 | `sourceFallback` | colours for sources that aren't listed (future ones) |
 | `labels` | the source name labels above the orbs: `bg`, `text` |
 | `tuner` | the strobe tuner. `tile`: which of your `tiles` it's drawn on (turned sideways). `glass` (its display), `stripe` (the strobe bands), `inTune` / `flat` / `sharp` (note, arrows and marker), `text` / `bright`. The face-down mini card in the top bar: `back`, `backLine` (border and lattice), `backMark` (the little strobe on it) |

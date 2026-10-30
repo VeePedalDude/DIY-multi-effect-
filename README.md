@@ -49,9 +49,10 @@ table; the layout never changes. Reference: [docs/SKINS.md](docs/SKINS.md).
 
 ```
 engine/
-  core/        dsp.h (filters, delays, smoothing) · module.h · source.h   ← the contracts
+  core/        dsp.h (filters, delays, smoothing) · eq.h (EQ filters) · module.h · source.h   ← the contracts
                nam.h (captures + IRs via NAM core) · model_slot.h (click-free swaps) · tuner.h (strobe tuner)
   modules/     <category>/<id>.h: dynamics/gate.h drive/amp.h cab/cab.h delay/holo.h reverb/tess.h
+               filter/tilt.h bax.h geq.h peq.h stack.h prog.h dyneq.h (+ order.txt: their order in the tab)
                categories.txt (the tabs) · default_chain.txt (a fresh rig) · registry.h (generated)
   sources/     time/lfo.h playing/env.h playing/adsr.h chaos/orbit.h outside/heart.h outside/ctrl.h
                categories.txt · default_rack.txt · registry.h (generated)
@@ -61,14 +62,15 @@ engine/
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 49-picker 50-hud 51-source-panel
+  js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 49-picker 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner
                60-controllers 70-presets 72-preset-format 90-main
-  screens/     one face display (and card colour) per module: gate.js amp.js cab.js holo.js tess.js
+  screens/     one face display per module type: gate.js amp.js cab.js holo.js tess.js, and the EQs' curves
+               tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js
   assets/      images of the built-in skins: hall background, card frames (embedded into the page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
-  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, sources, tuner, rack)
+  native/      framework.h + one test file per area (chain, fxchain, gate, amp, cab, holo, tess, eq, sources, tuner, rack)
                + test_conformance.cpp: the format and safety of every module and source type
   parity/      native vs WebAssembly comparison
   ui/          Node unit tests: library and preset format
@@ -124,6 +126,18 @@ Browser tests (need `playwright-core` and three.js r128 locally):
 | 2 | Cab IR | lo cut 20..399 Hz, mix | IRs up to 20 s, mono or stereo (cab, room, reverb); zero-latency partitioned FFT convolution |
 | 3 | Hologram | feedback 0..95 %, halo | dotted 8th from tap tempo, stereo shimmer |
 | 4 | Tesseract | size → RT60 0.5..7.5 s, 4D fold | 8-line FDN, rotating 4-D matrix |
+
+In the add panel, not in a fresh rig. Filter & EQ, simple to sophisticated:
+
+| Module | Knobs | Notes |
+|---|---|---|
+| Tilt EQ | tilt ±6 dB, pivot 200 Hz..3 kHz, level | one knob, dark to bright about the pivot |
+| Baxandall | bass ±15 dB, treble ±15 dB, their frequencies, level | first-order shelves, half the gain at each frequency |
+| Graphic EQ | 7 bands at 100 Hz..6.4 kHz ±15 dB, level | the seven-band guitar graphic; bands narrow as you push them |
+| Parametric | low and high shelf ±15 dB, two mids: frequency, gain ±15 dB, Q 0.3..10 | sweep a mid while you play: no zipper |
+| Tone stack | bass, mid, treble 0..10, model, level | the amp's passive stack from the circuit (Yeh & Smith); '59 Bassman, JCM800, Twin Reverb and blends between |
+| Program EQ | low freq, boost, atten; high freq, boost, bandwidth; high atten; drive | in the style of a passive tube program EQ: boost and cut together for a tight low end |
+| Dynamic EQ | freq, Q, threshold, range ±18 dB, ratio, attack, release | a bell that only moves when its band gets loud (tames a harsh pick attack) |
 
 Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate
 (simulated, or a Bluetooth strap), controller (gamepad stick or slider). Each has its own knobs (LFO
@@ -223,9 +237,9 @@ and the depths. **P** (or the tab beside it) hides the side panel.
   are kept. `.rigskin` zips are read stored or deflated, or with `skin.json` inside a folder.
 - **Headless Chromium:** 25/25 main checks (including opening and editing sources, depth, patching
   from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks.
-  The 17/17 chain checks also cover the add panel's tabs (a tab per category, the first non-empty
-  one open, empty ones saying which folder to use), search across tabs, arrow keys and the
-  remembered tab. They add a second HOLOGRAM from the “+” card, set its knob, move it to the
+  The 19/19 chain checks also cover the add panel's tabs (a tab per category, the first non-empty
+  one open, empty ones saying which folder to use, Filter & EQ in its order), search across tabs,
+  arrow keys and the remembered tab, and add each EQ live to check its face draws. They add a second HOLOGRAM from the “+” card, set its knob, move it to the
   front with ◀, patch the LFO to it, duplicate the cab, remove the amp, check the matrix, reload a
   preset's chain in order, fill the chain to 12 and check Overview fits it.
   The 14/14 rack checks add an LFO from the “+” orb, set its knob, patch the envelope to its rate

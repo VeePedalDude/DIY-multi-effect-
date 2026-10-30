@@ -42,6 +42,18 @@ Symbols and types come from the engine's description; the current set:
 | 3 | holo | feedback, halo |
 | 4 | tess | size, fold |
 
+Types in the library but not a fresh chain (add them with `fx_add`):
+
+| type | symbols |
+|---|---|
+| tilt | tilt, pivot, level |
+| bax | bass, treble, bfreq, tfreq, level |
+| geq | b100, b200, b400, b800, b1k6, b3k2, b6k4, level |
+| peq | low, f1, g1, q1, f2, g2, q2, high |
+| stack | bass, mid, treble, model, level |
+| prog | lfreq, lboost, latten, hfreq, hboost, bw, hatten, drive |
+| dyneq | freq, q, thresh, range, ratio, attack, release (meters: gain, level) |
+
 Source types and their knobs (`src_set`, `src_mod`):
 
 | type | knobs |

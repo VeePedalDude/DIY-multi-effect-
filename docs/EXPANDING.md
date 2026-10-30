@@ -17,6 +17,7 @@ through the rename table.**
 | Rename a knob symbol | Add the old name to `PRESET_RENAMES` in `ui/js/72-preset-format.js`: module knobs in `params: { 'amp.oldsym': 'amp.newsym' }` (by type), source knobs in `sourceKnobs: { 'lfo.oldsym': 'newsym' }` (by type). Every instance is covered. | Rename without the table: old presets lose that setting, with a note. |
 | Rename a module or source type id | `PRESET_RENAMES.modules: { old: 'new' }` or `sourceTypes: { old: 'new' }`. Instance ids in presets keep working (an instance id is just a name). | Reuse an old id for something different. |
 | Move it to another category | Move the file to that folder (`git mv`). Only its tab changes: its id, presets and patches stay the same. | Rename the file at the same time (the id is the file name). |
+| Change the order inside a tab | List the ids in `<category>/order.txt` (whitespace separated, `#` comments). Ids it leaves out follow, by id. | |
 | Add a category | One line in `categories.txt` (`folder \| tab label \| what goes here`) and the folder. Lines are in tab order. | |
 | Add a display meter | Up to 2 per module or source; name it in the desc, fill it in `meters()`. Face screens read meters by name (`h.meter('name')`). | |
 | Take outside data (sources) | Set `ext` in the desc to what the value means; implement `ext(float)`. | Block or allocate in `ext()`. |

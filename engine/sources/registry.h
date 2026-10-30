@@ -9,7 +9,7 @@
 #include "outside/ctrl.h"
 #include "outside/heart.h"
 
-// X(Type, id, category): every source type, by category (the order of categories.txt), then by id
+// X(Type, id, category): every source type, by category (the order of categories.txt), then by id or order.txt
 #define RIG_SOURCES(X) \
   X(Lfo,       lfo, time) \
   X(PickAdsr,  adsr, playing) \

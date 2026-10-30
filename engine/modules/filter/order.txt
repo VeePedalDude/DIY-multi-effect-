@@ -1,0 +1,2 @@
+# The order of the Filter & EQ tab: simple to sophisticated (tools/gen_registry.py).
+tilt bax geq peq stack prog dyneq

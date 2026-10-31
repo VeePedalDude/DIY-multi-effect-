@@ -9,6 +9,7 @@ few WebAssembly differences are shims in `tools/wasm/`, and our own checks live 
 | `eigen/` | [Eigen](https://eigen.tuxfamily.org) linear algebra, used by NAM core: `Eigen/` and `unsupported/Eigen/FFT` only | 3.4.0 (Debian/Ubuntu `libeigen3-dev` 3.4.0-4) | MPL-2.0 (`eigen/COPYING.MPL2`, `eigen/COPYRIGHT`) |
 | `q/` | [Q audio DSP library](https://github.com/cycfi/q) by Joel de Guzman: its bit-stream autocorrelation pitch detector finds the note for the strobe tuner (`engine/core/tuner.h`). `q/` is `q_lib/include/q`; `infra/` is the small support library Q bundles (`infra_src/include/infra`) | v1.5.4, commit `efe2611` (2026-10-09) | MIT (`q/LICENSE`; infra's headers carry the same MIT notice) |
 | `nlohmann/` | [nlohmann/json](https://github.com/nlohmann/json), single header, used by NAM core to read `.nam` files | 3.12.0 (as bundled by NAM core) | MIT (SPDX header in `json.hpp`) |
+| `miniaudio/` | [miniaudio](https://github.com/mackron/miniaudio) by David Reid: audio devices for `hosts/rig-host` (WASAPI exclusive/shared on Windows; ALSA, PulseAudio, JACK on Linux), single header | 0.11.22, commit in `miniaudio/VERSION`; `miniaudio.h` and `LICENSE` only | public domain or MIT-0, your choice (`miniaudio/LICENSE`) |
 
 ## About the Eigen version
 

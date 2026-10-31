@@ -1,6 +1,7 @@
 #!/bin/sh
 # build.sh - build and test everything. Stops at the first failure.
-#   native tests -> WebAssembly engine -> UI unit tests -> parity check -> dist/rig-test.html
+#   native tests -> protocol -> WebAssembly engine -> UI unit tests -> parity check -> dist/rig-test.html
+#   -> rig-host (native, and dist/rig-host.exe for Windows)
 # The vendored libraries in third_party/ compile once into build/obj/ and are reused until a file
 # there changes (first run: a few minutes; after that, seconds).
 set -e
@@ -49,6 +50,9 @@ STRICT="-std=c++20 -Wall -Wextra -Werror $INC"
 echo "== native tests"
 $CXX -O2 $STRICT -o build/tests tests/native/*.cpp build/obj/native/*.o
 ./build/tests
+echo "== text protocol through the C API (one parser for the browser and rig-host), and threads"
+$CXX -O2 $STRICT -pthread -o build/protocol tests/api/protocol.cpp build/obj/native/*.o
+./build/protocol
 echo "== WebAssembly engine"
 # exception runtime first, so it wins over zig's no-exceptions stubs
 $ZIGCXX $WASM -mexec-model=reactor -O3 -msimd128 -g0 -s $STRICT -include tools/wasm/nam_compat.h \
@@ -66,4 +70,15 @@ echo "== web page"
 python3 tools/build_web.py
 node --check build/app.js
 node --check ui/worklet/engine-worklet.js
+echo "== rig-host (hosts/rig-host): native build for the tests, Windows build to download"
+python3 tools/embed_page.py
+HOSTFLAGS="-std=c++20 -Wall -Wextra -Werror $INC -isystem third_party/miniaudio -Ibuild"
+$CXX -O2 $HOSTFLAGS -pthread -o build/rig-host hosts/rig-host/main.cpp build/obj/native/*.o -ldl -lm
+./build/rig-host --backend null --sim-loopback 437 --latency-test | tee build/rig-host-latency.txt
+grep -q '"samples":437' build/rig-host-latency.txt
+mkdir -p build/obj/win
+WIN="-target x86_64-windows-gnu -D_USE_MATH_DEFINES"
+echo "$NAM_SRC" | compile build/obj/win "$ZIGCXX $WIN -O2 -std=c++20 -w $INC"
+$ZIGCXX $WIN -O2 $HOSTFLAGS -s -o dist/rig-host.exe hosts/rig-host/main.cpp build/obj/win/*.o -lws2_32 -lole32 -lshell32 -luser32
+echo "   dist/rig-host.exe: $(($(wc -c < dist/rig-host.exe) / 1024)) KB"
 echo "== done"

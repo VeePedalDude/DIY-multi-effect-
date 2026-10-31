@@ -258,11 +258,13 @@ body.panel-hidden .matrix{right:16px}
     <label>Source
       <select id="srcSel"><option value="device">Audio interface / input device</option><option value="riff">Built-in test riff</option><option value="file">DI file (loop)…</option></select>
     </label>
-    <label>Input device <select id="inSel"></select></label>
+    <label id="inSelRow">Input device <select id="inSel"></select></label>
     <label>Input channel <select id="chSel"><option value="0">Input 1 (left)</option><option value="1">Input 2 (right)</option></select></label>
-    <label>Output device <select id="outSel"></select></label>
+    <label id="outSelRow">Output device <select id="outSel"></select></label>
+    <p class="note mono" id="hostInfo" hidden></p>
     <input type="file" id="diFile" accept="audio/*" hidden>
     <p class="note" id="latNote">Start audio to see measured latency.</p>
+    <button class="btn" id="latTest" hidden title="Needs a cable from an output to the selected input">Measure round trip</button>
   </section>
   <section>
     <h3>Library</h3>

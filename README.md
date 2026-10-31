@@ -29,8 +29,8 @@ use the native host.
 
 ## Low latency: rig-host (Windows now, Linux next)
 
-**`dist/rig-host.exe`** runs the same engine straight on your interface (WASAPI exclusive mode,
-64-sample buffers by default) and serves this page to control it: download it, run it, press
+**`dist/rig-host.exe`** runs the same engine straight on your interface (through its own ASIO driver
+when it has one, as a DAW does; otherwise WASAPI exclusive mode) and serves this page to control it: download it, run it, press
 **Start** in the page it opens. Everything works as in the browser, including presets, the library
 and the Visualizer; the browser just isn't in the audio path any more. Settings → **Measure round
 trip** times a click through a cable from Output 1 to Input 1, so you see the real latency of your
@@ -91,7 +91,7 @@ tests/
   fixtures/    golden preset file (must keep loading forever)
   browser/     headless Chromium tests of the built page
   models/      .nam captures of every architecture, for the tests
-hosts/rig-host/ native host: Windows (WASAPI) and Linux (ALSA, JACK); serves the page, round-trip test
+hosts/rig-host/ native host: Windows (ASIO, WASAPI) and Linux (ALSA, JACK); serves the page, round-trip test
 hosts/linux/   the iMac's boot-to-effects setup (next)
 third_party/   NeuralAmpModelerCore, Eigen, nlohmann/json (vendored, unchanged)
 tools/         gen_registry.py: makes the registries from the folders · build_web.py: assembles dist/rig-test.html · wasm/: shims for the WebAssembly build · orbits/refine_orbits.cpp: re-derives THREE-BODY's orbit table
@@ -334,5 +334,12 @@ Linux host there. In the browser on a recent PC they run comfortably.
 - Slimmable (A2) captures play at full size; a size control comes later.
 - NAM core trusts a capture file's weight count (see `third_party/README.md`); LSTM counts are checked.
 - Reverb decay runs about 18% shorter than its label at large sizes.
+- ASIO is tested against a stand-in driver under Wine (`tests/asio/`), not yet on a real interface.
 - Amp INPUT now defaults to 0 dB (unity into a capture). A fresh start of the built-in amp is cleaner and
   about 6 dB quieter than before; saved presets sound the same.
+
+## License
+
+GPLv3 (`LICENSE`). rig-host.exe talks to ASIO drivers through Steinberg's ASIO SDK, which Steinberg
+offers under GPLv3 since version 2.3.4 (October 2025); the rest of `third_party/` (NAM core, Eigen,
+nlohmann/json, Q, miniaudio) is MIT, MPL-2.0 or public domain, all compatible. See `third_party/README.md`.

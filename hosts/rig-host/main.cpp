@@ -60,7 +60,7 @@ static const char* RIG_HOST_VERSION = "0.1";
 
 // ------------------------------------------------------------------ options
 struct Opts {
-  std::string backend, in, out, page, listen = "127.0.0.1";
+  std::string backend, in, out, page, listen = "127.0.0.1", asio;
   int frames = 64, periods = 2, rate = 0, port = 8000, simLoop = 0, simStall = 0;
   bool shared = false, list = false, riff = false, browser = true, latencyTest = false, framesSet = false;
 };
@@ -74,7 +74,10 @@ static void usage() {
          "  --periods N          buffers in the queue (default 2)\n"
          "  --rate N             sample rate (default: the interface's own, so nothing is resampled)\n"
          "  --shared             WASAPI shared mode (default: exclusive, the low-latency one)\n"
-         "  --backend NAME       wasapi, alsa, pulseaudio, jack, null (default: the system's best)\n"
+         "  --asio NAME          (Windows) the ASIO driver to use, part of its name (--list shows them). Without\n"
+         "                       it the host uses your interface's own ASIO driver if one is installed\n"
+         "  --backend NAME       asio, wasapi, alsa, pulseaudio, jack, null (default: ASIO on Windows if the\n"
+         "                       interface has a driver, else the system's best)\n"
          "  --riff               play the built-in test riff instead of the input\n"
          "  --latency-test       measure the round trip (cable from an output to an input) and exit\n"
          "  --port N             web page port (default 8000)\n"
@@ -96,6 +99,7 @@ static bool parseOpts(int argc, char** argv, Opts& o) {
     else if (a == "--listen") o.listen = next(); else if (a == "--page") o.page = next();
     else if (a == "--no-browser") o.browser = false; else if (a == "--sim-loopback") o.simLoop = atoi(next().c_str());
     else if (a == "--sim-stall") o.simStall = atoi(next().c_str());
+    else if (a == "--asio") o.asio = next();
     else if (a == "--help" || a == "-h" || a == "/?") { usage(); exit(0); }
     else { fprintf(stderr, "unknown option %s (--help lists them)\n", a.c_str()); return false; }
   }
@@ -187,9 +191,10 @@ static double threadCpuMs() {
   return -1;
 #endif
 }
-static void onAudio(ma_device* dev, void* pOut, const void* pIn, ma_uint32 frameCount) {
+// One audio callback's worth, whichever backend called: `in` is h.inChannels interleaved floats (or
+// null), `out` h.outChannels interleaved.
+static void runBlock(Host& h, const float* in, float* out, ma_uint32 frameCount) {
   RIG_FTZ();
-  Host& h = *(Host*)dev->pUserData;
   const auto t0 = std::chrono::steady_clock::now(); const double c0 = threadCpuMs();
   // A dropout: this callback came later than the whole output buffer lasts, so the interface ran dry.
   if (h.settle > 0) h.settle--;
@@ -202,7 +207,6 @@ static void onAudio(ma_device* dev, void* pOut, const void* pIn, ma_uint32 frame
     runJob(*c, *r); h.cmdq.release(); h.repq.publish();
   }
   if (h.latencyReq.exchange(false) && h.latState == 0) { h.latState = 1; h.latT = h.frames; h.latNoise = 0; h.latRun = 0; h.latRes = LatResult{}; }
-  const float* in = (const float*)pIn; float* out = (float*)pOut;
   const int ch = std::min(rig_input_channel(), h.inChannels - 1); const bool riff = h.useRiff.load(std::memory_order_relaxed);
   const int maxChunk = h.o.simLoop > 0 ? std::min(128, h.o.simLoop) : 128;
   for (ma_uint32 done = 0; done < frameCount;) {
@@ -242,6 +246,8 @@ static void onAudio(ma_device* dev, void* pOut, const void* pIn, ma_uint32 frame
   }
 }
 
+static void onAudio(ma_device* dev, void* pOut, const void* pIn, ma_uint32 frameCount) { runBlock(*(Host*)dev->pUserData, (const float*)pIn, (float*)pOut, frameCount); }
+
 // ------------------------------------------------------------------ the loader thread (files)
 // One file at a time: build it into the module's slot while the audio keeps playing.
 struct Loader {
@@ -274,8 +280,15 @@ static bool structural(const char* line) { return !strncmp(line, "fx_add", 6) ||
 
 // ------------------------------------------------------------------ devices
 struct Audio {
-  ma_context ctx; ma_device dev; bool exclusive = false, open = false; std::string inName, outName, note;
+  ma_context ctx; ma_device dev; bool exclusive = false, open = false, running = false; std::string inName, outName, note;
   ma_device_id inId{}, outId{}; bool hasIn = false, hasOut = false;
+  // what's open, whichever backend: the page and console show these
+  std::string backend; int frames = 0, periods = 2, capFrames = 0, capPeriods = 1, maxFrames = 512; double nominalMs = 0;
+  bool judge = true;                                         // dropouts are worth counting (not on the null device's coarse timer)
+  bool asio = false; std::string asioName;
+#ifdef _WIN32
+  CLSID asioClsid{};
+#endif
 };
 static std::string lower(std::string s) { for (char& c : s) c = (char)tolower((unsigned char)c); return s; }
 // The hardware a device belongs to. Windows names endpoints "Analogue 1 + 2 (Focusrite USB Audio)" and
@@ -305,7 +318,7 @@ static bool backendOf(const std::string& name, ma_backend& b) {
 // microphone near the speakers howls through an amp.
 static bool openContext(Host& h, Audio& a) {
   ma_backend want; ma_result r;
-  if (!h.o.backend.empty()) {
+  if (!h.o.backend.empty() && h.o.backend != "asio") {
     if (!backendOf(h.o.backend, want)) { fprintf(stderr, "unknown backend %s\n", h.o.backend.c_str()); return false; }
     r = ma_context_init(&want, 1, nullptr, &a.ctx);
   } else r = ma_context_init(nullptr, 0, nullptr, &a.ctx);
@@ -370,24 +383,78 @@ static bool openDevice(Host& h, Audio& a, int frames, int rate) {
     a.note = "the input and output run at different rates, so one is resampled (set both to 48000 Hz in the Sound settings)";
   else if (h.sr != 48000)
     a.note = "the interface runs at " + std::to_string(h.sr) + " Hz; NAM captures are made at 48000 Hz (set it in the Sound settings, Properties > Advanced)";
+  a.backend = ma_get_backend_name(a.ctx.backend);
+  a.frames = (int)a.dev.playback.internalPeriodSizeInFrames; a.periods = (int)a.dev.playback.internalPeriods;
+  a.capFrames = (int)a.dev.capture.internalPeriodSizeInFrames; a.capPeriods = (int)a.dev.capture.internalPeriods; a.maxFrames = 512;
+  a.nominalMs = 1000.0 * (a.capFrames + (double)a.frames * a.periods) / h.sr;
+  a.judge = a.ctx.backend != ma_backend_null || h.o.simStall > 0;
   return true;
 }
-static double nominalMsOf(const Host& h, const Audio& a) {
-  return 1000.0 * (a.dev.capture.internalPeriodSizeInFrames + (double)a.dev.playback.internalPeriodSizeInFrames * a.dev.playback.internalPeriods) / h.sr;
+#ifdef _WIN32
+#include "asio_host.h"
+#endif
+// The backend-neutral calls.
+static bool audioOpen(Host& h, Audio& a, int frames, int rate) {
+#ifdef _WIN32
+  if (a.asio) return asioOpen(h, a, frames, rate);
+#endif
+  return openDevice(h, a, frames, rate);
 }
+static bool audioStart(Audio& a) {
+#ifdef _WIN32
+  if (a.asio) return asioStart(a);
+#endif
+  if (ma_device_start(&a.dev) != MA_SUCCESS) return false;
+  a.running = true; return true;
+}
+static void audioClose(Audio& a) {
+#ifdef _WIN32
+  if (a.asio) { asioClose(a); return; }
+#endif
+  if (a.open) ma_device_uninit(&a.dev);
+  a.open = a.running = false;
+}
+#ifdef _WIN32
+// ASIO or not. --asio NAME picks a driver; otherwise the first installed driver that drives an
+// interface itself (Focusrite USB ASIO, ...), not one that wraps Windows' own audio (ASIO4ALL,
+// FlexASIO): those are no better than the WASAPI path. --backend wasapi turns ASIO off.
+static void chooseAsio(Host& h, Audio& a, bool list) {
+  const bool wantAsio = h.o.backend.empty() || h.o.backend == "asio";
+  if (!wantAsio && h.o.asio.empty() && !list) return;
+  const auto d = asioDrivers();
+  if (list) {
+    printf("\nASIO drivers:\n");
+    for (size_t i = 0; i < d.size(); i++) printf("  %2u  %s%s\n", (unsigned)i, d[i].name.c_str(), asioGeneric(d[i].name) ? "  (wraps Windows' audio: used only by name)" : "");
+    if (d.empty()) printf("  (none installed: your interface maker's driver adds one)\n");
+    printf("\nASIO is used when the interface has its own driver; --asio NAME picks one, --backend wasapi turns it off\n");
+    return;
+  }
+  int k = -1;
+  if (!h.o.asio.empty()) {
+    char* e; const long n = strtol(h.o.asio.c_str(), &e, 10);
+    if (!*e && n >= 0 && (size_t)n < d.size()) k = (int)n;
+    for (size_t i = 0; i < d.size() && k < 0; i++) if (lower(d[i].name).find(lower(h.o.asio)) != std::string::npos) k = (int)i;
+    if (k < 0) fprintf(stderr, "no ASIO driver matches \"%s\" (--list shows them)\n", h.o.asio.c_str());
+  } else if (wantAsio) {
+    for (const std::string& w : {h.o.in, h.o.out})
+      for (size_t i = 0; i < d.size() && k < 0 && !w.empty(); i++) if (!asioGeneric(d[i].name) && lower(d[i].name).find(lower(w)) != std::string::npos) k = (int)i;
+    for (size_t i = 0; i < d.size() && k < 0; i++) if (!asioGeneric(d[i].name)) k = (int)i;
+    if (k < 0 && h.o.backend == "asio" && !d.empty()) k = 0;
+  }
+  if (k >= 0) { a.asio = true; a.asioName = d[(size_t)k].name; a.asioClsid = d[(size_t)k].clsid; }
+}
+#endif
 
 // ------------------------------------------------------------------ the network side
 static std::atomic<bool> g_run{true};
 static void onSignal(int) { g_run = false; }
 
 static std::string hostInfo(const Host& h, const Audio& a) {
-  const ma_uint32 cp = a.dev.capture.internalPeriodSizeInFrames, cn = a.dev.capture.internalPeriods, pp = a.dev.playback.internalPeriodSizeInFrames, pn = a.dev.playback.internalPeriods;
-  const double nominal = 1000.0 * (cp + (double)pp * pn) / h.sr;
   char b[2048];
   snprintf(b, sizeof b, "{\"type\":\"host\",\"version\":\"%s\",\"backend\":\"%s\",\"exclusive\":%s,\"rate\":%d,\"in\":\"%s\",\"out\":\"%s\",\"inChannels\":%d,"
-           "\"frames\":%u,\"periods\":%u,\"capFrames\":%u,\"capPeriods\":%u,\"nominalMs\":%.2f,\"riff\":%s,\"simLoopback\":%d,\"drops\":%d,\"fixed\":%s,\"note\":\"%s\"}",
-           RIG_HOST_VERSION, ma_get_backend_name(a.ctx.backend), a.exclusive ? "true" : "false", h.sr, net::esc(a.inName).c_str(), net::esc(a.outName).c_str(), h.inChannels,
-           pp, pn, cp, cn, nominal, h.useRiff.load() ? "true" : "false", h.o.simLoop, h.drops.load(), h.o.framesSet ? "true" : "false", net::esc(a.note).c_str());
+           "\"frames\":%d,\"periods\":%d,\"capFrames\":%d,\"capPeriods\":%d,\"nominalMs\":%.2f,\"riff\":%s,\"simLoopback\":%d,\"drops\":%d,\"fixed\":%s,\"note\":\"%s\"}",
+           RIG_HOST_VERSION, a.backend.c_str(), a.exclusive ? "true" : "false", h.sr, net::esc(a.inName).c_str(), net::esc(a.outName).c_str(), h.inChannels,
+           a.frames, a.periods, a.capFrames, a.capPeriods, a.nominalMs, h.useRiff.load() ? "true" : "false", h.o.simLoop, h.drops.load(), h.o.framesSet ? "true" : "false", net::esc(a.note).c_str());
   return b;
 }
 static std::string latencyJson(const LatResult& r, int sr, double nominalMs) {
@@ -405,26 +472,41 @@ int main(int argc, char** argv) {
   Host* host = new Host(); Host& h = *host; G = host;
   if (!parseOpts(argc, argv, h.o)) return 2;
   Audio* audio = new Audio(); Audio& a = *audio;
-  if (!openContext(h, a)) return h.o.list ? 0 : 1;
-  if (!openDevice(h, a, h.o.frames, h.o.rate)) { ma_context_uninit(&a.ctx); return 1; }
+#ifdef _WIN32
+  CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);            // ASIO drivers are COM objects, created and called on this thread
+#endif
+  if (!openContext(h, a)) {
+#ifdef _WIN32
+    if (h.o.list) chooseAsio(h, a, true);
+#endif
+    return h.o.list ? 0 : 1;
+  }
+#ifdef _WIN32
+  chooseAsio(h, a, false);
+#endif
+  if (!audioOpen(h, a, a.asio && !h.o.framesSet ? 0 : h.o.frames, h.o.rate)) {   // ASIO: the size set in the driver's panel
+    if (!a.asio) { ma_context_uninit(&a.ctx); return 1; }
+    fprintf(stderr, "ASIO didn't open; using Windows' own audio path instead\n"); a.asio = false;
+    if (!openDevice(h, a, h.o.frames, h.o.rate)) { ma_context_uninit(&a.ctx); return 1; }
+  }
+  if (a.asio) h.o.frames = a.frames;
   rig_init((float)h.sr);
 #ifdef _WIN32
   calibrateCycles();
 #endif
   h.useRiff = h.o.riff; h.riff = makeRiff((float)h.sr); if (h.o.simLoop > 0) h.sim.assign(65536, 0.f);
-  double nominalMs = nominalMsOf(h, a);
-  printf("rig-host %s\n  audio:   %s%s, %d Hz, %u frames x %u buffers (%.2f ms of buffering)\n  input:   %s (%d ch)\n  output:  %s\n",
-         RIG_HOST_VERSION, ma_get_backend_name(a.ctx.backend), a.ctx.backend == ma_backend_wasapi ? (a.exclusive ? " exclusive" : " shared") : "", h.sr,
-         a.dev.playback.internalPeriodSizeInFrames, a.dev.playback.internalPeriods, nominalMs, a.inName.c_str(), h.inChannels, a.outName.c_str());
+  printf("rig-host %s\n  audio:   %s%s, %d Hz, %d frames x %d buffers (%.2f ms %s)\n  input:   %s (%d ch)\n  output:  %s\n",
+         RIG_HOST_VERSION, a.backend.c_str(), a.backend == "WASAPI" ? (a.exclusive ? " exclusive" : " shared") : "", h.sr,
+         a.frames, a.periods, a.nominalMs, a.asio ? "in + out, as the driver reports it" : "of buffering", a.inName.c_str(), h.inChannels, a.outName.c_str());
   if (!a.note.empty()) printf("  note:    %s\n", a.note.c_str());
-  if (ma_device_start(&a.dev) != MA_SUCCESS) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
+  if (!audioStart(a)) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
   signal(SIGINT, onSignal); signal(SIGTERM, onSignal);
 
   if (h.o.latencyTest) {                                       // measure, print, exit
     std::this_thread::sleep_for(std::chrono::milliseconds(300)); h.latencyReq = true;
     for (int i = 0; i < 100 && g_run; i++) {
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      if (LatResult* r = h.latq.front()) { printf("  latency: %s\n", latencyJson(*r, h.sr, nominalMs).c_str()); h.latq.release(); ma_device_uninit(&a.dev); return 0; }
+      if (LatResult* r = h.latq.front()) { printf("  latency: %s\n", latencyJson(*r, h.sr, a.nominalMs).c_str()); h.latq.release(); audioClose(a); return 0; }
     }
     fprintf(stderr, "latency test timed out\n"); return 1;
   }
@@ -452,6 +534,11 @@ int main(int argc, char** argv) {
   std::deque<Cmd> loads, held; int loadState = 0;            // files waiting; commands waiting for a load; 0 idle, 1 finding the module, 2 loading
   Loader loader; loader.start();
   auto dropT = std::chrono::steady_clock::now(); int dropSeen = h.drops.load();
+  auto reopen = [&](int frames) {                              // same devices, same rate (the engine runs at it), new buffer size
+    audioClose(a);
+    if (!audioOpen(h, a, frames, h.sr) || !audioStart(a)) { fprintf(stderr, "couldn't reopen the audio device\n"); return false; }
+    dropSeen = h.drops.load(); return true;
+  };
   auto sendTo = [&](int cid, const std::string& s) { for (size_t i = 0; i < clients.size(); i++) if (ids[i] == cid && clients[i]->ws) net::wsSend(*clients[i], s); };
   auto broadcast = [&](const std::string& s) { for (auto* c : clients) if (c->ws) net::wsSend(*c, s); };
   auto queue = [&](const Cmd& c) { if (loadState && c.kind == K_CMD && structural(c.line)) held.push_back(c); else backlog.push_back(c); };
@@ -532,21 +619,29 @@ int main(int argc, char** argv) {
     // 512 frames), unless --frames fixed it; the console and the page say so either way.
     if (std::chrono::steady_clock::now() - dropT > std::chrono::seconds(2)) {
       dropT = std::chrono::steady_clock::now(); const int d = h.drops.load(); const int recent = d - dropSeen; dropSeen = d;
-      const int from = (int)a.dev.playback.internalPeriodSizeInFrames;   // what the device gave (it can round the request up)
-      const bool canRaise = !h.o.framesSet && std::max(h.o.frames, from) < 512 && (a.ctx.backend != ma_backend_null || h.o.simStall > 0);
+      const int from = a.frames;                                 // what the device gave (it can round the request up)
+      const bool canRaise = !h.o.framesSet && std::max(h.o.frames, from) < std::min(512, a.maxFrames) && a.judge;
       if (recent >= 3 && canRaise) {
-        ma_device_uninit(&a.dev); a.open = false;
-        h.o.frames = std::min(512, std::max(h.o.frames, from) * 2);
-        if (!openDevice(h, a, h.o.frames, h.sr) || ma_device_start(&a.dev) != MA_SUCCESS) { fprintf(stderr, "couldn't reopen the audio device\n"); break; }
-        nominalMs = nominalMsOf(h, a); dropSeen = h.drops.load();
-        char rb[200]; snprintf(rb, sizeof rb, "dropouts at %d frames: buffer raised to %u (%.1f ms of buffering; --frames N fixes the size)", from, a.dev.playback.internalPeriodSizeInFrames, nominalMs);
+        h.o.frames = std::min(std::min(512, a.maxFrames), std::max(h.o.frames, from) * 2);
+        if (!reopen(h.o.frames)) break;
+        char rb[200]; snprintf(rb, sizeof rb, "dropouts at %d frames: buffer raised to %d (%.1f ms; --frames N fixes the size)", from, a.frames, a.nominalMs);
         const std::string raised = rb;
         a.note = a.note.empty() ? raised : raised + "; " + a.note;
         printf("  %s\n", raised.c_str()); fflush(stdout); broadcast(hostInfo(h, a));
-      } else if (recent > 0 && (a.ctx.backend != ma_backend_null || h.o.simStall > 0)) {   // (the null device's own timer is too coarse to judge)
-        printf("  dropouts: %d in the last 2 s (%d in all)%s\n", recent, d, h.o.framesSet ? "; try a larger --frames" : ""); fflush(stdout); broadcast(hostInfo(h, a));
+      } else if (recent > 0 && a.judge) {
+        printf("  dropouts: %d in the last 2 s (%d in all)%s\n", recent, d, h.o.framesSet || from >= std::min(512, a.maxFrames) ? (a.asio ? "; try a larger buffer in the driver's control panel or --frames" : "; try a larger --frames") : ""); fflush(stdout); broadcast(hostInfo(h, a));
       }
     }
+#ifdef _WIN32
+    if (a.asio && g_asio.reset.exchange(0)) {                  // the driver changed (buffer size or rate set in its panel): reopen it
+      const int sr0 = h.sr;
+      if (!reopen(h.o.framesSet ? h.o.frames : 0)) break;
+      if (!h.o.framesSet) h.o.frames = a.frames;
+      if (h.sr != sr0) { a.note = "the interface's rate changed to " + std::to_string(h.sr) + " Hz: restart rig-host to run the engine at it"; h.sr = sr0; }
+      printf("  ASIO driver reset: %d frames%s%s\n", a.frames, a.note.empty() ? "" : "; ", a.note.c_str()); fflush(stdout); broadcast(hostInfo(h, a));
+    }
+    { MSG msg; while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessage(&msg); } }   // some drivers talk through the window they were given
+#endif
     static Meter newest; bool haveMeter = false;              // only the newest meter packet goes out
     while (Meter* m = h.metq.front()) { newest = *m; haveMeter = true; h.metq.release(); }
     const Meter* last = haveMeter ? &newest : nullptr;
@@ -555,11 +650,11 @@ int main(int argc, char** argv) {
       char f[24]; for (int i = 0; i < rig::M_LEN; i++) { snprintf(f, sizeof f, i ? ",%.6g" : "%.6g", last->m[i]); s += f; }
       s += "]}"; broadcast(s);
     }
-    if (LatResult* r = h.latq.front()) { const std::string s = latencyJson(*r, h.sr, nominalMs); printf("  latency: %s\n", s.c_str()); fflush(stdout); broadcast(s); h.latq.release(); }
+    if (LatResult* r = h.latq.front()) { const std::string s = latencyJson(*r, h.sr, a.nominalMs); printf("  latency: %s\n", s.c_str()); fflush(stdout); broadcast(s); h.latq.release(); }
   }
   printf("stopping\n");
   loader.quit();
-  if (a.open) ma_device_uninit(&a.dev);
+  audioClose(a);
   ma_context_uninit(&a.ctx);
   for (auto* c : clients) { sockClose(c->s); delete c; }
   sockClose(ls);

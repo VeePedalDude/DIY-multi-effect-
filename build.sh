@@ -85,6 +85,10 @@ echo "   dropouts: $(grep -c raised build/rig-host-drops.txt) buffer raises (64 
 mkdir -p build/obj/win
 WIN="-target x86_64-windows-gnu -D_USE_MATH_DEFINES"
 echo "$NAM_SRC" | compile build/obj/win "$ZIGCXX $WIN -O2 -std=c++20 -w $INC"
-$ZIGCXX $WIN -O2 $HOSTFLAGS -s -o dist/rig-host.exe hosts/rig-host/main.cpp build/obj/win/*.o -lws2_32 -lole32 -lshell32 -luser32
+$ZIGCXX $WIN -O2 $HOSTFLAGS -isystem third_party/asiosdk/common -s -o dist/rig-host.exe hosts/rig-host/main.cpp build/obj/win/*.o -lws2_32 -lole32 -lshell32 -luser32
 echo "   dist/rig-host.exe: $(($(wc -c < dist/rig-host.exe) / 1024)) KB"
+# a stand-in ASIO driver (a loopback "interface"), to test the ASIO path; run under Wine when there is one
+$ZIGCXX -target x86_64-windows-gnu -O2 -std=c++20 -Wall -Wextra -Werror -isystem third_party/asiosdk/common -shared -s \
+  -o build/rigtest_asio.dll tests/asio/rigtest_asio.cpp tests/asio/rigtest_asio.def -lole32 -luuid
+if command -v wine >/dev/null 2>&1; then echo "== ASIO under Wine"; tests/asio/asio.sh; else echo "   (no wine here: tests/asio/asio.sh skipped)"; fi
 echo "== done"

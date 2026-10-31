@@ -24,6 +24,7 @@ rig-host.exe --in scarlett --out scarlett --frames 64
 |---|---|
 | `--list` | lists inputs and outputs, with numbers |
 | `--in N\|NAME`, `--out N\|NAME` | the devices (a number from `--list`, or part of the name). Choose one and the other follows it onto the same interface; choose neither and the input follows the default output |
+| `--asio NAME` | the ASIO driver (part of its name); without it, the interface's own driver if there is one (see ASIO below) |
 | `--frames N` | a fixed buffer size. Without it the host starts at 64 and doubles the buffer (up to 512) whenever the audio drops out |
 | `--periods N` | buffers in the queue (default 2) |
 | `--rate N` | sample rate (default: the interface's own, so nothing is resampled; set the interface to 48 kHz, what NAM captures are made at) |
@@ -33,16 +34,30 @@ rig-host.exe --in scarlett --out scarlett --frames 64
 | `--port N`, `--listen ADDR` | where the page is served (`--listen 0.0.0.0` to use a phone or tablet on the same network) |
 | `--no-browser` | don't open the page |
 
-### Exclusive mode
+### ASIO
 
-By default the host opens the interface in **WASAPI exclusive mode**: Windows' own low-latency path,
+If your interface has its own ASIO driver (Focusrite's "Focusrite USB ASIO", installed with Focusrite
+Control), the host uses it: the same path a DAW uses, straight to the interface's driver with Windows
+out of the way. The console says `audio: ASIO`. The buffer size is the one set in the driver's own
+control panel (for a Scarlett, Buffer Size in Focusrite Control's settings); change it there while rig-host runs and the
+host picks it up, or force one with `--frames 64`. The latency shown is the driver's own report, in and
+out.
+
+Drivers that only wrap Windows' audio (ASIO4ALL, FlexASIO) are no better than the WASAPI path below, so
+they're used only by name (`--asio asio4all`). `--list` shows the ASIO drivers, `--asio NAME` picks one,
+`--backend wasapi` turns ASIO off. While rig-host has the driver, other programs can't use it.
+
+ASIO comes from Steinberg's ASIO SDK, which is GPLv3 since 2.3.4, so this repository is GPLv3.
+It's tested end to end under Wine against a stand-in driver that loops its outputs back to its inputs
+(`tests/asio/`): the round trip comes out exact in 32-, 24- and 16-bit and float formats.
+
+### Exclusive mode (no ASIO driver)
+
+Without ASIO the host opens the interface in **WASAPI exclusive mode**: Windows' own low-latency path,
 where the host talks to the driver directly and Windows' mixer stays out of the way. While it runs,
 other programs can't play through that interface. If exclusive mode is refused (another program has
 it, or Windows doesn't allow it), the host says so and uses shared mode. To allow it: Sound settings →
 More sound settings → the 2i2 → Properties → Advanced → tick both "Exclusive Mode" boxes.
-
-Focusrite's own ASIO driver can go a little lower still. ASIO needs Steinberg's SDK, which can't be
-shipped in this repository under its license; it can be added as an optional build later.
 
 ### If it crackles, distorts or howls
 

@@ -15,7 +15,9 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
 
 (async () => {
   const bin = (process.env.RIG_HOST_BIN || path.join(root, 'build/rig-host')).split(' ');
-  const args = [...bin.slice(1), '--backend', 'null', '--riff', '--sim-loopback', String(LOOP), '--port', String(PORT), '--no-browser'];
+  // RIG_HOST_AUDIO replaces the simulated device, e.g. "--asio rig" (tests/asio/asio.sh's stand-in driver, also a 437-sample loop)
+  const audio = process.env.RIG_HOST_AUDIO ? process.env.RIG_HOST_AUDIO.trim().split(/\s+/) : ['--backend', 'null', '--sim-loopback', String(LOOP)];
+  const args = [...bin.slice(1), ...audio, '--riff', '--port', String(PORT), '--no-browser'];
   const proc = spawn(bin[0], args, { cwd: root, env: { ...process.env, WINEDEBUG: '-all' } });
   let out = ''; proc.stdout.on('data', (d) => { out += d; }); proc.stderr.on('data', (d) => { out += d; });
   for (let i = 0; i < 200 && !/page:/.test(out); i++) await sleep(100);
@@ -42,7 +44,8 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   await sleep(800);
   const st = await V(`[document.getElementById('engineState').textContent, window.__rig.ctx && window.__rig.ctx.constructor.name, document.getElementById('hostInfo').textContent]`);
   check(/rig-host/.test(st[0]) && st[1] === 'OfflineAudioContext', `“${st[0]}”; no browser audio running (only an offline context, for decoding files)`);
-  check(/Null/.test(st[2]) && /64 frames/.test(st[2]), `the drawer says what the host runs: “${st[2].slice(0, 90)}…”`);
+  const asio = /--asio/.test(process.env.RIG_HOST_AUDIO || '');
+  check((asio ? /ASIO .* 256 frames .*in \+ out/ : /Null .* 64 frames/).test(st[2]), `the drawer says what the host runs: “${st[2].slice(0, 110)}…”`);
   const chain = await V(`window.__rig.engineChain.map((m) => m.id).join(' ')`), rack = await V(`window.__rig.engineRack.map((s) => s.id).join(' ')`);
   check(chain === 'gate amp cab holo tess' && rack.split(' ').length >= 6, `built from the host's engine: chain ${chain}; rack ${rack}`);
 

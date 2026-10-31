@@ -8,8 +8,8 @@ guitar →  │ 3D stage · panel · matrix · presets ──text commands──
           └──────────────────────────────────────────────────────────────┘
                       rig.wasm = engine/ compiled to WebAssembly
 
-Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux (rig-host) ──JACK──▶ 2i2
-                    same text commands, same engine/ source compiled natively
+Native (low latency):  ui/ in a browser ──WebSocket──▶ hosts/rig-host ──WASAPI / ALSA / JACK──▶ 2i2
+                       same page, same text commands (parsed by rig_exec in both), same engine/ compiled natively
 ```
 
 ## Layers
@@ -45,7 +45,9 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `tests/native/` | engine tests, one file per area; `test_conformance.cpp` checks the format and safety of every registered module and source type | `engine/` |
 | `tests/parity/` | proves the WebAssembly build matches native | C API |
 | `tests/browser/` | headless Chromium tests of the built page | `dist/rig-test.html` |
-| `hosts/linux/` | (next) native JACK host for the iMac | C API + protocol |
+| `hosts/rig-host/` | the native host (Windows WASAPI exclusive, Linux ALSA/PulseAudio/JACK via miniaudio): runs the engine on the audio thread, serves the page with `window.RIG_HOST` set, speaks the protocol over a WebSocket, measures the round trip ([README](../hosts/rig-host/README.md)) | C API + protocol |
+| `hosts/linux/` | (next) the iMac's boot-to-effects setup around rig-host | rig-host |
+| `ui/js/31-host.js` | the page's side of rig-host: a WebSocket stand-in for the worklet, the host's readout, the round-trip button | the host's messages |
 | `tools/` | build helpers; `tools/wasm/` holds the shims that let NAM core build for WebAssembly ([README](../tools/wasm/README.md)); `tools/orbits/refine_orbits.cpp` re-derives THREE-BODY's table of periodic orbits with its own integrator | |
 | `tests/models/` | `.nam` captures of every architecture, used by the native, parity and browser tests ([README](../tests/models/README.md)) | |
 

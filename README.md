@@ -24,8 +24,17 @@ a cab, a room or a convolution reverb. Free captures and IRs: [TONE3000](https:/
 No guitar? Choose **Built-in test riff**. If Chrome won't ask for the microphone on a file
 opened from disk, run `python -m http.server` in `dist/` and open `http://localhost:8000/rig-test.html`.
 
-Browser audio on Windows adds roughly 20–40 ms. Fine for building sounds; the Linux host
-(`hosts/linux/`) is where the 5–10 ms target lives.
+Browser audio on Windows adds roughly 20–40 ms. Fine for building sounds; to play through it,
+use the native host.
+
+## Low latency: rig-host (Windows now, Linux next)
+
+**`dist/rig-host.exe`** runs the same engine straight on your interface (WASAPI exclusive mode,
+64-sample buffers by default) and serves this page to control it: download it, run it, press
+**Start** in the page it opens. Everything works as in the browser, including presets, the library
+and the Visualizer; the browser just isn't in the audio path any more. Settings → **Measure round
+trip** times a click through a cable from Output 1 to Input 1, so you see the real latency of your
+setup. Details, options and troubleshooting: [hosts/rig-host/README.md](hosts/rig-host/README.md).
 
 ## Tuner
 
@@ -82,7 +91,8 @@ tests/
   fixtures/    golden preset file (must keep loading forever)
   browser/     headless Chromium tests of the built page
   models/      .nam captures of every architecture, for the tests
-hosts/linux/   the iMac's native JACK host (next)
+hosts/rig-host/ native host: Windows (WASAPI) and Linux (ALSA, JACK); serves the page, round-trip test
+hosts/linux/   the iMac's boot-to-effects setup (next)
 third_party/   NeuralAmpModelerCore, Eigen, nlohmann/json (vendored, unchanged)
 tools/         gen_registry.py: makes the registries from the folders · build_web.py: assembles dist/rig-test.html · wasm/: shims for the WebAssembly build · orbits/refine_orbits.cpp: re-derives THREE-BODY's orbit table
 docs/          ARCHITECTURE · PROTOCOL · LIBRARY · ADDING_A_MODULE · ADDING_A_SOURCE

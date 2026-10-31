@@ -1,5 +1,8 @@
 # Linux host (next step)
 
+The native host now exists as **`hosts/rig-host`**: one program for Windows and Linux (ALSA,
+PulseAudio or JACK). What's left here is the boot-to-effects setup below.
+
 `rig-host` will be a small native program for the iMac that:
 
 1. runs the same `engine/` code as a JACK client at 64–128 samples (the 5–10 ms latency target),

@@ -120,3 +120,114 @@ EXPORT(rig_asset_commit) int rig_asset_commit(int m, int bytes) {
 }
 EXPORT(rig_asset_clear) void rig_asset_clear(int m) { if (E().used(m)) E().mods[m]->assetClear(); }
 EXPORT(rig_asset_status) const char* rig_asset_status(int m) { return E().used(m) ? E().mods[m]->assetStatus() : ""; }
+
+// ------------------------------------------------------------------ the text protocol (docs/PROTOCOL.md)
+// One implementation for every host: the browser's worklet and rig-host (hosts/rig-host) both write a
+// command line to rig_cmd_buf() and call rig_exec(), which returns 0 or a negative error, and sets
+// rig_exec_changed() (1: the rack changed, re-read rig_rack(); 2: the chain changed, re-read rig_chain()).
+// Call it from the control thread (the engine's add/remove/patch calls are made for that); in the
+// browser that is the audio thread itself, which is fine too.
+//   param_set <inst> <symbol> <0..1>          bypass <inst> <0|1>
+//   mod_connect <inst> <symbol> <source> <depth> [phase] [div]     mod_disconnect <inst> <symbol>
+//   set_bpm <bpm>   master <dB>   ext <source> <value>   input_channel <0|1>
+//   tuner <0|1> [mute 0|1]   tuner_ref <A4 Hz, 400..480>
+//   src_add <type> [id]   src_remove <source>   src_set <source> <symbol> <0..1>
+//   src_mod <source> <symbol> <from source> <depth> [phase] [div]   src_unmod <source> <symbol>
+//   src_cfg <source> <symbol> <0..1>   src_cell <source> <row> <symbol> <0..1>
+//   fx_add <type> [id] [position]   fx_remove <inst>   fx_move <inst> <position>
+// <inst>: a module id ("holo") or its position in the chain (0 = first). Errors follow mod-host's numbers.
+#include <cstdlib>
+namespace {
+enum { ERR_INSTANCE = -1, ERR_ID_TAKEN = -2, ERR_FULL = -3, ERR_SYMBOL = -103, ERR_RANGE = -207, ERR_OPERATION = -902 };
+char g_cmd[1024];
+int g_changed = 0, g_inCh = 0;
+// A whole token as a number (like JavaScript's Number(): NaN if absent or not all number).
+double num(const char* t) { if (!t || !*t) return NAN; char* e; const double v = strtod(t, &e); return *e ? NAN : v; }
+bool isInt(const char* t) { if (!t || !*t) return false; for (const char* p = t; *p; p++) if (*p < '0' || *p > '9') return false; return true; }
+int inst(const char* t) {                       // module slot by id, or by position in the chain
+  if (!t) return -1;
+  if (isInt(t)) { const long i = strtol(t, nullptr, 10); return i < E().order.n ? E().order.s[i] : -1; }
+  return E().moduleIndex(t);
+}
+int knobOf(const rig::ParamDesc* ps, int n, const char* sym) { if (!sym) return -1; for (int i = 0; i < n; i++) if (!strcmp(ps[i].symbol, sym)) return i; return -1; }
+const rig::SourceDesc* srcType(int k) { return E().rack.used(k) ? &rig::sourceTypeDesc(E().rack.slot[k].type) : nullptr; }
+bool tapArgs(const char* a, const char* b, float& deg, float& div) {   // [phase] [div]: degrees, and 3/2 or 1.5
+  deg = a ? (float)num(a) : 0.f; div = 1.f;
+  if (b) { const char* s = strchr(b, '/'); if (s) { char x[32] = {0}; strncpy(x, b, (size_t)std::min<long>(31, s - b)); div = (float)(num(x) / num(s + 1)); } else div = (float)num(b); }
+  return std::isfinite(deg) && std::isfinite(div) && div > 0;
+}
+int exec(char* line) {
+  const char* t[8] = {nullptr}; int n = 0;
+  for (char* p = strtok(line, " \t\r\n"); p && n < 8; p = strtok(nullptr, " \t\r\n")) t[n++] = p;
+  if (!n) return ERR_OPERATION;
+  const char* c = t[0];
+  if (!strcmp(c, "param_set") || !strcmp(c, "mod_connect") || !strcmp(c, "mod_disconnect")) {
+    const int m = inst(t[1]); if (m < 0 || !E().used(m)) return ERR_INSTANCE;
+    const rig::ModuleDesc& d = E().mods[m]->desc(); const int p = knobOf(d.params, d.nparams, t[2]); if (p < 0) return ERR_SYMBOL;
+    if (!strcmp(c, "param_set")) { const double v = num(t[3]); if (!(v >= 0 && v <= 1)) return ERR_RANGE; rig_param(m, p, (float)v); return 0; }
+    if (!strcmp(c, "mod_disconnect")) { rig_mod(m, p, -1, 0); return 0; }
+    const int s = E().sourceIndex(t[3] ? t[3] : ""); const double dep = num(t[4]); float deg, div;
+    if (s < 0 || !(dep >= 0 && dep <= 1) || !tapArgs(t[5], t[6], deg, div)) return ERR_RANGE;
+    rig_mod(m, p, s, (float)dep); rig_mod_tap(m, p, deg, div); return 0;
+  }
+  if (!strcmp(c, "tuner")) {
+    if (!t[1] || (strcmp(t[1], "0") && strcmp(t[1], "1"))) return ERR_RANGE;
+    rig_tuner(t[1][0] == '1', !(t[2] && !strcmp(t[2], "0"))); return 0;
+  }
+  if (!strcmp(c, "tuner_ref")) { const double v = num(t[1]); if (!(v >= 400 && v <= 480)) return ERR_RANGE; rig_tuner_ref((float)v); return 0; }
+  if (!strcmp(c, "fx_add")) {
+    if (!t[1] || rig::moduleTypeIndex(t[1]) < 0) return ERR_INSTANCE;
+    if (t[3] && !isInt(t[3])) return ERR_RANGE;
+    const int k = E().addModule(t[1], (!t[2] || !strcmp(t[2], "-")) ? nullptr : t[2], t[3] ? (int)strtol(t[3], nullptr, 10) : -1);
+    if (k < 0) return k == -2 ? ERR_FULL : k == -3 ? ERR_ID_TAKEN : ERR_INSTANCE;
+    g_changed |= 2; return 0;
+  }
+  if (!strcmp(c, "fx_remove")) { const int m = inst(t[1]); if (m < 0 || !E().used(m)) return ERR_INSTANCE; E().removeModule(m); g_changed |= 2; return 0; }
+  if (!strcmp(c, "fx_move")) {
+    const int m = inst(t[1]); if (m < 0 || !E().used(m)) return ERR_INSTANCE;
+    if (!isInt(t[2])) return ERR_RANGE;
+    E().moveModule(m, (int)strtol(t[2], nullptr, 10)); g_changed |= 2; return 0;
+  }
+  if (!strcmp(c, "src_add")) {
+    bool known = false; for (int k = 0; k < rig::NSRCTYPES && t[1]; k++) known = known || !strcmp(rig::sourceTypeDesc(k).id, t[1]);
+    if (!known) return ERR_INSTANCE;
+    const int k = E().addSource(t[1], t[2] ? t[2] : ""); if (k < 0) return k == -2 ? ERR_FULL : k == -3 ? ERR_ID_TAKEN : ERR_INSTANCE;
+    g_changed |= 1; return 0;
+  }
+  if (!strcmp(c, "src_remove")) { const int k = E().sourceIndex(t[1] ? t[1] : ""); if (k < 0) return ERR_INSTANCE; E().removeSource(k); g_changed |= 1; return 0; }
+  if (!strcmp(c, "src_mod") || !strcmp(c, "src_unmod") || !strcmp(c, "src_set") || !strcmp(c, "src_cfg") || !strcmp(c, "src_cell")) {
+    const int k = E().sourceIndex(t[1] ? t[1] : ""); if (k < 0) return ERR_INSTANCE;
+    const rig::SourceDesc* d = srcType(k); if (!d) return ERR_INSTANCE;
+    if (!strcmp(c, "src_cfg")) {
+      const int i = knobOf(d->settings, d->nsettings, t[2]); if (i < 0) return ERR_SYMBOL;
+      const double v = num(t[3]); if (!(v >= 0 && v <= 1)) return ERR_RANGE; rig_src_cfg(k, i, (float)v); return 0;
+    }
+    if (!strcmp(c, "src_cell")) {
+      const double row = num(t[2]); if (!(row >= 0 && row < d->rows && row == (int)row)) return ERR_RANGE;
+      const int j = knobOf(d->cols, d->ncols, t[3]); if (j < 0) return ERR_SYMBOL;
+      const double v = num(t[4]); if (!(v >= 0 && v <= 1)) return ERR_RANGE; rig_src_cell(k, (int)row, j, (float)v); return 0;
+    }
+    const int p = knobOf(d->params, d->nparams, t[2]); if (p < 0) return ERR_SYMBOL;
+    if (!strcmp(c, "src_set")) { const double v = num(t[3]); if (!(v >= 0 && v <= 1)) return ERR_RANGE; rig_src_param(k, p, (float)v); return 0; }
+    if (!strcmp(c, "src_unmod")) { rig_src_mod(k, p, -1, 0); return 0; }
+    const int f = E().sourceIndex(t[3] ? t[3] : ""); const double dep = num(t[4]); float deg, div;
+    if (f < 0 || !(dep >= 0 && dep <= 1) || !tapArgs(t[5], t[6], deg, div)) return ERR_RANGE;
+    if (rig_src_mod(k, p, f, (float)dep) != 0) return ERR_INSTANCE;
+    rig_src_tap(k, p, deg, div); return 0;
+  }
+  if (!strcmp(c, "bypass")) { const int m = inst(t[1]); if (m < 0 || !E().used(m)) return ERR_INSTANCE; rig_bypass(m, t[2] && !strcmp(t[2], "1")); return 0; }
+  if (!strcmp(c, "set_bpm")) { const double v = num(t[1]); if (!(v >= 30 && v <= 300)) return ERR_RANGE; rig_tempo((float)v); return 0; }
+  if (!strcmp(c, "master")) { const double v = num(t[1]); if (!(v >= -60 && v <= 6)) return ERR_RANGE; rig_master((float)v); return 0; }
+  if (!strcmp(c, "ext")) { const int s = E().sourceIndex(t[1] ? t[1] : ""); const double v = num(t[2]); if (s < 0 || !std::isfinite(v)) return ERR_RANGE; rig_ext(s, (float)v); return 0; }
+  if (!strcmp(c, "input_channel")) { g_inCh = (t[1] && !strcmp(t[1], "1")) ? 1 : 0; return 0; }
+  return ERR_OPERATION;
+}
+} // namespace
+EXPORT(rig_cmd_buf) char* rig_cmd_buf() { return g_cmd; }
+EXPORT(rig_cmd_len) int rig_cmd_len() { return (int)sizeof g_cmd; }
+EXPORT(rig_exec) int rig_exec() { g_cmd[sizeof g_cmd - 1] = 0; g_changed = 0; return exec(g_cmd); }
+EXPORT(rig_exec_changed) int rig_exec_changed() { return g_changed; }
+EXPORT(rig_input_channel) int rig_input_channel() { return g_inCh; }
+// The slot of the module named in rig_cmd_buf() (an id, or a position in the chain), or -1: for hosts
+// that load files into a module by name (asset messages).
+EXPORT(rig_find_module) int rig_find_module() { g_cmd[sizeof g_cmd - 1] = 0; const int m = inst(g_cmd); return E().used(m) ? m : -1; }

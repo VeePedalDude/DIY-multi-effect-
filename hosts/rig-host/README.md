@@ -23,10 +23,10 @@ rig-host.exe --in scarlett --out scarlett --frames 64
 | Option | What it does |
 |---|---|
 | `--list` | lists inputs and outputs, with numbers |
-| `--in N\|NAME`, `--out N\|NAME` | the devices (a number from `--list`, or part of the name) |
-| `--frames N` | buffer size: 64 is the default; try 32 for less latency, 128 if it crackles |
+| `--in N\|NAME`, `--out N\|NAME` | the devices (a number from `--list`, or part of the name). Choose one and the other follows it onto the same interface; choose neither and the input follows the default output |
+| `--frames N` | a fixed buffer size. Without it the host starts at 64 and doubles the buffer (up to 512) whenever the audio drops out |
 | `--periods N` | buffers in the queue (default 2) |
-| `--rate N` | sample rate (default 48000, what NAM captures are made at) |
+| `--rate N` | sample rate (default: the interface's own, so nothing is resampled; set the interface to 48 kHz, what NAM captures are made at) |
 | `--shared` | WASAPI shared mode instead of exclusive (higher latency; lets other programs play too) |
 | `--riff` | start with the built-in test riff instead of the input |
 | `--latency-test` | measure the round trip and exit (see below) |
@@ -43,6 +43,22 @@ More sound settings → the 2i2 → Properties → Advanced → tick both "Exclu
 
 Focusrite's own ASIO driver can go a little lower still. ASIO needs Steinberg's SDK, which can't be
 shipped in this repository under its license; it can be added as an optional build later.
+
+### If it crackles, distorts or howls
+
+The console (and the settings drawer) says what the host opened and anything that looks wrong:
+
+- **Two devices.** If the input and output are on different hardware (the Scarlett in, the laptop's
+  speakers out, or the laptop's microphone in), their clocks drift against each other, which crackles,
+  and a microphone near the speakers feeds back through an amp sim and howls. The host now keeps both
+  on one interface by default and warns if they still differ. To pick: `--list`, then `--in scarlett`.
+- **Dropouts.** The audio thread counts every callback that comes later than the whole output buffer
+  lasts: the interface ran dry, which you hear as a click or glitch. With three or more in two seconds
+  the host reopens the device with twice the buffer (64 → 128 → 256 → 512 frames), prints
+  `dropouts at 64 frames: buffer raised to 128`, and the drawer shows it. Once it's clean, that
+  size can be fixed with `--frames`.
+- **Resampling.** The host runs at the interface's own rate, so Windows doesn't resample anything in
+  between; if that isn't 48 kHz it says so (NAM captures are made at 48 kHz).
 
 ## Measuring the round trip
 

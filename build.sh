@@ -76,6 +76,12 @@ HOSTFLAGS="-std=c++20 -Wall -Wextra -Werror $INC -isystem third_party/miniaudio 
 $CXX -O2 $HOSTFLAGS -pthread -o build/rig-host hosts/rig-host/main.cpp build/obj/native/*.o -ldl -lm
 ./build/rig-host --backend null --sim-loopback 437 --latency-test | tee build/rig-host-latency.txt
 grep -q '"samples":437' build/rig-host-latency.txt
+# dropouts (a 20 ms stall every 250 ms): the buffer doubles until it rides them out; --frames keeps it fixed
+timeout -s INT 14 ./build/rig-host --backend null --no-browser --port 8131 --sim-stall 250 > build/rig-host-drops.txt 2>&1 || true
+grep -q 'buffer raised to 512' build/rig-host-drops.txt
+timeout -s INT 5 ./build/rig-host --backend null --no-browser --port 8131 --sim-stall 250 --frames 64 > build/rig-host-fixed.txt 2>&1 || true
+grep -q 'try a larger --frames' build/rig-host-fixed.txt && ! grep -q 'raised' build/rig-host-fixed.txt
+echo "   dropouts: $(grep -c raised build/rig-host-drops.txt) buffer raises (64 -> 512 frames); fixed --frames left alone"
 mkdir -p build/obj/win
 WIN="-target x86_64-windows-gnu -D_USE_MATH_DEFINES"
 echo "$NAM_SRC" | compile build/obj/win "$ZIGCXX $WIN -O2 -std=c++20 -w $INC"

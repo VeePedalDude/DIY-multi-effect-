@@ -61,17 +61,18 @@ static const char* RIG_HOST_VERSION = "0.1";
 // ------------------------------------------------------------------ options
 struct Opts {
   std::string backend, in, out, page, listen = "127.0.0.1";
-  int frames = 64, periods = 2, rate = 48000, port = 8000, simLoop = 0;
-  bool shared = false, list = false, riff = false, browser = true, latencyTest = false;
+  int frames = 64, periods = 2, rate = 0, port = 8000, simLoop = 0, simStall = 0;
+  bool shared = false, list = false, riff = false, browser = true, latencyTest = false, framesSet = false;
 };
 static void usage() {
   printf("rig-host %s - RIG/01 on your audio interface, controlled from the browser page it serves\n\n"
          "  --list               list audio devices and exit\n"
          "  --in N|NAME          input device (number from --list, or part of its name)\n"
          "  --out N|NAME         output device\n"
-         "  --frames N           buffer size in frames (default 64; try 32, 128)\n"
+         "  --frames N           buffer size in frames, fixed (default: starts at 64 and doubles, up to 512,\n"
+         "                       if the audio drops out)\n"
          "  --periods N          buffers in the queue (default 2)\n"
-         "  --rate N             sample rate (default 48000)\n"
+         "  --rate N             sample rate (default: the interface's own, so nothing is resampled)\n"
          "  --shared             WASAPI shared mode (default: exclusive, the low-latency one)\n"
          "  --backend NAME       wasapi, alsa, pulseaudio, jack, null (default: the system's best)\n"
          "  --riff               play the built-in test riff instead of the input\n"
@@ -80,23 +81,25 @@ static void usage() {
          "  --listen ADDR        address to serve on (default 127.0.0.1; 0.0.0.0 to use a phone or tablet)\n"
          "  --page FILE          serve this page instead of the built-in one\n"
          "  --no-browser         don't open the page in the browser\n"
-         "  --sim-loopback N     (testing, with --backend null) feed the output back to the input N samples later\n",
+         "  --sim-loopback N     (testing, with --backend null) feed the output back to the input N samples later\n"
+         "  --sim-stall MS       (testing) stall the audio thread 20 ms every MS ms, to test the dropout handling\n",
          RIG_HOST_VERSION);
 }
 static bool parseOpts(int argc, char** argv, Opts& o) {
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i]; auto next = [&]() -> std::string { return i + 1 < argc ? argv[++i] : ""; };
     if (a == "--list") o.list = true; else if (a == "--in") o.in = next(); else if (a == "--out") o.out = next();
-    else if (a == "--frames") o.frames = atoi(next().c_str()); else if (a == "--periods") o.periods = atoi(next().c_str());
+    else if (a == "--frames") { o.frames = atoi(next().c_str()); o.framesSet = true; } else if (a == "--periods") o.periods = atoi(next().c_str());
     else if (a == "--rate") o.rate = atoi(next().c_str()); else if (a == "--shared") o.shared = true;
     else if (a == "--backend") o.backend = next(); else if (a == "--riff") o.riff = true;
     else if (a == "--latency-test") o.latencyTest = true; else if (a == "--port") o.port = atoi(next().c_str());
     else if (a == "--listen") o.listen = next(); else if (a == "--page") o.page = next();
     else if (a == "--no-browser") o.browser = false; else if (a == "--sim-loopback") o.simLoop = atoi(next().c_str());
+    else if (a == "--sim-stall") o.simStall = atoi(next().c_str());
     else if (a == "--help" || a == "-h" || a == "/?") { usage(); exit(0); }
     else { fprintf(stderr, "unknown option %s (--help lists them)\n", a.c_str()); return false; }
   }
-  o.frames = std::clamp(o.frames, 16, 2048); o.periods = std::clamp(o.periods, 2, 8); o.rate = std::clamp(o.rate, 22050, 192000);
+  o.frames = std::clamp(o.frames, 16, 2048); o.periods = std::clamp(o.periods, 2, 8); if (o.rate) o.rate = std::clamp(o.rate, 22050, 192000);
   return true;
 }
 
@@ -113,6 +116,9 @@ struct Host {
   std::atomic<bool> useRiff{false}, latencyReq{false};
   // audio thread only
   int inChannels = 2, outChannels = 2, sr = 48000;
+  double bufS = 0;                                           // the output's whole buffer (s); set while the device is stopped
+  std::chrono::steady_clock::time_point lastCb{}; int settle = 0; long long lastStall = 0;
+  std::atomic<int> drops{0};                                 // callbacks that came later than the whole output buffer: heard as a dropout
   std::vector<float> riff; size_t riffPos = 0;
   float inPk = 0, outPk = 0, worstMs = 0, worstCpuMs = 0; double busyS = 0, wallS = 0, load = 0; long long frames = 0, lastMeter = 0, lastCollect = 0;
   std::vector<float> sim; long long simW = 0; unsigned noise = 1;
@@ -185,6 +191,11 @@ static void onAudio(ma_device* dev, void* pOut, const void* pIn, ma_uint32 frame
   RIG_FTZ();
   Host& h = *(Host*)dev->pUserData;
   const auto t0 = std::chrono::steady_clock::now(); const double c0 = threadCpuMs();
+  // A dropout: this callback came later than the whole output buffer lasts, so the interface ran dry.
+  if (h.settle > 0) h.settle--;
+  else if (std::chrono::duration<double>(t0 - h.lastCb).count() > (double)frameCount / h.sr + h.bufS) h.drops.fetch_add(1, std::memory_order_relaxed);
+  h.lastCb = t0;
+  if (h.o.simStall > 0 && h.frames - h.lastStall >= (long long)h.o.simStall * h.sr / 1000) { h.lastStall = h.frames; std::this_thread::sleep_for(std::chrono::milliseconds(20)); }
   for (int k = 0; k < 8; k++) {                                // queued commands and files, between blocks
     Cmd* c = h.cmdq.front(); if (!c) break;
     Reply* r = h.repq.claim(); if (!r) break;
@@ -262,21 +273,37 @@ struct Loader {
 static bool structural(const char* line) { return !strncmp(line, "fx_add", 6) || !strncmp(line, "fx_remove", 9) || !strncmp(line, "fx_move", 7); }
 
 // ------------------------------------------------------------------ devices
-struct Audio { ma_context ctx; ma_device dev; bool exclusive = false; std::string inName, outName; };
+struct Audio {
+  ma_context ctx; ma_device dev; bool exclusive = false, open = false; std::string inName, outName, note;
+  ma_device_id inId{}, outId{}; bool hasIn = false, hasOut = false;
+};
+static std::string lower(std::string s) { for (char& c : s) c = (char)tolower((unsigned char)c); return s; }
+// The hardware a device belongs to. Windows names endpoints "Analogue 1 + 2 (Focusrite USB Audio)" and
+// "Speakers (Focusrite USB Audio)": the part in brackets is the interface. Elsewhere, the whole name.
+static std::string hardware(const std::string& name) {
+  const size_t o = name.rfind('('), c = name.rfind(')');
+  return lower(o != std::string::npos && c != std::string::npos && c > o + 1 ? name.substr(o + 1, c - o - 1) : name);
+}
 static bool pickDevice(const ma_device_info* list, ma_uint32 n, const std::string& want, ma_uint32& idx) {
   if (want.empty()) return false;
   char* e; const long k = strtol(want.c_str(), &e, 10);
   if (!*e) { if (k >= 0 && (ma_uint32)k < n) { idx = (ma_uint32)k; return true; } return false; }
-  std::string w = want; for (char& c : w) c = (char)tolower((unsigned char)c);
-  for (ma_uint32 i = 0; i < n; i++) { std::string nm = list[i].name; for (char& c : nm) c = (char)tolower((unsigned char)c); if (nm.find(w) != std::string::npos) { idx = i; return true; } }
+  const std::string w = lower(want);
+  for (ma_uint32 i = 0; i < n; i++) if (lower(list[i].name).find(w) != std::string::npos) { idx = i; return true; }
   return false;
 }
+static int defaultOf(const ma_device_info* list, ma_uint32 n) { for (ma_uint32 i = 0; i < n; i++) if (list[i].isDefault) return (int)i; return n ? 0 : -1; }
+static int sameHardware(const ma_device_info* list, ma_uint32 n, const std::string& hw) { for (ma_uint32 i = 0; i < n; i++) if (hardware(list[i].name) == hw) return (int)i; return -1; }
 static bool backendOf(const std::string& name, ma_backend& b) {
   struct { const char* n; ma_backend b; } T[] = {{"wasapi", ma_backend_wasapi}, {"dsound", ma_backend_dsound}, {"alsa", ma_backend_alsa}, {"pulseaudio", ma_backend_pulseaudio}, {"jack", ma_backend_jack}, {"coreaudio", ma_backend_coreaudio}, {"null", ma_backend_null}};
   for (auto& t : T) if (name == t.n) { b = t.b; return true; }
   return false;
 }
-static bool openAudio(Host& h, Audio& a) {
+// Which devices. With nothing chosen, the system's defaults, except that the input and output are kept
+// on one interface: a guitar into the Scarlett and out of the laptop speakers (or the laptop's microphone
+// into the Scarlett) puts two clocks that drift against each other in one stream, which crackles, and a
+// microphone near the speakers howls through an amp.
+static bool openContext(Host& h, Audio& a) {
   ma_backend want; ma_result r;
   if (!h.o.backend.empty()) {
     if (!backendOf(h.o.backend, want)) { fprintf(stderr, "unknown backend %s\n", h.o.backend.c_str()); return false; }
@@ -293,19 +320,35 @@ static bool openAudio(Host& h, Audio& a) {
     printf("\nchoose with --in and --out (a number, or part of the name: --in scarlett --out scarlett)\n");
     return false;
   }
-  ma_uint32 iIn = 0, iOut = 0; const bool hasIn = pickDevice(ins, nIn, h.o.in, iIn), hasOut = pickDevice(outs, nOut, h.o.out, iOut);
+  ma_uint32 iIn = 0, iOut = 0; bool hasIn = pickDevice(ins, nIn, h.o.in, iIn), hasOut = pickDevice(outs, nOut, h.o.out, iOut);
   if (!h.o.in.empty() && !hasIn) fprintf(stderr, "no input matches \"%s\"; using the default (--list shows them)\n", h.o.in.c_str());
   if (!h.o.out.empty() && !hasOut) fprintf(stderr, "no output matches \"%s\"; using the default\n", h.o.out.c_str());
+  if (a.ctx.backend != ma_backend_null) {
+    const int dIn = defaultOf(ins, nIn), dOut = defaultOf(outs, nOut);
+    if (!hasIn && dOut >= 0) {                                 // the input on the output's interface
+      const int k = sameHardware(ins, nIn, hardware(outs[hasOut ? iOut : (ma_uint32)dOut].name));
+      if (k >= 0) { iIn = (ma_uint32)k; hasIn = true; }
+    }
+    if (!hasOut && hasIn && dIn >= 0) {                        // or the output on the chosen input's interface
+      const int k = sameHardware(outs, nOut, hardware(ins[iIn].name));
+      if (k >= 0) { iOut = (ma_uint32)k; hasOut = true; }
+    }
+  }
+  a.hasIn = hasIn; a.hasOut = hasOut; if (hasIn) a.inId = ins[iIn].id; if (hasOut) a.outId = outs[iOut].id;
+  return true;
+}
+// Open (or reopen) the device: `frames` per buffer, `rate` 0 for the interface's own.
+static bool openDevice(Host& h, Audio& a, int frames, int rate) {
+  ma_result r = MA_ERROR;
   for (int attempt = 0; attempt < 2; attempt++) {
     const bool excl = !h.o.shared && attempt == 0 && a.ctx.backend == ma_backend_wasapi;
-    if (attempt == 1 && a.ctx.backend != ma_backend_wasapi) break;
-    if (attempt == 1 && h.o.shared) break;
+    if (attempt == 1 && (a.ctx.backend != ma_backend_wasapi || h.o.shared)) break;
     ma_device_config c = ma_device_config_init(ma_device_type_duplex);
-    c.sampleRate = (ma_uint32)h.o.rate; c.periodSizeInFrames = (ma_uint32)h.o.frames; c.periods = (ma_uint32)h.o.periods;
+    c.sampleRate = (ma_uint32)rate; c.periodSizeInFrames = (ma_uint32)frames; c.periods = (ma_uint32)h.o.periods;
     c.performanceProfile = ma_performance_profile_low_latency;
-    c.capture.format = ma_format_f32; c.capture.channels = 0; c.capture.pDeviceID = hasIn ? &ins[iIn].id : nullptr;
+    c.capture.format = ma_format_f32; c.capture.channels = 0; c.capture.pDeviceID = a.hasIn ? &a.inId : nullptr;
     c.capture.shareMode = excl ? ma_share_mode_exclusive : ma_share_mode_shared;
-    c.playback.format = ma_format_f32; c.playback.channels = 2; c.playback.pDeviceID = hasOut ? &outs[iOut].id : nullptr;
+    c.playback.format = ma_format_f32; c.playback.channels = 2; c.playback.pDeviceID = a.hasOut ? &a.outId : nullptr;
     c.playback.shareMode = excl ? ma_share_mode_exclusive : ma_share_mode_shared;
     c.wasapi.usage = ma_wasapi_usage_pro_audio;                 // MMCSS "Pro Audio": Windows schedules the audio thread first
     c.noPreSilencedOutputBuffer = MA_TRUE; c.noClip = MA_TRUE;
@@ -314,10 +357,23 @@ static bool openAudio(Host& h, Audio& a) {
     if (r == MA_SUCCESS) { a.exclusive = excl; break; }
     if (excl) fprintf(stderr, "exclusive mode refused (%s); trying shared mode\n", ma_result_description(r));
   }
-  if (r != MA_SUCCESS) { fprintf(stderr, "couldn't open the audio device (%s)\n", ma_result_description(r)); ma_context_uninit(&a.ctx); return false; }
+  if (r != MA_SUCCESS) { fprintf(stderr, "couldn't open the audio device (%s)\n", ma_result_description(r)); return false; }
+  a.open = true;
   h.inChannels = (int)std::max<ma_uint32>(1, a.dev.capture.channels); h.outChannels = (int)a.dev.playback.channels; h.sr = (int)a.dev.sampleRate;
+  h.bufS = (double)a.dev.playback.internalPeriodSizeInFrames * a.dev.playback.internalPeriods / a.dev.playback.internalSampleRate;
+  h.settle = 20;                                               // the first callbacks after a start come as the buffers fill
   a.inName = a.dev.capture.name; a.outName = a.dev.playback.name;
+  a.note.clear();
+  if (a.ctx.backend != ma_backend_null && hardware(a.inName) != hardware(a.outName))
+    a.note = "the input and output are different devices: their clocks drift apart, which crackles (choose one interface for both: --in and --out, --list shows them)";
+  else if (a.dev.capture.internalSampleRate != a.dev.sampleRate || a.dev.playback.internalSampleRate != a.dev.sampleRate)
+    a.note = "the input and output run at different rates, so one is resampled (set both to 48000 Hz in the Sound settings)";
+  else if (h.sr != 48000)
+    a.note = "the interface runs at " + std::to_string(h.sr) + " Hz; NAM captures are made at 48000 Hz (set it in the Sound settings, Properties > Advanced)";
   return true;
+}
+static double nominalMsOf(const Host& h, const Audio& a) {
+  return 1000.0 * (a.dev.capture.internalPeriodSizeInFrames + (double)a.dev.playback.internalPeriodSizeInFrames * a.dev.playback.internalPeriods) / h.sr;
 }
 
 // ------------------------------------------------------------------ the network side
@@ -327,11 +383,11 @@ static void onSignal(int) { g_run = false; }
 static std::string hostInfo(const Host& h, const Audio& a) {
   const ma_uint32 cp = a.dev.capture.internalPeriodSizeInFrames, cn = a.dev.capture.internalPeriods, pp = a.dev.playback.internalPeriodSizeInFrames, pn = a.dev.playback.internalPeriods;
   const double nominal = 1000.0 * (cp + (double)pp * pn) / h.sr;
-  char b[1400];
+  char b[2048];
   snprintf(b, sizeof b, "{\"type\":\"host\",\"version\":\"%s\",\"backend\":\"%s\",\"exclusive\":%s,\"rate\":%d,\"in\":\"%s\",\"out\":\"%s\",\"inChannels\":%d,"
-           "\"frames\":%u,\"periods\":%u,\"capFrames\":%u,\"capPeriods\":%u,\"nominalMs\":%.2f,\"riff\":%s,\"simLoopback\":%d}",
+           "\"frames\":%u,\"periods\":%u,\"capFrames\":%u,\"capPeriods\":%u,\"nominalMs\":%.2f,\"riff\":%s,\"simLoopback\":%d,\"drops\":%d,\"fixed\":%s,\"note\":\"%s\"}",
            RIG_HOST_VERSION, ma_get_backend_name(a.ctx.backend), a.exclusive ? "true" : "false", h.sr, net::esc(a.inName).c_str(), net::esc(a.outName).c_str(), h.inChannels,
-           pp, pn, cp, cn, nominal, h.useRiff.load() ? "true" : "false", h.o.simLoop);
+           pp, pn, cp, cn, nominal, h.useRiff.load() ? "true" : "false", h.o.simLoop, h.drops.load(), h.o.framesSet ? "true" : "false", net::esc(a.note).c_str());
   return b;
 }
 static std::string latencyJson(const LatResult& r, int sr, double nominalMs) {
@@ -349,16 +405,18 @@ int main(int argc, char** argv) {
   Host* host = new Host(); Host& h = *host; G = host;
   if (!parseOpts(argc, argv, h.o)) return 2;
   Audio* audio = new Audio(); Audio& a = *audio;
-  if (!openAudio(h, a)) return h.o.list ? 0 : 1;
+  if (!openContext(h, a)) return h.o.list ? 0 : 1;
+  if (!openDevice(h, a, h.o.frames, h.o.rate)) { ma_context_uninit(&a.ctx); return 1; }
   rig_init((float)h.sr);
 #ifdef _WIN32
   calibrateCycles();
 #endif
   h.useRiff = h.o.riff; h.riff = makeRiff((float)h.sr); if (h.o.simLoop > 0) h.sim.assign(65536, 0.f);
-  const double nominalMs = 1000.0 * (a.dev.capture.internalPeriodSizeInFrames + (double)a.dev.playback.internalPeriodSizeInFrames * a.dev.playback.internalPeriods) / h.sr;
+  double nominalMs = nominalMsOf(h, a);
   printf("rig-host %s\n  audio:   %s%s, %d Hz, %u frames x %u buffers (%.2f ms of buffering)\n  input:   %s (%d ch)\n  output:  %s\n",
          RIG_HOST_VERSION, ma_get_backend_name(a.ctx.backend), a.ctx.backend == ma_backend_wasapi ? (a.exclusive ? " exclusive" : " shared") : "", h.sr,
          a.dev.playback.internalPeriodSizeInFrames, a.dev.playback.internalPeriods, nominalMs, a.inName.c_str(), h.inChannels, a.outName.c_str());
+  if (!a.note.empty()) printf("  note:    %s\n", a.note.c_str());
   if (ma_device_start(&a.dev) != MA_SUCCESS) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
   signal(SIGINT, onSignal); signal(SIGTERM, onSignal);
 
@@ -393,6 +451,7 @@ int main(int argc, char** argv) {
   std::vector<net::Client*> clients; std::deque<Cmd> backlog; int nextClient = 1; std::vector<int> ids;
   std::deque<Cmd> loads, held; int loadState = 0;            // files waiting; commands waiting for a load; 0 idle, 1 finding the module, 2 loading
   Loader loader; loader.start();
+  auto dropT = std::chrono::steady_clock::now(); int dropSeen = h.drops.load();
   auto sendTo = [&](int cid, const std::string& s) { for (size_t i = 0; i < clients.size(); i++) if (ids[i] == cid && clients[i]->ws) net::wsSend(*clients[i], s); };
   auto broadcast = [&](const std::string& s) { for (auto* c : clients) if (c->ws) net::wsSend(*c, s); };
   auto queue = [&](const Cmd& c) { if (loadState && c.kind == K_CMD && structural(c.line)) held.push_back(c); else backlog.push_back(c); };
@@ -469,6 +528,25 @@ int main(int argc, char** argv) {
       if (r->changed & 2) { const std::string s = std::string("{\"type\":\"chain\",\"raw\":") + r->chain + "}"; if (snap) sendTo(r->client, s); else broadcast(s); }
       h.repq.release();
     }
+    // Dropouts: counted on the audio thread. Three or more in two seconds and the buffer doubles (up to
+    // 512 frames), unless --frames fixed it; the console and the page say so either way.
+    if (std::chrono::steady_clock::now() - dropT > std::chrono::seconds(2)) {
+      dropT = std::chrono::steady_clock::now(); const int d = h.drops.load(); const int recent = d - dropSeen; dropSeen = d;
+      const int from = (int)a.dev.playback.internalPeriodSizeInFrames;   // what the device gave (it can round the request up)
+      const bool canRaise = !h.o.framesSet && std::max(h.o.frames, from) < 512 && (a.ctx.backend != ma_backend_null || h.o.simStall > 0);
+      if (recent >= 3 && canRaise) {
+        ma_device_uninit(&a.dev); a.open = false;
+        h.o.frames = std::min(512, std::max(h.o.frames, from) * 2);
+        if (!openDevice(h, a, h.o.frames, h.sr) || ma_device_start(&a.dev) != MA_SUCCESS) { fprintf(stderr, "couldn't reopen the audio device\n"); break; }
+        nominalMs = nominalMsOf(h, a); dropSeen = h.drops.load();
+        char rb[200]; snprintf(rb, sizeof rb, "dropouts at %d frames: buffer raised to %u (%.1f ms of buffering; --frames N fixes the size)", from, a.dev.playback.internalPeriodSizeInFrames, nominalMs);
+        const std::string raised = rb;
+        a.note = a.note.empty() ? raised : raised + "; " + a.note;
+        printf("  %s\n", raised.c_str()); fflush(stdout); broadcast(hostInfo(h, a));
+      } else if (recent > 0 && (a.ctx.backend != ma_backend_null || h.o.simStall > 0)) {   // (the null device's own timer is too coarse to judge)
+        printf("  dropouts: %d in the last 2 s (%d in all)%s\n", recent, d, h.o.framesSet ? "; try a larger --frames" : ""); fflush(stdout); broadcast(hostInfo(h, a));
+      }
+    }
     static Meter newest; bool haveMeter = false;              // only the newest meter packet goes out
     while (Meter* m = h.metq.front()) { newest = *m; haveMeter = true; h.metq.release(); }
     const Meter* last = haveMeter ? &newest : nullptr;
@@ -481,7 +559,8 @@ int main(int argc, char** argv) {
   }
   printf("stopping\n");
   loader.quit();
-  ma_device_uninit(&a.dev); ma_context_uninit(&a.ctx);
+  if (a.open) ma_device_uninit(&a.dev);
+  ma_context_uninit(&a.ctx);
   for (auto* c : clients) { sockClose(c->s); delete c; }
   sockClose(ls);
   return 0;

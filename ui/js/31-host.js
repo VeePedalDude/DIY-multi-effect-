@@ -20,7 +20,10 @@ const hostPort = {
   },
 };
 function hostMsg(d) {
-  if (d.type === 'host') { host.info = d; hostReadout(); return; }
+  if (d.type === 'host') {
+    if (d.note && (!host.info || host.info.note !== d.note)) logLine('rig-host: ' + d.note, true);   // dropouts, or devices that don't match
+    host.info = d; hostReadout(); return;
+  }
   if (d.type === 'latency') { host.latency = d; hostReadout(); logLine(d.ok ? `round trip measured: ${d.ms.toFixed(2)} ms (${d.samples} samples at ${d.rate} Hz; runs ${d.runs.join(', ')})` : 'round trip: ' + d.note, !d.ok); $('latTest').disabled = false; return; }
   if (d.type === 'describe') { onEngineMsg({ type: 'describe', desc: d.raw }); if (!host.up) hostReady(); return; }
   if (d.type === 'rack') { onEngineMsg({ type: 'rack', rack: d.raw.sources }); return; }
@@ -60,7 +63,7 @@ function hostReadout() {
   const i = host.info; if (!i) return;
   const L = host.latency && host.latency.ok ? host.latency : null;
   $('rateLat').textContent = `${(i.rate / 1000).toFixed(1)} kHz · ${L ? L.ms.toFixed(1) + ' ms measured' : i.nominalMs.toFixed(1) + ' ms buffers'}`;
-  $('hostInfo').textContent = `rig-host: ${i.backend}${i.backend === 'WASAPI' ? (i.exclusive ? ' exclusive' : ' shared') : ''} · ${i.rate} Hz · ${i.frames} frames × ${i.periods} buffers (${i.nominalMs.toFixed(2)} ms of buffering) · in: ${i.in} · out: ${i.out}`;
+  $('hostInfo').textContent = `rig-host: ${i.backend}${i.backend === 'WASAPI' ? (i.exclusive ? ' exclusive' : ' shared') : ''} · ${i.rate} Hz · ${i.frames} frames × ${i.periods} buffers (${i.nominalMs.toFixed(2)} ms of buffering) · in: ${i.in} · out: ${i.out}${i.drops ? ` · ${i.drops} dropouts` : ''}${i.note ? ` · ${i.note}` : ''}`;
   $('latNote').textContent = L ? `Round trip measured through the interface: ${L.ms.toFixed(2)} ms (${L.samples} samples; buffers alone are ${i.nominalMs.toFixed(2)} ms, the rest is the converters and the driver).`
     : 'Round trip: connect an output to the input with a cable (a short guitar cable from Output 1 to Input 1, gain low), then Measure. Unplug it before playing.';
 }

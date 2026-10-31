@@ -42,6 +42,8 @@ const DEFAULT_SKIN = {
   sources: { lfo: '#4FE3F0', env: '#FFB547', adsr: '#FF5FA2', orbit: '#A78BFA', heart: '#FF7A6B', ctrl: '#9BE15D', geo: '#2EF2A0', seq: '#F7E35A' },
   sourceFallback: ['#7DD3FC', '#F9A8D4', '#FDE68A', '#86EFAC', '#C4B5FD', '#FCA5A5'],
   labels: { bg: 'rgba(12,9,22,.88)', text: '#A9B3C9' },
+  // the Visualizer view (V): a ring per modulation source in its own colour, over a veil on the background
+  viz: { bg: 'rgba(6,4,14,.62)', track: '#121A2C', grid: '#1A2338', text: '#94A3BD', bright: '#E6ECF5', core: '#4FE3F0' },
   // the strobe tuner: a card turned sideways (`tile` names one of `tiles`), and the face-down mini card that opens it
   tuner: { tile: 'teal', glass: '#070A14', stripe: '#4FE3F0', inTune: '#9BE15D', flat: '#FFB547', sharp: '#FF5FA2', text: '#94A3BD', bright: '#E6ECF5',
     back: '#151030', backLine: '#7B5BD6', backMark: '#4FE3F0' },
@@ -58,6 +60,7 @@ const CLASSIC_SKIN = {
   tiles: { console: { image: null, accent: '#4FE3F0', rim: '#1F2A40', glow: '#4FE3F0' } },
   tileOrder: ['console'], modules: {},
   labels: { bg: 'rgba(10,14,23,.88)', text: '#94A3BD' },
+  viz: { bg: 'rgba(5,7,12,.94)', track: '#0F1524' },
   tuner: { tile: 'console', back: '#0C1220', backLine: '#2A3550', backMark: '#4FE3F0' },
 };
 

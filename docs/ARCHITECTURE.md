@@ -36,6 +36,7 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `ui/js/24-chain.js` | the chain from the page's side: add, remove, duplicate, move, keeping in step with the engine's slots | the engine's description |
 | `ui/js/46-eq-plot.js` | the equalisers' face screens: their analog responses (as in `engine/core/eq.h`) and the log-frequency plot | the skin's `screen` colours |
 | `ui/js/47-va-plot.js` | the synth filters' face screens: complex arithmetic for their analog responses (as in `engine/modules/synth/`), the live cutoff and ENV level | the skin's `screen` colours |
+| `ui/js/59-viz.js` | the Visualizer view (V): the 3D stage gives way to a ring per modulation source in the rack, each tracing its last ~8 s, with links for cross-modulation; the stage isn't drawn meanwhile | the rack, the meters, the skin's `viz` section |
 | `ui/js/49-picker.js` | the add panels' picker: a tab per category from the engine's description, a list per tab, search across all | the engine's description |
 | `ui/js/22-rack.js` | the rack from the page's side: add, remove, duplicate, keeping in step with the engine's slots | the engine's description |
 | `ui/js/51-source-panel.js` | the side panel for a modulation source (knobs, what moves each of them, live trace, what it moves) and the "+ Add a source" panel | the engine's description |

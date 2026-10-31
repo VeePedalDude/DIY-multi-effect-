@@ -41,7 +41,8 @@ static std::vector<AsioDriverInfo> asioDrivers() {
 // than the WASAPI path, so they're used only when asked for by name.
 static bool asioGeneric(const std::string& name) {
   const std::string n = lower(name);
-  for (const char* g : {"asio4all", "flexasio", "generic low latency", "realtek", "wineasio", "koordasio", "asio2wasapi"}) if (n.find(g) != std::string::npos) return true;
+  for (const char* g : {"asio4all", "flexasio", "generic low latency", "generic lower latency", "realtek", "wineasio", "koordasio", "asio2wasapi",
+                        "fl studio", "voicemeeter", "rearoute", "jackrouter", "asio link", "magix", "bandlab", "ableton"}) if (n.find(g) != std::string::npos) return true;
   return false;
 }
 
@@ -120,6 +121,17 @@ static long asioMessage(long selector, long value, void*, double*) {
   }
 }
 
+// A hidden window of our own for init(): some drivers post messages to the window they're given, and
+// only a window on this thread gets them through the main loop's message pump (the console's window
+// belongs to another process).
+static HWND asioWindow() {
+  static HWND w = nullptr;
+  if (w) return w;
+  WNDCLASSA c{}; c.lpfnWndProc = DefWindowProcA; c.hInstance = GetModuleHandleA(nullptr); c.lpszClassName = "rig-host-asio";
+  RegisterClassA(&c);
+  w = CreateWindowExA(0, "rig-host-asio", "rig-host", 0, 0, 0, 0, 0, nullptr, nullptr, c.hInstance, nullptr);
+  return w ? w : GetDesktopWindow();
+}
 static void asioClose(Audio& a) {
   AsioState& s = g_asio;
   if (!s.drv) return;
@@ -133,7 +145,7 @@ static bool asioOpen(Host& h, Audio& a, int frames, int rate) {
   if (FAILED(CoCreateInstance(a.asioClsid, nullptr, CLSCTX_INPROC_SERVER, a.asioClsid, (void**)&s.drv)) || !s.drv) {
     fprintf(stderr, "ASIO: couldn't load the %s driver\n", a.asioName.c_str()); s.drv = nullptr; return false;
   }
-  HWND wnd = GetConsoleWindow(); if (!wnd) wnd = GetDesktopWindow();
+  HWND wnd = asioWindow();
   char err[128] = {0};
   if (!s.drv->init(wnd)) { s.drv->getErrorMessage(err); fprintf(stderr, "ASIO: %s won't start (%s). Is another program using it?\n", a.asioName.c_str(), err); s.drv->Release(); s.drv = nullptr; return false; }
   auto fail = [&](const char* what) { fprintf(stderr, "ASIO: %s: %s\n", a.asioName.c_str(), what); s.drv->disposeBuffers(); s.drv->Release(); s.drv = nullptr; return false; };

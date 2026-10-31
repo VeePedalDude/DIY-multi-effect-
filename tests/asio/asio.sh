@@ -28,4 +28,10 @@ out=$(RIGTEST_ASIO_FORMAT=int32 timeout 60 wine dist/rig-host.exe --asio "rig te
 if grep -q '"samples":437' <<<"$out" && grep -q '64 frames' <<<"$out"; then echo "  [PASS] --frames 64 asks the driver for 64"; else echo "  [FAIL] --frames 64:"; echo "$out" | sed 's/^/        /'; fail=1; fi
 out=$(timeout 60 wine dist/rig-host.exe --backend wasapi --latency-test 2>&1 | tr -d '\r' || true)
 if grep -q 'audio:   ASIO' <<<"$out"; then echo "  [FAIL] --backend wasapi still opened ASIO"; fail=1; else echo "  [PASS] --backend wasapi leaves ASIO alone"; fi
+out=$(RIGTEST_ASIO_SILENT=1 timeout 60 wine dist/rig-host.exe --asio "rig test" --latency-test 2>&1 | tr -d '\r' || true)
+if grep -q "isn't passing audio, so using Windows' own audio path" <<<"$out"; then echo "  [PASS] a driver that never calls back: the host says so and moves to WASAPI"; else echo "  [FAIL] silent driver:"; echo "$out" | sed 's/^/        /'; fail=1; fi
+out=$(timeout 60 wine dist/rig-host.exe --latency-test 2>&1 | tr -d '\r' || true)
+if grep -q 'audio:   ASIO' <<<"$out"; then echo "  [FAIL] picked RIG Test ASIO without being asked (it isn't an interface's own driver)"; fail=1
+elif grep -q 'RIG Test ASIO installed, but not an interface' <<<"$out"; then echo "  [PASS] a driver that names no interface (like FL Studio ASIO) isn't picked by default, and the console says why"
+else echo "  [FAIL] default choice:"; echo "$out" | sed 's/^/        /'; fail=1; fi
 exit $fail

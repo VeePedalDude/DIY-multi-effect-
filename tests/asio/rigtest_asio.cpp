@@ -8,6 +8,7 @@
 //   RIGTEST_ASIO_LOOP    loopback delay in samples (default 437; at least the buffer size)
 //   RIGTEST_ASIO_FORMAT  int32 (default, as Focusrite's driver) | int24 | int16 | float
 //   RIGTEST_ASIO_RATE    sample rate (default 48000)
+//   RIGTEST_ASIO_SILENT  1: starts, but never calls back (as a wrapper driver routed elsewhere can)
 #include <windows.h>
 #include <objbase.h>
 #include <unknwn.h>
@@ -99,6 +100,7 @@ class RigTestAsio : public IASIO {
   ASIOError start() override {
     if (!cb || !frames) return ASE_NotPresent;
     if (run) return ASE_OK;
+    if (envInt("RIGTEST_ASIO_SILENT", 0)) return ASE_OK;
     run = true; th = std::thread([this] { thread(); }); return ASE_OK;
   }
   ASIOError stop() override { if (run) { run = false; if (th.joinable()) th.join(); } return ASE_OK; }

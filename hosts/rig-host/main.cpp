@@ -122,6 +122,7 @@ struct Host {
   int inChannels = 2, outChannels = 2, sr = 48000;
   double bufS = 0;                                           // the output's whole buffer (s); set while the device is stopped
   std::chrono::steady_clock::time_point lastCb{}; int settle = 0; long long lastStall = 0;
+  std::atomic<long long> calls{0};                           // audio callbacks so far: is the device calling at all?
   std::atomic<int> drops{0};                                 // callbacks that came later than the whole output buffer: heard as a dropout
   std::vector<float> riff; size_t riffPos = 0;
   float inPk = 0, outPk = 0, worstMs = 0, worstCpuMs = 0; double busyS = 0, wallS = 0, load = 0; long long frames = 0, lastMeter = 0, lastCollect = 0;
@@ -195,6 +196,7 @@ static double threadCpuMs() {
 // null), `out` h.outChannels interleaved.
 static void runBlock(Host& h, const float* in, float* out, ma_uint32 frameCount) {
   RIG_FTZ();
+  h.calls.fetch_add(1, std::memory_order_relaxed);
   const auto t0 = std::chrono::steady_clock::now(); const double c0 = threadCpuMs();
   // A dropout: this callback came later than the whole output buffer lasts, so the interface ran dry.
   if (h.settle > 0) h.settle--;
@@ -286,6 +288,7 @@ struct Audio {
   std::string backend; int frames = 0, periods = 2, capFrames = 0, capPeriods = 1, maxFrames = 512; double nominalMs = 0;
   bool judge = true;                                         // dropouts are worth counting (not on the null device's coarse timer)
   bool asio = false; std::string asioName;
+  std::vector<std::string> hw;                               // the hardware behind every input and output Windows lists (for matching an ASIO driver)
 #ifdef _WIN32
   CLSID asioClsid{};
 #endif
@@ -348,6 +351,8 @@ static bool openContext(Host& h, Audio& a) {
     }
   }
   a.hasIn = hasIn; a.hasOut = hasOut; if (hasIn) a.inId = ins[iIn].id; if (hasOut) a.outId = outs[iOut].id;
+  for (ma_uint32 i = 0; i < nIn; i++) a.hw.push_back(hardware(ins[i].name));
+  for (ma_uint32 i = 0; i < nOut; i++) a.hw.push_back(hardware(outs[i].name));
   return true;
 }
 // Open (or reopen) the device: `frames` per buffer, `rate` 0 for the interface's own.
@@ -418,13 +423,31 @@ static void audioClose(Audio& a) {
 // ASIO or not. --asio NAME picks a driver; otherwise the first installed driver that drives an
 // interface itself (Focusrite USB ASIO, ...), not one that wraps Windows' own audio (ASIO4ALL,
 // FlexASIO): those are no better than the WASAPI path. --backend wasapi turns ASIO off.
+// Is this ASIO driver an interface's own? Its name shares a word with a device Windows lists:
+// "Focusrite USB ASIO" and "Speakers (Focusrite USB Audio)". FL Studio ASIO, ASIO4ALL, FlexASIO,
+// Voicemeeter and the like name no hardware, so they never match: they wrap Windows' own audio (or a
+// virtual mixer) and are no better than the WASAPI path, and their own panel decides where the sound
+// goes, which is how "FL Studio ASIO" ran silent.
+static bool asioOwnDriver(const std::string& driver, const std::vector<std::string>& hw) {
+  if (asioGeneric(driver)) return false;
+  static const char* skip[] = {"usb", "audio", "asio", "driver", "device", "high", "definition", "digital", "output", "input", "speakers",
+                               "microphone", "line", "interface", "sound", "card", "series", "low", "latency", "generic", "virtual"};
+  std::string w; const std::string d = lower(driver) + " ";
+  for (char c : d) {
+    if (isalnum((unsigned char)c)) { w += c; continue; }
+    bool skipped = w.size() < 3; for (const char* s : skip) if (w == s) skipped = true;
+    if (!skipped) for (const auto& x : hw) if (x.find(w) != std::string::npos) return true;
+    w.clear();
+  }
+  return false;
+}
 static void chooseAsio(Host& h, Audio& a, bool list) {
   const bool wantAsio = h.o.backend.empty() || h.o.backend == "asio";
   if (!wantAsio && h.o.asio.empty() && !list) return;
   const auto d = asioDrivers();
   if (list) {
     printf("\nASIO drivers:\n");
-    for (size_t i = 0; i < d.size(); i++) printf("  %2u  %s%s\n", (unsigned)i, d[i].name.c_str(), asioGeneric(d[i].name) ? "  (wraps Windows' audio: used only by name)" : "");
+    for (size_t i = 0; i < d.size(); i++) printf("  %2u  %s%s\n", (unsigned)i, d[i].name.c_str(), asioOwnDriver(d[i].name, a.hw) ? "  (your interface's own: used by default)" : "  (not an interface's own driver: used only by name)");
     if (d.empty()) printf("  (none installed: your interface maker's driver adds one)\n");
     printf("\nASIO is used when the interface has its own driver; --asio NAME picks one, --backend wasapi turns it off\n");
     return;
@@ -437,9 +460,13 @@ static void chooseAsio(Host& h, Audio& a, bool list) {
     if (k < 0) fprintf(stderr, "no ASIO driver matches \"%s\" (--list shows them)\n", h.o.asio.c_str());
   } else if (wantAsio) {
     for (const std::string& w : {h.o.in, h.o.out})
-      for (size_t i = 0; i < d.size() && k < 0 && !w.empty(); i++) if (!asioGeneric(d[i].name) && lower(d[i].name).find(lower(w)) != std::string::npos) k = (int)i;
-    for (size_t i = 0; i < d.size() && k < 0; i++) if (!asioGeneric(d[i].name)) k = (int)i;
+      for (size_t i = 0; i < d.size() && k < 0 && !w.empty(); i++) if (asioOwnDriver(d[i].name, a.hw) && lower(d[i].name).find(lower(w)) != std::string::npos) k = (int)i;
+    for (size_t i = 0; i < d.size() && k < 0; i++) if (asioOwnDriver(d[i].name, a.hw)) k = (int)i;
     if (k < 0 && h.o.backend == "asio" && !d.empty()) k = 0;
+    if (k < 0 && !d.empty()) {
+      std::string names; for (const auto& x : d) names += (names.empty() ? "" : ", ") + x.name;
+      printf("  (ASIO: %s installed, but not an interface's own driver, so not used; install your interface's driver, or --asio NAME)\n", names.c_str());
+    }
   }
   if (k >= 0) { a.asio = true; a.asioName = d[(size_t)k].name; a.asioClsid = d[(size_t)k].clsid; }
 }
@@ -495,11 +522,30 @@ int main(int argc, char** argv) {
   calibrateCycles();
 #endif
   h.useRiff = h.o.riff; h.riff = makeRiff((float)h.sr); if (h.o.simLoop > 0) h.sim.assign(65536, 0.f);
-  printf("rig-host %s\n  audio:   %s%s, %d Hz, %d frames x %d buffers (%.2f ms %s)\n  input:   %s (%d ch)\n  output:  %s\n",
-         RIG_HOST_VERSION, a.backend.c_str(), a.backend == "WASAPI" ? (a.exclusive ? " exclusive" : " shared") : "", h.sr,
-         a.frames, a.periods, a.nominalMs, a.asio ? "in + out, as the driver reports it" : "of buffering", a.inName.c_str(), h.inChannels, a.outName.c_str());
-  if (!a.note.empty()) printf("  note:    %s\n", a.note.c_str());
-  if (!audioStart(a)) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
+  auto describe = [&] {
+    printf("  audio:   %s%s, %d Hz, %d frames x %d buffers (%.2f ms %s)\n  input:   %s (%d ch)\n  output:  %s\n",
+           a.backend.c_str(), a.backend == "WASAPI" ? (a.exclusive ? " exclusive" : " shared") : "", h.sr,
+           a.frames, a.periods, a.nominalMs, a.asio ? "in + out, as the driver reports it" : "of buffering", a.inName.c_str(), h.inChannels, a.outName.c_str());
+    if (!a.note.empty()) printf("  note:    %s\n", a.note.c_str());
+    fflush(stdout);
+  };
+  printf("rig-host %s\n", RIG_HOST_VERSION); describe();
+  if (!audioStart(a)) {
+    if (!a.asio) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
+    fprintf(stderr, "  ASIO: %s wouldn't start\n", a.asioName.c_str());
+  }
+  // A driver that opens and starts but never calls back plays nothing (a wrapper driver routed
+  // elsewhere, or one held by another program): give it 2 s, then use Windows' own path instead.
+  for (int i = 0; i < 40 && a.asio && a.running && h.calls.load() == 0; i++) std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  if (a.asio && (!a.running || h.calls.load() == 0)) {
+    printf("  ASIO: %s isn't passing audio, so using Windows' own audio path instead (--backend wasapi skips ASIO)\n", a.asioName.c_str());
+    audioClose(a); a.asio = false; const int sr0 = h.sr;
+    if (!openDevice(h, a, h.o.framesSet ? h.o.frames : 64, h.o.rate)) { ma_context_uninit(&a.ctx); return 1; }
+    h.o.frames = h.o.framesSet ? h.o.frames : 64;
+    if (h.sr != sr0) { rig_init((float)h.sr); h.riff = makeRiff((float)h.sr); }
+    describe();
+    if (!audioStart(a)) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
+  }
   signal(SIGINT, onSignal); signal(SIGTERM, onSignal);
 
   if (h.o.latencyTest) {                                       // measure, print, exit

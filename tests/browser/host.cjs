@@ -66,14 +66,33 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   const [lo, hi] = await spread(`window.__rig.eff('holo', 'halo')`, 2500);
   check(await V(`window.__rig.state.conns['holo.halo']`) && hi - lo > 0.05, `a patched source moves a knob in the engine: HOLOGRAM halo ${lo.toFixed(2)}..${hi.toFixed(2)}`);
 
-  console.log('3. Files load over the socket: a NAM capture into the amp, an IR into the cab');
+  console.log('3. Files load over the socket, on the host\'s loader thread: the audio never waits for them');
   const nam = fs.readFileSync(path.join(root, 'tests/models/A2.nam'));
+  // the slowest audio callback while it loads (the host reports it with each meter packet)
+  await page.evaluate(() => { window.__worst = 0; window.__rig.host.ws.addEventListener('message', (e) => { const d = JSON.parse(e.data); if (d.type === 'meters') { window.__cpu = d.worstCpuMs >= 0; window.__worst = Math.max(window.__worst, window.__cpu ? d.worstCpuMs : d.worstMs); } }); });
   const r1 = await page.evaluate(async (bytes) => {
     const got = new Promise((res) => { const old = window.__rig.host.ws.onmessage; window.__rig.host.ws.addEventListener('message', function h(e) { const d = JSON.parse(e.data); if (d.type === 'asset') { window.__rig.host.ws.removeEventListener('message', h); res(d); } }); });
     const data = new Uint8Array(bytes).buffer; window.__rig.node.port.postMessage({ type: 'asset', inst: 'amp', data, ref: 'nam/A2.nam' }, [data]);
     return got;
   }, [...nam]);
-  check(r1.status === 0 && /SlimmableContainer|WaveNet/.test(r1.note), `A2.nam (${(nam.length / 1024).toFixed(0)} KB): status ${r1.status}, “${r1.note}”`);
+  await sleep(400); const worst = await V('window.__worst'), cpu = await V('window.__cpu');
+  check(r1.status === 0 && /SlimmableContainer|WaveNet/.test(r1.note), `A2.nam (${(nam.length / 1024).toFixed(0)} KB): status ${r1.status}, “${r1.note}”, built in ${r1.ms} ms`);
+  // Judged on the audio thread's own CPU time (Linux: its CPU clock; Windows: its CPU cycles). The old way,
+  // building the model on the audio thread, cost it 25-30 ms. Where the host can't time its own CPU (Wine has
+  // no cycle counter), wall time is all there is, and a busy test machine adds pauses of 25 ms or more with
+  // nothing loading at all, so it's shown, not judged.
+  if (cpu) check(worst < 5, `while it loaded, the audio thread's busiest callback took ${worst.toFixed(2)} ms of its own CPU (rig-host 0.1 built the model there: ~25-30 ms)`);
+  else console.log(`  [INFO] while it loaded, the slowest callback took ${worst.toFixed(2)} ms of wall time (no CPU timer here, so not judged)`);
+  // a module added straight after a file waits for the load, then goes in, in order
+  const r3p = page.evaluate(async (bytes) => {
+    const got = new Promise((res) => { window.__rig.host.ws.addEventListener('message', function h3(e) { const d = JSON.parse(e.data); if (d.type === 'asset') { window.__rig.host.ws.removeEventListener('message', h3); res(d); } }); });
+    const data = new Uint8Array(bytes).buffer; window.__rig.node.port.postMessage({ type: 'asset', inst: 'amp', data, ref: 'nam/A2.nam' }, [data]);
+    window.__rig.chain.add('bax');
+    return got;
+  }, [...nam]);
+  const r3 = await r3p;
+  await page.waitForFunction(() => window.__rig.engineChain.some((m) => m.id === 'bax'), null, { timeout: 10000 }).catch(() => {});
+  check(r3.status === 0 && (await V(`window.__rig.engineChain.some((m) => m.id === 'bax')`)), 'a module added right after a file waits for the load, then joins the chain');
   const r2 = await page.evaluate(async () => {
     const n = 2048, out = new ArrayBuffer(16 + n * 4), h = new DataView(out); h.setInt32(0, 0x31524952, true); h.setInt32(4, 1, true); h.setInt32(8, n, true); h.setFloat32(12, 48000, true);
     const f = new Float32Array(out, 16, n); for (let i = 0; i < n; i++) f[i] = Math.exp(-i / 300) * Math.sin(i * 0.3);

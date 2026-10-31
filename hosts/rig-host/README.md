@@ -67,13 +67,22 @@ browser page ──WebSocket──▶ rig-host ──▶ engine (engine/api/rig_
 - **Commands:** the same text protocol as the browser ([PROTOCOL.md](../../docs/PROTOCOL.md)), parsed
   by the engine itself (`rig_exec`), so the two can't drift apart. Two more for the host: `host_input
   riff|interface` and `latency_test`.
-- **Threads:** the audio thread is the only one that touches the engine. The network thread queues
-  commands and files (`spsc.h`, lock-free); the audio thread runs them between blocks, as the browser's
-  worklet does, and queues replies and meters back. Running the engine's add/remove calls on a second
-  thread instead is what the engine was designed for, but ThreadSanitizer finds races in it
-  (`tests/api/protocol.cpp` built with `-fsanitize=thread`), so that waits for the engine to be fixed.
-  Until then, adding a module or loading a capture runs between two audio blocks: a capture takes
-  about 0.1 s to load, so expect a short gap in the sound when you load one, as in the browser.
+- **Threads** (the way the NAM plugin and ToobAmp load models):
+  - *audio* runs the engine, and between blocks the queued commands (`spsc.h`, lock-free), as the
+    browser's worklet does. The engine's add/remove calls stay here: ThreadSanitizer finds races in them
+    beside `process()` on another thread (`tests/api/protocol.cpp` built with `-fsanitize=thread`).
+  - *loader* builds NAM captures and IRs. Parsing and building a model takes 10–100 ms, far longer than
+    an audio block, so it never happens on the audio thread: the loader builds it into the module's
+    `ModelSlot` (`engine/core/model_slot.h`) and the audio thread only picks up the finished model (a
+    short warm-up on your playing, then a 10 ms crossfade). While a file loads, commands that add,
+    remove or move modules wait their turn, so the module can't go away underneath it; knobs and
+    patches carry on. ThreadSanitizer finds no races on this path, or in the whole host driven by
+    `tests/browser/host.cjs`.
+  - *network* is the page's WebSocket; it queues work for the other two and sends their answers back.
+- **Loading a capture while you play:** before, the audio thread spent 24–32 ms building it, a dropout
+  at any buffer size. Now the audio thread's busiest block while captures load takes under 1 ms of its
+  own CPU on the test machine (the loader does the work beside it); the meters report the slowest
+  callback (`worstMs`, and `worstCpuMs` on Linux) so you can watch for spikes on your machine.
 
 ## Linux (the iMac)
 

@@ -9,10 +9,17 @@
 //          starting its own audio. ui/js/31-host.js is the page's side.
 //   engine: engine/api/rig_api.cpp, the same C API and text protocol (rig_exec) the browser uses.
 //
-// Threads: the audio callback is the only thread that touches the engine. The network thread queues
-// commands and files (spsc.h); the audio thread runs them between blocks, as the browser's worklet
-// does, and queues replies, meters and latency results back. (ThreadSanitizer finds the engine's
-// add/remove calls aren't yet safe to run beside process() on another thread: tests/api/protocol.cpp.)
+// Threads, the way the NAM plugin and ToobAmp load models:
+//   audio:   runs the engine, and between blocks the queued commands (spsc.h), as the browser's worklet
+//            does. (ThreadSanitizer finds the engine's add/remove calls aren't yet safe beside process()
+//            on another thread, so they stay here: tests/api/protocol.cpp.)
+//   loader:  NAM captures and IRs. Parsing and building a model takes 10-100 ms, far longer than one
+//            audio block, so it never happens on the audio thread: the loader builds it and stages it
+//            in the module's ModelSlot (engine/core/model_slot.h), and the audio thread only picks up the
+//            finished model (a short warm-up, then a 10 ms crossfade). ThreadSanitizer finds no races on
+//            this path. While a file loads, commands that add, remove or move modules wait, so the module
+//            being loaded can't go away underneath it; knobs and patches carry on.
+//   network: the page's WebSocket; queues work for the other two and sends their answers back.
 //
 // Round-trip latency test: with a cable from an output back to an input, the host clicks and times
 // how long the click takes to come back (5 runs, median). `--latency-test` runs it and prints the
@@ -33,6 +40,8 @@
 #include <chrono>
 #include <algorithm>
 #include <deque>
+#include <mutex>
+#include <condition_variable>
 #include <csignal>
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(__SSE__)
 #include <xmmintrin.h>
@@ -92,10 +101,10 @@ static bool parseOpts(int argc, char** argv, Opts& o) {
 }
 
 // ------------------------------------------------------------------ what passes between the threads
-enum { K_CMD, K_ASSET, K_CLEAR, K_SNAPSHOT };
+enum { K_CMD, K_ASSET, K_CLEAR, K_SNAPSHOT, K_FIND };
 struct Cmd { int client, id, kind; char line[1024]; char inst[64]; char ref[256]; unsigned char* data; int bytes; };
 struct Reply { int client, id, kind, status, changed, bytes, max, ms; char line[1024]; char note[512]; char inst[64]; char ref[256]; char rack[4096]; char chain[2048]; unsigned char* data; };
-struct Meter { double t; float inPk, outPk, load; float m[rig::M_LEN]; };
+struct Meter { double t; float inPk, outPk, load, worstMs, worstCpuMs; float m[rig::M_LEN]; };   // the slowest audio callback since the last packet: wall time, and its own CPU time (-1 where the host can't measure it)
 struct LatResult { int runs, ok; int samples[8]; };
 
 struct Host {
@@ -105,7 +114,7 @@ struct Host {
   // audio thread only
   int inChannels = 2, outChannels = 2, sr = 48000;
   std::vector<float> riff; size_t riffPos = 0;
-  float inPk = 0, outPk = 0; double busyS = 0, wallS = 0, load = 0; long long frames = 0, lastMeter = 0, lastCollect = 0;
+  float inPk = 0, outPk = 0, worstMs = 0, worstCpuMs = 0; double busyS = 0, wallS = 0, load = 0; long long frames = 0, lastMeter = 0, lastCollect = 0;
   std::vector<float> sim; long long simW = 0; unsigned noise = 1;
   // latency test (audio thread)
   int latState = 0, latRun = 0; long long latT = 0, latEmit = 0; float latNoise = 0; int latPeakAt = -1; float latPeak = 0; LatResult latRes{};
@@ -122,17 +131,7 @@ static void runJob(Cmd& c, Reply& r) {
   if (c.kind == K_CMD) {
     copyStr(rig_cmd_buf(), (size_t)rig_cmd_len(), c.line); r.status = rig_exec(); r.changed = rig_exec_changed();
   } else if (c.kind == K_SNAPSHOT) r.changed = 3;
-  else {
-    copyStr(rig_cmd_buf(), (size_t)rig_cmd_len(), c.inst); const int m = rig_find_module();
-    if (m < 0) r.status = -1;
-    else if (c.kind == K_CLEAR) { rig_asset_clear(m); copyStr(r.note, sizeof r.note, rig_asset_status(m)); }
-    else {
-      r.max = rig_asset_max(m);
-      if (!c.bytes || c.bytes > r.max) r.status = -207;
-      else { unsigned char* p = rig_asset_buf(m, c.bytes); if (!p) r.status = -207; else { memcpy(p, c.data, (size_t)c.bytes); r.status = rig_asset_commit(m, c.bytes); } }
-      copyStr(r.note, sizeof r.note, rig_asset_status(m));
-    }
-  }
+  else if (c.kind == K_FIND) { copyStr(rig_cmd_buf(), (size_t)rig_cmd_len(), c.inst); r.status = rig_find_module(); }   // which slot a file goes to (in order with the commands before it)
   if (r.changed & 1) copyStr(r.rack, sizeof r.rack, rig_rack()); else r.rack[0] = 0;
   if (r.changed & 2) copyStr(r.chain, sizeof r.chain, rig_chain()); else r.chain[0] = 0;
   r.ms = (int)std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -160,10 +159,32 @@ static float latencyStep(Host& h, float in) {
   return 0.f;
 }
 
+// The audio thread's own CPU time (ms): with wall time, it tells the code's cost from time spent waiting
+// for a core, which only a loaded or shared machine adds. Linux: the thread's CPU clock. Windows: its CPU
+// cycles (QueryThreadCycleTime), turned into ms with a rate measured at start-up (cyclesPerMs).
+#ifdef _WIN32
+static double g_cyclesPerMs = 0;
+static void calibrateCycles() {
+  LARGE_INTEGER f, a, b; ULONG64 c0, c1; QueryPerformanceFrequency(&f);
+  QueryPerformanceCounter(&a); QueryThreadCycleTime(GetCurrentThread(), &c0);
+  for (volatile double x = 0; ; x += 1.0) { QueryPerformanceCounter(&b); if ((b.QuadPart - a.QuadPart) * 1000.0 / f.QuadPart >= 30.0) break; }   // spin 30 ms
+  QueryThreadCycleTime(GetCurrentThread(), &c1);
+  const double ms = (b.QuadPart - a.QuadPart) * 1000.0 / f.QuadPart; g_cyclesPerMs = c1 > c0 ? (double)(c1 - c0) / ms : 0;
+}
+#endif
+static double threadCpuMs() {
+#if defined(__linux__)
+  timespec ts; clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts); return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6;
+#elif defined(_WIN32)
+  ULONG64 c; if (g_cyclesPerMs <= 0 || !QueryThreadCycleTime(GetCurrentThread(), &c)) return -1; return (double)c / g_cyclesPerMs;
+#else
+  return -1;
+#endif
+}
 static void onAudio(ma_device* dev, void* pOut, const void* pIn, ma_uint32 frameCount) {
   RIG_FTZ();
   Host& h = *(Host*)dev->pUserData;
-  const auto t0 = std::chrono::steady_clock::now();
+  const auto t0 = std::chrono::steady_clock::now(); const double c0 = threadCpuMs();
   for (int k = 0; k < 8; k++) {                                // queued commands and files, between blocks
     Cmd* c = h.cmdq.front(); if (!c) break;
     Reply* r = h.repq.claim(); if (!r) break;
@@ -198,17 +219,47 @@ static void onAudio(ma_device* dev, void* pOut, const void* pIn, ma_uint32 frame
   }
   if (h.frames - h.lastCollect >= 1536) { rig_collect(); h.lastCollect = h.frames; }     // free modules and sources that have faded out
   const double busy = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
-  h.busyS += busy; h.wallS += (double)frameCount / h.sr;
+  h.busyS += busy; h.wallS += (double)frameCount / h.sr; h.worstMs = std::max(h.worstMs, (float)(busy * 1000.0)); h.worstCpuMs = c0 < 0 ? -1.f : std::max(h.worstCpuMs, (float)(threadCpuMs() - c0));
   if (h.frames - h.lastMeter >= 1536) {                       // ~31 meter packets a second, like the browser's
     h.lastMeter = h.frames;
     if (h.wallS > 0.25) { h.load = h.busyS / h.wallS; h.busyS = 0; h.wallS = 0; }
     if (Meter* m = h.metq.claim()) {
-      m->t = (double)h.frames / h.sr; m->inPk = h.inPk; m->outPk = h.outPk; m->load = (float)h.load;
+      m->t = (double)h.frames / h.sr; m->inPk = h.inPk; m->outPk = h.outPk; m->load = (float)h.load; m->worstMs = h.worstMs; h.worstMs = 0; m->worstCpuMs = h.worstCpuMs; h.worstCpuMs = 0;
       memcpy(m->m, rig_meters(), sizeof m->m); h.metq.publish();
     }
     h.inPk = 0; h.outPk = 0;
   }
 }
+
+// ------------------------------------------------------------------ the loader thread (files)
+// One file at a time: build it into the module's slot while the audio keeps playing.
+struct Loader {
+  std::mutex mu; std::condition_variable cv; bool job = false, done = false, stop = false;
+  Cmd c{}; int slot = -1; int status = 0, max = 0, ms = 0; char note[512] = {0};
+  std::thread th;
+  void start() { th = std::thread([this] { run(); }); }
+  void run() {
+    std::unique_lock<std::mutex> lk(mu);
+    for (;;) {
+      cv.wait(lk, [this] { return job || stop; }); if (stop) return;
+      const Cmd w = c; const int m = slot; lk.unlock();
+      const auto t0 = std::chrono::steady_clock::now(); int st = 0, mx = 0; char nt[512] = {0};
+      if (w.kind == K_CLEAR) rig_asset_clear(m);
+      else {
+        mx = rig_asset_max(m);
+        if (!w.bytes || w.bytes > mx) st = -207;
+        else { unsigned char* p = rig_asset_buf(m, w.bytes); if (!p) st = -207; else { memcpy(p, w.data, (size_t)w.bytes); st = rig_asset_commit(m, w.bytes); } }
+      }
+      copyStr(nt, sizeof nt, rig_asset_status(m));
+      const int took = (int)std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+      lk.lock(); status = st; max = mx; ms = took; memcpy(note, nt, sizeof note); job = false; done = true;
+    }
+  }
+  void give(const Cmd& w, int m) { std::lock_guard<std::mutex> g(mu); c = w; slot = m; job = true; done = false; cv.notify_one(); }
+  bool take(int& st, int& mx, int& took, std::string& nt) { std::lock_guard<std::mutex> g(mu); if (!done) return false; done = false; st = status; mx = max; took = ms; nt = note; return true; }
+  void quit() { { std::lock_guard<std::mutex> g(mu); stop = true; } cv.notify_one(); if (th.joinable()) th.join(); }
+};
+static bool structural(const char* line) { return !strncmp(line, "fx_add", 6) || !strncmp(line, "fx_remove", 9) || !strncmp(line, "fx_move", 7); }
 
 // ------------------------------------------------------------------ devices
 struct Audio { ma_context ctx; ma_device dev; bool exclusive = false; std::string inName, outName; };
@@ -300,6 +351,9 @@ int main(int argc, char** argv) {
   Audio* audio = new Audio(); Audio& a = *audio;
   if (!openAudio(h, a)) return h.o.list ? 0 : 1;
   rig_init((float)h.sr);
+#ifdef _WIN32
+  calibrateCycles();
+#endif
   h.useRiff = h.o.riff; h.riff = makeRiff((float)h.sr); if (h.o.simLoop > 0) h.sim.assign(65536, 0.f);
   const double nominalMs = 1000.0 * (a.dev.capture.internalPeriodSizeInFrames + (double)a.dev.playback.internalPeriodSizeInFrames * a.dev.playback.internalPeriods) / h.sr;
   printf("rig-host %s\n  audio:   %s%s, %d Hz, %u frames x %u buffers (%.2f ms of buffering)\n  input:   %s (%d ch)\n  output:  %s\n",
@@ -337,10 +391,26 @@ int main(int argc, char** argv) {
 #endif
 
   std::vector<net::Client*> clients; std::deque<Cmd> backlog; int nextClient = 1; std::vector<int> ids;
+  std::deque<Cmd> loads, held; int loadState = 0;            // files waiting; commands waiting for a load; 0 idle, 1 finding the module, 2 loading
+  Loader loader; loader.start();
   auto sendTo = [&](int cid, const std::string& s) { for (size_t i = 0; i < clients.size(); i++) if (ids[i] == cid && clients[i]->ws) net::wsSend(*clients[i], s); };
   auto broadcast = [&](const std::string& s) { for (auto* c : clients) if (c->ws) net::wsSend(*c, s); };
-  auto queue = [&](const Cmd& c) { backlog.push_back(c); };
+  auto queue = [&](const Cmd& c) { if (loadState && c.kind == K_CMD && structural(c.line)) held.push_back(c); else backlog.push_back(c); };
+  auto assetReply = [&](const Cmd& L, int status, int max, int ms, const std::string& note) {
+    char b[256]; snprintf(b, sizeof b, ",\"status\":%d,\"bytes\":%d,\"max\":%d,\"ms\":%d}", status, L.bytes, max, ms);
+    const std::string ref = L.kind == K_ASSET ? "\"" + net::esc(L.ref) + "\"" : "null";
+    broadcast("{\"type\":\"asset\",\"id\":\"" + net::esc(L.inst) + "\",\"inst\":\"" + net::esc(L.inst) + "\",\"ref\":" + ref + ",\"note\":\"" + net::esc(note) + "\"" + b);
+  };
+  auto loadFinished = [&] {                                   // the file is in (or refused): the held commands go on
+    free(loads.front().data); loads.pop_front(); loadState = 0;
+    while (!held.empty()) { backlog.push_back(held.front()); held.pop_front(); }
+  };
   while (g_run) {
+    if (!loadState && !loads.empty()) {                       // next file: first ask the audio thread which slot it goes to
+      Cmd f{}; f.client = loads.front().client; f.kind = K_FIND; copyStr(f.inst, sizeof f.inst, loads.front().inst); backlog.push_back(f); loadState = 1;
+    }
+    { int st, mx, took; std::string nt;
+      if (loadState == 2 && loader.take(st, mx, took, nt)) { assetReply(loads.front(), st, mx, took, nt); loadFinished(); } }
     while (!backlog.empty()) { Cmd* c = h.cmdq.claim(); if (!c) break; *c = backlog.front(); backlog.pop_front(); h.cmdq.publish(); }
     fd_set rd; FD_ZERO(&rd); FD_SET(ls, &rd); sock_t mx = ls;
     for (auto* c : clients) { FD_SET(c->s, &rd); if (c->s > mx) mx = c->s; }
@@ -368,7 +438,7 @@ int main(int argc, char** argv) {
               if (!c.pend) return;
               Cmd j{}; j.client = cid; j.kind = K_ASSET; copyStr(j.inst, sizeof j.inst, c.pendInst.c_str()); copyStr(j.ref, sizeof j.ref, c.pendRef.c_str());
               j.bytes = (int)m.size(); j.data = (unsigned char*)malloc(m.size() ? m.size() : 1); if (m.size()) memcpy(j.data, m.data(), m.size());
-              c.pend = false; queue(j); return;
+              c.pend = false; loads.push_back(j); return;
             }
             const std::string type = net::field(m, "type");
             if (type == "cmd") {
@@ -382,7 +452,7 @@ int main(int argc, char** argv) {
               if (w == "latency_test") { h.latencyReq = true; net::wsSend(c, "{\"type\":\"resp\",\"id\":" + std::to_string(id) + ",\"line\":\"latency_test\",\"status\":0}"); return; }
               Cmd j{}; j.client = cid; j.id = id; j.kind = K_CMD; copyStr(j.line, sizeof j.line, line.c_str()); queue(j);
             } else if (type == "asset") { c.pend = true; c.pendInst = net::field(m, "inst"); c.pendRef = net::field(m, "ref"); }
-            else if (type == "asset_clear") { Cmd j{}; j.client = cid; j.kind = K_CLEAR; copyStr(j.inst, sizeof j.inst, net::field(m, "inst").c_str()); queue(j); }
+            else if (type == "asset_clear") { Cmd j{}; j.client = cid; j.kind = K_CLEAR; copyStr(j.inst, sizeof j.inst, net::field(m, "inst").c_str()); loads.push_back(j); }
           });
         }
         if (drop) { sockClose(c.s); delete clients[i]; clients.erase(clients.begin() + (long)i); ids.erase(ids.begin() + (long)i); i--; }
@@ -390,11 +460,9 @@ int main(int argc, char** argv) {
     }
     while (Reply* r = h.repq.front()) {                       // answers from the audio thread
       if (r->kind == K_CMD) sendTo(r->client, "{\"type\":\"resp\",\"id\":" + std::to_string(r->id) + ",\"line\":\"" + net::esc(r->line) + "\",\"status\":" + std::to_string(r->status) + "}");
-      else if (r->kind == K_ASSET || r->kind == K_CLEAR) {
-        char b[256]; snprintf(b, sizeof b, ",\"status\":%d,\"bytes\":%d,\"max\":%d,\"ms\":%d}", r->status, r->bytes, r->max, r->ms);
-        const std::string ref = r->kind == K_ASSET ? "\"" + net::esc(r->ref) + "\"" : "null";
-        broadcast("{\"type\":\"asset\",\"id\":\"" + net::esc(r->inst) + "\",\"inst\":\"" + net::esc(r->inst) + "\",\"ref\":" + ref + ",\"note\":\"" + net::esc(r->note) + "\"" + b);
-        free(r->data);
+      else if (r->kind == K_FIND && loadState == 1 && !loads.empty()) {   // the slot for the waiting file: build it on the loader thread
+        if (r->status < 0) { assetReply(loads.front(), -1, 0, 0, ""); loadFinished(); }
+        else { loader.give(loads.front(), r->status); loadState = 2; }
       }
       const bool snap = r->kind == K_SNAPSHOT;
       if (r->changed & 1) { const std::string s = std::string("{\"type\":\"rack\",\"raw\":") + r->rack + "}"; if (snap) sendTo(r->client, s); else broadcast(s); }
@@ -405,13 +473,14 @@ int main(int argc, char** argv) {
     while (Meter* m = h.metq.front()) { newest = *m; haveMeter = true; h.metq.release(); }
     const Meter* last = haveMeter ? &newest : nullptr;
     if (last) {
-      std::string s = "{\"type\":\"meters\",\"t\":" + std::to_string(last->t) + ",\"inPk\":" + std::to_string(last->inPk) + ",\"outPk\":" + std::to_string(last->outPk) + ",\"load\":" + std::to_string(last->load) + ",\"m\":[";
+      std::string s = "{\"type\":\"meters\",\"t\":" + std::to_string(last->t) + ",\"inPk\":" + std::to_string(last->inPk) + ",\"outPk\":" + std::to_string(last->outPk) + ",\"load\":" + std::to_string(last->load) + ",\"worstMs\":" + std::to_string(last->worstMs) + ",\"worstCpuMs\":" + std::to_string(last->worstCpuMs) + ",\"m\":[";
       char f[24]; for (int i = 0; i < rig::M_LEN; i++) { snprintf(f, sizeof f, i ? ",%.6g" : "%.6g", last->m[i]); s += f; }
       s += "]}"; broadcast(s);
     }
     if (LatResult* r = h.latq.front()) { const std::string s = latencyJson(*r, h.sr, nominalMs); printf("  latency: %s\n", s.c_str()); fflush(stdout); broadcast(s); h.latq.release(); }
   }
   printf("stopping\n");
+  loader.quit();
   ma_device_uninit(&a.dev); ma_context_uninit(&a.ctx);
   for (auto* c : clients) { sockClose(c->s); delete c; }
   sockClose(ls);

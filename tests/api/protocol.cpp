@@ -9,6 +9,7 @@
 #include <atomic>
 #include <vector>
 #include <string>
+#include <ctime>
 
 static int fails = 0;
 #define CHECK(cond, ...) do { bool _ok = (cond); printf("  [%s] ", _ok ? "PASS" : "FAIL"); printf(__VA_ARGS__); printf("\n"); if (!_ok) fails++; } while (0)
@@ -94,6 +95,47 @@ int main() {
   errs = run("param_set holo feedback 0.5");
   CHECK(nonFinite.load() == 0 && blocks.load() > 1000, "%d commands while %ld audio blocks played: every sample finite", sent, blocks.load());
   CHECK(errs == 0 && !strstr(rig_chain(), "\"t0\"") && !strstr(rig_rack(), "\"s0\""), "afterwards the chain and rack are back to what was left, and commands still work");
+  // ---------------------------------------------------------------- file loads, before and after
+  // A NAM capture loaded the way the browser (and rig-host 0.1) did it: parsed and built between two audio
+  // blocks, on the audio thread. Then the way the NAM plugin and ToobAmp do it, and rig-host does now:
+  // built on a loader thread while audio keeps running; the audio thread only picks up the finished
+  // model (ModelSlot: a silent warm-up, then a 10 ms crossfade). The number that matters is the most CPU
+  // time the audio thread spends on one 64-sample block (1.33 ms at 48 kHz): more than that is a dropout.
+  // (Thread CPU time, not wall time: a shared test machine pauses threads now and then, which says
+  // nothing about the code; on the rig the audio thread runs at real-time priority.)
+  printf("file loads: on the audio thread (before) and on a loader thread (now)\n");
+  std::vector<unsigned char> nam; { FILE* f = fopen("tests/models/A2.nam", "rb"); if (f) { int c; while ((c = fgetc(f)) != EOF) nam.push_back((unsigned char)c); fclose(f); } }
+  std::vector<unsigned char> ir(16 + 48000 * 4);                    // a 1 s mono IR (RIR1 header + floats)
+  { int32_t h[3] = {0x31524952, 1, 48000}; float sr = 48000; memcpy(ir.data(), h, 12); memcpy(ir.data() + 12, &sr, 4);
+    float* x = (float*)(ir.data() + 16); for (int i = 0; i < 48000; i++) x[i] = expf(-i / 4000.f) * sinf(i * 0.37f); }
+  snprintf(rig_cmd_buf(), rig_cmd_len(), "amp"); const int amp = rig_find_module();
+  snprintf(rig_cmd_buf(), rig_cmd_len(), "cab"); const int cab = rig_find_module();
+  auto load = [](int m, const std::vector<unsigned char>& b) { unsigned char* p = rig_asset_buf(m, (int)b.size()); if (!p) return -9; memcpy(p, b.data(), b.size()); return rig_asset_commit(m, (int)b.size()); };
+  auto block = [] { for (int i = 0; i < 64; i++) rig_in()[i] = 0.2f * sinf(i * 0.11f); rig_process(64); };
+  auto cpuMs = [] { timespec ts; clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts); return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6; };
+  // before: the load sits between two blocks, so the block that waits for it is late by the whole load
+  double worstBefore = 0; int okBefore = 0;
+  for (int k = 0; k < 4; k++) {
+    for (int b = 0; b < 200; b++) block();
+    const double t0 = cpuMs();
+    okBefore += load(k % 2 ? cab : amp, k % 2 ? ir : nam) == 0; block();
+    worstBefore = std::max(worstBefore, cpuMs() - t0);
+  }
+  // after: a loader thread builds while the audio thread keeps going; time every block
+  std::atomic<bool> loading{true}; std::atomic<int> okAfter{0}; double worstAfter = 0; long afterBlocks = 0; int nonFinite2 = 0;
+  std::thread loader([&] { for (int k = 0; k < 8; k++) { okAfter += load(k % 2 ? cab : amp, k % 2 ? ir : nam) == 0; std::this_thread::sleep_for(std::chrono::milliseconds(30)); } loading = false; });
+  while (loading.load() || afterBlocks < 2000) {
+    const double t0 = cpuMs(); block();
+    worstAfter = std::max(worstAfter, cpuMs() - t0);
+    for (int i = 0; i < 64; i++) nonFinite2 += !std::isfinite(rig_out_l()[i]);
+    afterBlocks++;
+  }
+  loader.join();
+  printf("      A2.nam (%zu KB) and a 1 s IR, 4 loads on the audio thread: the audio thread spent %.1f ms of CPU on the block that waited for it\n", nam.size() / 1024, worstBefore);
+  printf("      8 loads on a loader thread beside %ld audio blocks: the most CPU one block took was %.2f ms (a 64-sample block lasts 1.33 ms)\n", afterBlocks, worstAfter);
+  CHECK(okBefore == 4 && okAfter.load() == 8 && nonFinite2 == 0, "every load succeeded both ways (%d + %d), output finite", okBefore, okAfter.load());
+  CHECK(worstAfter < 5 && worstAfter < worstBefore / 5, "loading beside the audio no longer stalls it: %.2f ms worst block, from %.1f ms", worstAfter, worstBefore);
+  CHECK(strstr(rig_asset_status(amp), "SlimmableContainer") && strstr(rig_asset_status(cab), "1.00 s"), "the last loads are what play: \"%s\", \"%s\"", rig_asset_status(amp), rig_asset_status(cab));
   printf(fails ? "\n%d FAILED\n" : "\nALL PROTOCOL CHECKS PASSED\n", fails);
   return fails ? 1 : 0;
 }

@@ -1,0 +1,111 @@
+/*=============================================================================
+   Copyright (c) 2014-2026 Joel de Guzman. All rights reserved.
+
+   Distributed under the MIT License [ https://opensource.org/licenses/MIT ]
+=============================================================================*/
+#if !defined(CYCFI_Q_INTERPOLATION_PRIMITIVES_HPP_AUGUST_15_2026)
+#define CYCFI_Q_INTERPOLATION_PRIMITIVES_HPP_AUGUST_15_2026
+
+namespace cycfi::q
+{
+   ////////////////////////////////////////////////////////////////////////////
+   // The interpolation primitives: the arithmetic behind the
+   // sample_interpolation policies, without the buffer. `mu` runs from 0 at
+   // y1 to 1 at y2; the 4-point forms take y0 before and y3 after that pair.
+   //
+   // Includes nothing, so it can sit below the detail table lookups that use
+   // linear_interpolate. cosine_interpolate is in interpolation.hpp instead:
+   // it needs the sin table, which is built on those lookups.
+   ////////////////////////////////////////////////////////////////////////////
+
+   // First-order, 2-point. Constants and ramps are exact.
+   template <typename T>
+   constexpr T linear_interpolate(T y1, T y2, T mu)
+   {
+      return y1 + mu * (y2 - y1);
+   }
+
+   // Third-order Lagrange, 4-point. Passes through the samples, exact on
+   // cubics, first derivative discontinuous at the samples.
+   template <typename T>
+   constexpr T cubic_interpolate(T y0, T y1, T y2, T y3, T mu)
+   {
+      auto const c1 = y2 - y0/T(3) - y1/T(2) - y3/T(6);
+      auto const c2 = (y0 + y2)/T(2) - y1;
+      auto const c3 = (y3 - y0)/T(6) + (y1 - y2)/T(2);
+      return ((c3*mu + c2)*mu + c1)*mu + y1;
+   }
+
+   // Cubic Hermite, Catmull-Rom tangents, 4-point. Passes through the
+   // samples, exact on quadratics, C1 across segments.
+   template <typename T>
+   constexpr T hermite_interpolate(T y0, T y1, T y2, T y3, T mu)
+   {
+      auto const c1 = (y2 - y0) * T(0.5);
+      auto const c2 = y0 - T(2.5)*y1 + T(2)*y2 - T(0.5)*y3;
+      auto const c3 = (y3 - y0) * T(0.5) + (y1 - y2) * T(1.5);
+      return ((c3*mu + c2)*mu + c1)*mu + y1;
+   }
+
+   // Cubic B-spline, 4-point. A smoother: does not pass through the
+   // samples, buying C2 and the best HF rejection of the cubics.
+   template <typename T>
+   constexpr T bspline_interpolate(T y0, T y1, T y2, T y3, T mu)
+   {
+      auto const c0 = (y0 + T(4)*y1 + y2) / T(6);
+      auto const c1 = (y2 - y0) * T(0.5);
+      auto const c2 = (y0 - T(2)*y1 + y2) * T(0.5);
+      auto const c3 = (y3 - y0)/T(6) + (y1 - y2)*T(0.5);
+      return ((c3*mu + c2)*mu + c1)*mu + c0;
+   }
+
+   // Fifth-order Lagrange, 6-point: y0..y5 at -2..3, mu in [0, 1) between
+   // y2 and y3. Passes through the samples, exact on quintics. Costs
+   // roughly twice the 4-point reads and in return holds its accuracy
+   // down to about 5 samples per period, where the cubics lose a cent.
+   template <typename T>
+   constexpr T lagrange6_interpolate(
+      T y0, T y1, T y2, T y3, T y4, T y5, T mu)
+   {
+      auto const c1 = y0/T(20) - y1/T(2) - y2/T(3) + y3 - y4/T(4) + y5/T(30);
+      auto const c2 = (T(16)*(y1 + y3) - (y0 + y4))/T(24) - T(1.25)*y2;
+      auto const c3 = (T(10)*y2 - T(14)*y3 + T(7)*y4 - y0 - y1 - y5)/T(24);
+      auto const c4 = (y0 + y4)/T(24) - (y1 + y3)/T(6) + y2/T(4);
+      auto const c5 = (y1 - y4)/T(24) + (y3 - y2)/T(12) + (y5 - y0)/T(120);
+      return ((((c5*mu + c4)*mu + c3)*mu + c2)*mu + c1)*mu + y2;
+   }
+
+   // Given three samples straddling a discrete maximum, returns the vertex
+   // of the quadratic through them as an offset from y1, within [-0.5, 0.5].
+   //
+   // The fit assumes the shape is symmetric about its peak; if not, the bias
+   // belongs to the shape and cancels in a DIFFERENCE of two positions on
+   // the same feature. Returns 0 unless the samples bracket a maximum,
+   // rather than extrapolating off the end. For a minimum, negate.
+   template <typename T>
+   constexpr T peak_offset(T y0, T y1, T y2)
+   {
+      auto const d = y0 - (T(2) * y1) + y2;
+      return d < T(0) ? T(0.5) * (y0 - y2) / d : T(0);
+   }
+
+   // Given a point on a flank -- its value y and local slope dy, per
+   // sample -- returns the signed offset from that point to where its
+   // TANGENT crosses zero: x0 = x + zero_projection(y, dy).
+   //
+   // The projection reads nothing but the point, so a slow shoulder that
+   // drags the waveform's ACTUAL crossing away from a pulse never enters;
+   // and pure amplitude decay scales y and dy together, so the projection
+   // does not move as a note dies. Taken at a flank's steepest sample
+   // (found with peak_offset over the successive differences), this is a
+   // constant-fraction style timing fiducial: level-referenced like a
+   // zero crossing, noise-immune like a steep edge. Returns 0 when dy is
+   // 0, where there is no tangent to project along.
+   template <typename T>
+   constexpr T zero_projection(T y, T dy)
+   {
+      return dy != T(0) ? -y / dy : T(0);
+   }
+}
+
+#endif

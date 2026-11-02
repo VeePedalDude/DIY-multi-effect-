@@ -7,6 +7,7 @@ few WebAssembly differences are shims in `tools/wasm/`, and our own checks live 
 |---|---|---|---|
 | `NeuralAmpModelerCore/` | [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) by Steven Atkinson: plays every `.nam` architecture (WaveNet A1 and A2, LSTM, ConvNet, Linear, Sequential, SlimmableContainer), and its `nam::Linear` is a zero-latency partitioned FFT convolver we use for IRs | 0.6.0, commit `0b3d3c9` (2026-09-18); `NAM/` folder and `LICENSE` only | MIT (`NeuralAmpModelerCore/LICENSE`) |
 | `eigen/` | [Eigen](https://eigen.tuxfamily.org) linear algebra, used by NAM core: `Eigen/` and `unsupported/Eigen/FFT` only | 3.4.0 (Debian/Ubuntu `libeigen3-dev` 3.4.0-4) | MPL-2.0 (`eigen/COPYING.MPL2`, `eigen/COPYRIGHT`) |
+| `q/` | [Q audio DSP library](https://github.com/cycfi/q) by Joel de Guzman: its bit-stream autocorrelation pitch detector finds the note for the strobe tuner (`engine/core/tuner.h`). `q/` is `q_lib/include/q`; `infra/` is the small support library Q bundles (`infra_src/include/infra`) | v1.5.4, commit `efe2611` (2026-10-09) | MIT (`q/LICENSE`; infra's headers carry the same MIT notice) |
 | `nlohmann/` | [nlohmann/json](https://github.com/nlohmann/json), single header, used by NAM core to read `.nam` files | 3.12.0 (as bundled by NAM core) | MIT (SPDX header in `json.hpp`) |
 
 ## About the Eigen version

@@ -16,8 +16,8 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 
 | Folder | What lives there | Knows about |
 |---|---|---|
-| `engine/core/` | DSP building blocks (`dsp.h`), the `Module` and `Source` contracts, the NAM glue (`nam.h`: captures and IRs) and the click-free model swap (`model_slot.h`) | nothing project-specific; `nam.h` uses `third_party/` |
-| `third_party/` | NeuralAmpModelerCore (plays every `.nam`, convolves IRs), Eigen, nlohmann/json: vendored, never edited ([README](../third_party/README.md)) | nothing |
+| `engine/core/` | DSP building blocks (`dsp.h`), the `Module` and `Source` contracts, the NAM glue (`nam.h`: captures and IRs), the click-free model swap (`model_slot.h`) and the strobe tuner (`tuner.h`) | nothing project-specific; `nam.h` and `tuner.h` use `third_party/` |
+| `third_party/` | NeuralAmpModelerCore (plays every `.nam`, convolves IRs), Eigen, nlohmann/json, Q (the tuner's pitch detector): vendored, never edited ([README](../third_party/README.md)) | nothing |
 | `engine/modules/` | one effect per file + `registry.h` (chain order) | `core/` only |
 | `engine/sources/` | one modulation source per file + `registry.h` | `core/` only |
 | `engine/engine.h` | the chain: routing, modulation, bypass, master, limiter, meters, `describe()` | the two registries, never a specific effect |
@@ -27,6 +27,7 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `ui/screens/` | the small display on each module's face, and its card colour (`TILE.<id>`), one file per module id | its own module |
 | `ui/assets/` | images embedded into the page for the built-in skins: the hall background, the three card frames | nothing |
 | `ui/js/04-skin-core.js`, `57-skins.js` | skins: the default skin (also the schema), validation, `.rigskin` zips; applying a skin and the Skins menu ([SKINS.md](SKINS.md)) | the default skin |
+| `ui/js/58-tuner.js` | the strobe tuner: the face-down mini card in the top bar, the sideways card it opens, T to open and collapse | the engine's meter layout, the skin's `tuner` section |
 | `ui/js/51-source-panel.js` | the side panel for a modulation source: knobs, live trace, patches and depths | the engine's description |
 | `ui/js/52–56`, `72` | library storage backends, file helpers, library, file-slot UI, preset format ([LIBRARY.md](LIBRARY.md)) | the engine's description |
 | `tests/ui/` | Node unit tests for the library and preset format; `tests/fixtures/` holds the golden preset | `ui/js` pure files |

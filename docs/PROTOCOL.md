@@ -13,6 +13,8 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `master <-60..6>` | master gain in dB |
 | `src_set <source> <symbol> <0..1>` | set a modulation source's knob (`src_set lfo rate 0.25`) |
 | `ext <source> <value>` | feed an outside value to a source (`ext heart 72`, `ext ctrl -0.4`) |
+| `tuner <0\|1> [mute 0\|1]` | strobe tuner on the dry input; with mute (the default) the output fades out while it's on |
+| `tuner_ref <400..480>` | the tuner's A4 reference in Hz (default 440) |
 | `input_channel <0\|1>` | browser only: which interface input to use |
 | `asset_load <inst> <kind>/<file>` | load a library file into a module's slot (`asset_load cab ir/V30 SM57.wav`) |
 | `asset_clear <inst>` | back to the module's built-in (e.g. the built-in cab) |
@@ -53,6 +55,14 @@ Under the text protocol, hosts use the C API in `engine/api/rig_api.cpp`. For fi
 `p = rig_asset_buf(m, bytes)` reserves room (call it before taking a view of WebAssembly memory,
 since reserving can grow it), copy the payload to `p`, then `rig_asset_commit(m, bytes)`;
 `rig_asset_status(m)` returns the status line, `rig_asset_clear(m)` goes back to built-in.
+
+The tuner's readings are in the meter block at `meters.tun` (from the description; `tunLen` values,
+`tunBands` strobe bands), in this order: on, input level (dBFS), frequency (Hz), note (MIDI number,
+−1 for none), cents, target note's frequency, each band's phase (radians), each band's strength
+(0..1), A4, mute, detector confidence. The bands compare the string with the target at 1×, 2× and
+4× its pitch: each phase turns at harmonic × (string − target) Hz, forwards when sharp. C API:
+`rig_tuner(on, mute)`, `rig_tuner_ref(a4)`. Meter packets in the browser also carry `t`, the audio
+clock when they were made.
 
 When the real rig moves to mod-host, the control hub translates
 `mod_connect` into `cv_map` with min = knob − depth and max = knob + depth.

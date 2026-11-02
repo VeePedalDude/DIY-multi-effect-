@@ -7,6 +7,7 @@ const BUILTIN_SKINS = [
   { id: 'builtin:astral', json: DEFAULT_SKIN },
   { id: 'builtin:classic', json: CLASSIC_SKIN },
 ];
+rig.skinHooks = [];                              // features with their own drawing redraw after a skin goes on
 const skinState = { id: 'builtin:astral', json: DEFAULT_SKIN, files: null, urls: [], warnings: [], busy: false };
 const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* not remembered in this browser */ } };
@@ -82,6 +83,7 @@ async function applySkin(S, files) {
     try { await im.decode(); SKIN_IMG[n] = im; } catch (e) { logLine(`skin image ${n} couldn't be decoded`, true); }
   }));
   drawPill(inLbl); drawPill(outLbl); MODS.forEach(drawFace); SRC.forEach(drawLabel);
+  rig.skinHooks.forEach((f) => f());
   update();
 }
 

@@ -130,7 +130,7 @@ TEST("25 amp: levels (captures with loudness data are levelled to -18 dB, like t
   CHECK(true, "levels printed for reference");
 }
 
-TEST("26 amp+cab: the audio path never touches the heap, even while files load and swap") {
+TEST("26 amp+cab: the audio path never touches the heap, even while files load and swap (and the tuner runs)") {
 #if HEAP_COUNTING
   Engine* e = new Engine(); e->init(SR);
   int a = mod(*e, "amp"), c = mod(*e, "cab");
@@ -142,13 +142,15 @@ TEST("26 amp+cab: the audio path never touches the heap, even while files load a
     if (blk == 50) loadAsset(*e, c, ir);
     if (blk == 900) loadAsset(*e, a, lstm);
     if (blk == 1500) { e->mods[a]->assetClear(); e->mods[c]->assetClear(); }
+    if (blk == 200 || blk == 1300) e->tuner.on = true;      // the strobe tuner, switched on (a fresh start) twice
+    if (blk == 1200) e->tuner.on = false;
     memcpy(e->inBuf, &g[i], 512);
     g_heapCalls = 0; g_counting = true;
     e->process(128);                                        // audio-thread work: must not
     g_counting = false; during += g_heapCalls;
   }
   delete e;
-  CHECK(during == 0, "heap calls inside process() over %.0f s with 5 loads and swaps: %ld", g.size() / SR, during);
+  CHECK(during == 0, "heap calls inside process() over %.0f s with 5 loads and swaps, tuner on and off: %ld", g.size() / SR, during);
 #else
   CHECK(true, "heap counting needs glibc; skipped on this platform");
 #endif

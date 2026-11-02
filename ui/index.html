@@ -136,6 +136,21 @@ body.panel-hidden .ptoggle{right:16px}
 body.panel-hidden .matrix{right:16px}
 @media (prefers-reduced-motion: reduce){.panel{transition:none}}
 .btn.mini{min-height:30px;padding:0 10px;font-size:11px}
+/* the strobe tuner: a face-down mini card in the top bar, and the card turned sideways it flips into */
+.tunerMini{width:64px;height:44px;padding:0;border:0;border-radius:7px;background:transparent;transition:transform .15s}
+.tunerMini canvas{width:64px;height:44px;display:block}
+.tunerMini:hover{transform:translateY(-2px)}
+.tunerMini[aria-expanded="true"]{opacity:.55}
+.tuner{top:calc(var(--topH) + 14px);left:50%;transform:translateX(-50%);width:min(560px,calc(100vw - 32px));z-index:6;perspective:1400px}
+.tuner .tcard{position:relative;filter:drop-shadow(0 18px 40px var(--overlay))}
+.tuner canvas{width:100%;height:auto;display:block}
+.tuner.flip .tcard{animation:tunerFlip .38s cubic-bezier(.2,.8,.3,1)}
+@keyframes tunerFlip{from{transform:translateY(-38%) rotateX(-100deg) scale(.25);opacity:.3}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.tuner.flip .tcard{animation:none}}
+.tunctl{position:absolute;left:15%;right:15%;top:81.5%;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
+.tunref{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 4px}
+.tunref .btn.icon{width:26px;min-height:26px;border:0;background:transparent}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .linkbtn{background:none;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px}
 .linkbtn:hover{text-decoration-color:var(--accent)}
 .depth{flex-direction:row!important;align-items:center;gap:10px!important}
@@ -173,6 +188,7 @@ body.panel-hidden .matrix{right:16px}
     <button id="vMatrix" aria-pressed="false">Mod Matrix</button>
   </div>
   <button class="btn" id="overview">Overview</button>
+  <button class="tunerMini" id="tunerBtn" aria-label="Tuner (T)" title="Tuner (T)" aria-expanded="false" aria-controls="tuner"><canvas id="tunerMini" width="128" height="88" aria-hidden="true"></canvas></button>
   <span class="spacer"></span>
   <div class="readouts">
     <span><span id="statusDot"></span> <span id="engineState">engine off</span></span>
@@ -188,6 +204,18 @@ body.panel-hidden .matrix{right:16px}
 <aside class="hud panel" id="panel" aria-live="polite"></aside>
 <button class="hud ptoggle" id="panelToggle" aria-controls="panel" aria-expanded="true"></button>
 <div id="dropHint" hidden></div>
+<section class="hud tuner" id="tuner" hidden aria-label="Strobe tuner">
+  <div class="tcard">
+    <canvas id="tunerCard" width="1508" height="1036" role="img" aria-label="Strobe tuner"></canvas>
+    <div class="tunctl">
+      <button class="btn mini" id="tunerHide" title="Fold back into the mini card; it keeps showing the note (T)">Collapse</button>
+      <button class="btn mini" id="tunerMute" aria-pressed="true" title="Silence the output while the tuner is open">Muted</button>
+      <span class="tunref"><button class="btn mini icon" id="tunerRefDn" aria-label="Reference pitch down 1 Hz">−</button><span id="tunerRef" class="mono">A4 440</span><button class="btn mini icon" id="tunerRefUp" aria-label="Reference pitch up 1 Hz">+</button></span>
+      <button class="btn mini" id="tunerOff" title="Stop the tuner">Off</button>
+    </div>
+  </div>
+  <span class="sr-only" id="tunerRead" aria-live="polite"></span>
+</section>
 <section class="hud matrix" id="matrix" hidden aria-label="Modulation matrix"></section>
 
 <aside class="hud drawer" id="drawer" hidden aria-label="Settings">

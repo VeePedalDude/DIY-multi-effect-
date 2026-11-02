@@ -29,6 +29,13 @@ const merged = u.mergeSkin(u.DEFAULT_SKIN, r.skin), st = u.tileStyle(merged, 're
 check(st.knob.pointer === '#000' && st.knob.track === u.DEFAULT_SKIN.knob.track && st.card.title === u.DEFAULT_SKIN.card.title && merged.stage.background === 'hall.webp',
   'a tile’s knob colours override the skin’s; a broken background falls back to the default');
 
+r = u.readSkinJson({ format: 'rig-skin', version: 1, name: 'Tuned', tuner: { tile: 'gold', stripe: '#ff00aa', flat: 'not a colour!', tile2: 'x' } });
+const tw = r.warnings.join(' | '), tm = u.mergeSkin(u.DEFAULT_SKIN, r.skin);
+check(tm.tuner.tile === 'gold' && tm.tuner.stripe === '#ff00aa' && tm.tuner.flat === u.DEFAULT_SKIN.tuner.flat && tm.tuner.back === u.DEFAULT_SKIN.tuner.back
+  && tw.includes('tuner.flat') && tw.includes('tuner.tile2') && u.tileStyle(tm, tm.tuner.tile).image === 'tile-gold.webp',
+  'tuner: tile and colours taken, a bad colour and an unknown key named, the rest from the default');
+check(u.tileStyle(classic, classic.tuner.tile).image === null && classic.tuner.back === '#0C1220', 'Classic’s tuner sits on its plain console card with a dark back');
+
 console.log('.rigskin packets (zip)');
 const json = { format: 'rig-skin', version: 1, name: 'Packed', author: 'Test', ui: { accent: '#ffcc00' }, stage: { background: 'bg.png' }, tiles: { one: { image: 'one.png', accent: '#123456' } }, tileOrder: ['one'] };
 let zip = u.zipFiles([['skin.json', enc(JSON.stringify(json))], ['bg.png', png], ['one.png', png]]);

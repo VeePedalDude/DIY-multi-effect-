@@ -125,7 +125,8 @@ async function drop(page, target, files) {
     await drop(page, { sel: '[data-drop="amp"]' }, [{ name: f, text: fs.readFileSync(path.join(root, 'tests/models', f), 'utf8') }]);
     for (let i = 0; i < 30 && !(/48 kHz/.test(await ampLine()) && (await ampMeter()) === 48000); i++) await sleep(200);
     await sleep(1200);
-    const r = await page.evaluate(() => ({ out: window.__rig.meters.outPk, nan: window.__rig.nanResets(), load: window.__rig.meters.load }));
+    // loudest output over 1.5 s of the riff (one reading can land between notes)
+    const r = await page.evaluate(async () => { let out = 0; for (let i = 0; i < 30; i++) { out = Math.max(out, window.__rig.meters.outPk); await new Promise((q) => setTimeout(q, 50)); } return { out, nan: window.__rig.nanResets(), load: window.__rig.meters.load }; });
     check((await ampMeter()) === 48000 && r.out > 0.001 && r.nan === 0, `${f}: plays (“${(await ampLine()).trim().slice(0, 70)}”, out peak ${r.out.toFixed(3)}, engine load ${(100 * r.load).toFixed(0)}%)`);
   }
 

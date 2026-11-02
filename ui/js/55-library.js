@@ -8,9 +8,10 @@ function libraryKinds() {
   MODS.forEach((m) => { if (!m.asset) return; const list = k[m.asset.kind] || (k[m.asset.kind] = []);
     m.asset.exts.split(',').map((e) => e.trim().toLowerCase()).forEach((e) => { if (e && !list.includes(e)) list.push(e); }); });
   k.presets = ['.rig.json'];
+  k.skins = ['.rigskin'];
   return k;
 }
-const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets' }[k] || k);
+const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets', skins: 'skins' }[k] || k);
 
 async function initLibrary() {
   library.kinds = libraryKinds();
@@ -36,13 +37,14 @@ async function refreshLibrary() {
     try { library.entries[k] = await library.core.list(k); } catch (e) { library.entries[k] = []; logLine(`library: couldn't read ${k}/: ${e.message}`, true); }
   }
   const where = {
-    folder: `Folder “${library.rootName}”. Files you put in its ir, nam and presets folders show up after Rescan.`,
+    folder: `Folder “${library.rootName}”. Files you put in its ir, nam, presets and skins folders show up after Rescan.`,
     browser: 'Stored in this browser. Choose a folder to keep the library as normal files you can open, back up and share.',
     memory: 'Temporary: this page can’t store files where it’s open, so imports are lost on reload.',
   }[library.backend];
   $('libWhere').textContent = library.pendingFolder && library.backend !== 'folder' ? `Your folder “${library.pendingFolder.name}” needs permission again. Until then: ${where}` : where;
   $('libCounts').textContent = Object.keys(library.kinds).map((k) => `${(library.entries[k] || []).length} ${kindLabel(k)}`).join(' · ');
   refreshPresetList();
+  renderSkinList();
   renderPanel();
 }
 async function chooseLibraryFolder() {
@@ -72,6 +74,8 @@ async function importFiles(files, target) {
   }
   results.forEach((r) => logLine(r.status === 'skipped' ? `skipped ${r.name}: ${r.reason}` : `${r.status === 'duplicate' ? 'already in library' : r.status === 'renamed' ? 'imported as' : 'imported'} ${r.kind}/${r.name}`, r.status === 'skipped'));
   await refreshLibrary();
+  const skins = results.filter((r) => r.kind === 'skins' && r.status !== 'skipped');
+  if (skins.length) await useSkin('lib:' + skins[skins.length - 1].name);   // a dropped skin is put on straight away
   const ok = results.filter((r) => r.status !== 'skipped');
   if (target && ok.length) await selectAsset(target, ok[0].name);
   const skipped = results.length - ok.length;

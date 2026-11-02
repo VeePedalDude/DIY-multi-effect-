@@ -38,6 +38,18 @@ inline std::string khz(double hz) { char b[32]; snprintf(b, sizeof b, "%g kHz", 
 // check, so a well-formed file with too few weights reads past it. A cut-off download is invalid
 // JSON and is rejected before that; LSTM is the one loader where NAM meant to check (a debug-only
 // assert), so we check it here, including LSTMs inside Sequential and Slimmable containers.
+// Every model in a file (nested ones too) needs a version, an architecture and a config object:
+// NAM core reads them without checking (see core/json_assert.h).
+inline void checkShape(const nlohmann::json& j, bool top = true) {
+  if (j.is_array()) { for (const auto& v : j) checkShape(v, false); return; }
+  if (!j.is_object()) return;
+  if (top || j.contains("architecture")) {
+    for (const char* k : {"version", "architecture"})
+      if (!j.contains(k) || !j[k].is_string()) throw std::runtime_error(std::string("not a complete capture: no \"") + k + "\"");
+    if (!j.contains("config") || !j["config"].is_object()) throw std::runtime_error("not a complete capture: no \"config\" section");
+  }
+  for (const auto& [k, v] : j.items()) if (k != "weights") checkShape(v, false);
+}
 inline void checkLstmWeights(const nlohmann::json& j) {
   if (j.is_array()) { for (const auto& v : j) checkLstmWeights(v); return; }
   if (!j.is_object()) return;
@@ -58,6 +70,7 @@ inline std::unique_ptr<LoadedModel> loadCapture(const unsigned char* json, int b
   namInit();
   try {
     nlohmann::json j = nlohmann::json::parse(json, json + bytes);
+    checkShape(j);
     checkLstmWeights(j);
     nam::DspLoadOptions opt; opt.prewarm = false;
     auto lm = std::make_unique<LoadedModel>();

@@ -25,7 +25,8 @@ Later on the iMac:  ui/ in a kiosk browser ──WebSocket──▶ hosts/linux 
 | `ui/worklet/` | runs `rig.wasm` in the browser, parses the text protocol | the engine's description |
 | `ui/js/` | page logic, one file per job (model, bridge, audio, stage, faces, HUD, controllers, presets, main) | the engine's description |
 | `ui/screens/` | the small display on each module's face, and its card colour (`TILE.<id>`), one file per module id | its own module |
-| `ui/assets/` | images embedded into the page: the hall background, the three card frames | nothing |
+| `ui/assets/` | images embedded into the page for the built-in skins: the hall background, the three card frames | nothing |
+| `ui/js/04-skin-core.js`, `57-skins.js` | skins: the default skin (also the schema), validation, `.rigskin` zips; applying a skin and the Skins menu ([SKINS.md](SKINS.md)) | the default skin |
 | `ui/js/51-source-panel.js` | the side panel for a modulation source: knobs, live trace, patches and depths | the engine's description |
 | `ui/js/52–56`, `72` | library storage backends, file helpers, library, file-slot UI, preset format ([LIBRARY.md](LIBRARY.md)) | the engine's description |
 | `tests/ui/` | Node unit tests for the library and preset format; `tests/fixtures/` holds the golden preset | `ui/js` pure files |
@@ -47,6 +48,7 @@ needs no UI or protocol changes.
 ## Rules that keep it modular
 
 - Modules and sources never include each other. They only include `core/`.
+- The look is data (a skin), the layout is code: UI code takes every colour, font and image from the skin.
 - Vendored code in `third_party/` is never edited; WebAssembly differences live in `tools/wasm/`.
 - Nothing in `process()` allocates. Files are parsed and built on the control thread and swapped in
   through a `ModelSlot`; a test counts heap calls inside `process()` while files load and swap.

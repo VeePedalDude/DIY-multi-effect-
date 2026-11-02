@@ -27,6 +27,14 @@ opened from disk, run `python -m http.server` in `dist/` and open `http://localh
 Browser audio on Windows adds roughly 20–40 ms. Fine for building sounds; the Linux host
 (`hosts/linux/`) is where the 5–10 ms target lives.
 
+## Skins
+
+The look is swappable, Winamp style: **Settings → Skins**. Two are built in (Astral Hall and
+Classic). Drop a `.rigskin` file on the stage to add one, ★ your favourites, and press **K** to flip
+through them. **Export as template** writes out the skin in use with every setting listed, ready to
+edit into your own. A skin changes colours, images, fonts and the style of every menu, panel and
+table; the layout never changes. Reference: [docs/SKINS.md](docs/SKINS.md).
+
 ## Layout
 
 ```
@@ -39,11 +47,11 @@ engine/
   api/         rig_api.cpp: C API for WebAssembly and native hosts
 ui/
   index.html   page shell
-  js/          00-core 10-model 20-bridge 30-audio 40-stage 45-faces 50-hud 51-source-panel
-               52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library)
+  js/          00-core 04-skin-core 10-model 20-bridge 30-audio 40-stage 45-faces 50-hud 51-source-panel
+               52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins
                60-controllers 70-presets 72-preset-format 90-main
   screens/     one face display (and card colour) per module: gate.js amp.js cab.js holo.js tess.js
-  assets/      hall background and card frames (embedded into the built page)
+  assets/      images of the built-in skins: hall background, card frames (embedded into the page)
   worklet/     engine-worklet.js: runs rig.wasm, speaks the text protocol
 tests/
   native/      framework.h + one test file per area (chain, gate, amp, cab, holo, tess, sources)
@@ -90,7 +98,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs` and `library.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs` and `skins.cjs`.
 
 ## Current effects and sources
 
@@ -129,8 +137,13 @@ feeds and its depth. **P** (or the tab beside it) hides the side panel.
 - **Source knobs:** each knob measurably does its job (LFO rate and shape, envelope release, ADSR
   attack, orbit speed, heart rest rate, controller dead zone). At their defaults the sources'
   output is bit-identical to the fixed sources they replaced.
+- **Skins (Node):** both built-in skins validate. Merging, per-module tiles, and every kind of
+  mistake (bad colour, missing image, unknown setting) are reported by name while the good parts
+  are kept. `.rigskin` zips are read stored or deflated, or with `skin.json` inside a folder.
 - **Headless Chromium:** 25/25 main checks (including opening and editing sources, depth, patching
-  from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks. The
+  from a source and hiding the panel), 4/4 with gamepads blocked, and 22/22 library checks.
+  The 9/9 skin checks cover the built-ins, favourites and K, exporting a template, editing it into
+  a new skin and dropping it on the stage, a broken skin, and the choice surviving a reload. The
   library checks cover dropping files on a panel and on the stage, search, saving a preset file,
   reloading the page and loading it back, and removing a file the preset uses. They also play four
   real captures (A2, LSTM, A1, ConvNet), refuse a fake one with its reason, and run a 3 s stereo IR.

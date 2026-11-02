@@ -28,9 +28,8 @@ async function loadModel() {
     return m;
   });
   PARAMS = {}; MODS.forEach((m) => m.params.forEach((p) => { PARAMS[p.id] = p; }));
-  let fb = 0;
   SRC = DESC.sources.map((d, i) => {
-    const s = { id: d.id, name: d.name, sub: d.sub, ext: d.ext, meterNames: d.meters, idx: i, color: SOURCE_COLORS[d.id] || FALLBACK_COLORS[fb++ % FALLBACK_COLORS.length], params: [] };
+    const s = { id: d.id, name: d.name, sub: d.sub, ext: d.ext, meterNames: d.meters, idx: i, color: sourceColor(d.id, i), params: [] };
     s.params = (d.params || []).map((q, pi) => {           // the source's own knobs (src_set), same shape as module params
       const f = formatter(q);
       return { id: `${d.id}.${q.symbol}`, sym: q.symbol, label: q.label, v: q.def, def: q.def, desc: q, real: f.real, fmt: f.fmt, src: s, pi };

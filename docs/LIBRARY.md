@@ -31,6 +31,8 @@ storage, which survives reloads but isn't visible as files. Choosing a folder la
 - In a module's panel: drop onto **Drop … files here**, or press **Import…**.
 - Menu → **Import files…**, or **Import a folder…** to bring in a whole folder tree (four levels deep).
 
+Skins (`.rigskin`) live in the library's `skins/` folder too; see [SKINS.md](SKINS.md).
+
 Imports are checked first: a WAV must parse as a WAV, and a `.nam` must parse as a NAM capture.
 An identical file already in the library (same content, any name) isn't copied twice. A
 different file with a taken name gets ` (2)` added.

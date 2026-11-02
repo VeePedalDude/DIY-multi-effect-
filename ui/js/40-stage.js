@@ -5,10 +5,9 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true 
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0b0716, 0.014);
-// The hall (ui/assets/hall.webp) is the page background behind the transparent 3D canvas, so it
-// always fills the window at its own proportions.
-if (typeof UI_ASSETS !== 'undefined' && UI_ASSETS['hall.webp']) canvas.style.backgroundImage = `url(${UI_ASSETS['hall.webp']})`;
+scene.fog = new THREE.FogExp2(SKIN.stage.fog, SKIN.stage.fogDensity);
+// The skin's background image is the page background behind the transparent 3D canvas (57-skins.js),
+// so it always fills the window at its own proportions.
 const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 300);
 function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 function mkTex(cv) { const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; return t; }
@@ -23,7 +22,7 @@ function knobXY(p) {
 }
 const SPACING = 4;
 const pickables = [];
-let flowCurve, flowGeo, flowMat, flowPos, inLbl, outLbl, carryLine, carryGeo;
+let flowCurve, flowTube, flowGeo, flowMat, flowPos, inLbl, outLbl, carryLine, carryGeo;
 const NP = 70, CN = 48;
 let cables = [];
 const pointerWorld = new THREE.Vector3(0, 4, 0);
@@ -39,16 +38,16 @@ function glowTex() {
   return (glowTexCache = mkTex(cv));
 }
 function pill(txt) { const cv = document.createElement('canvas'); cv.width = 128; cv.height = 64; const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: mkTex(cv), transparent: true })); s.scale.set(1.4, .7, 1); return { s, cv, txt }; }
-function drawPill(l) { const c = l.cv.getContext('2d'); c.clearRect(0, 0, 128, 64); rr(c, 4, 4, 120, 56, 28); c.fillStyle = 'rgba(15,21,36,.9)'; c.fill(); c.strokeStyle = '#2A3550'; c.lineWidth = 3; c.stroke(); c.fillStyle = '#E6ECF5'; c.font = '600 26px "IBM Plex Mono", monospace'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(l.txt, 64, 33); l.s.material.map.needsUpdate = true; }
+function drawPill(l) { const c = l.cv.getContext('2d'); c.clearRect(0, 0, 128, 64); rr(c, 4, 4, 120, 56, 28); c.fillStyle = SKIN.stage.pillBg; c.fill(); c.strokeStyle = SKIN.stage.pillLine; c.lineWidth = 3; c.stroke(); c.fillStyle = SKIN.stage.pillText; c.font = `600 26px ${SKIN.ui.fontMono}`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(l.txt, 64, 33); l.s.material.map.needsUpdate = true; }
 
 function buildStage() {
   const half = (MODS.length - 1) / 2;
   MODS.forEach((m, i) => {
     const k = i - half, x = k * SPACING, z = 0.9 - 0.65 * k * k;
-    const FH = faceH(m), PH = PW * FH / FW, tileGlow = TILE_STYLE[tileOf(m)].glow;
+    const FH = faceH(m), PH = PW * FH / FW, tileGlow = styleOf(m).glow;
     const g = new THREE.Group(); g.position.set(x, 0.8 + PH / 2, z); g.lookAt(0, g.position.y, 22);
     // the card's thickness (inset so its rounded corners stay clear) and a glow behind it when focused
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: 0x1a1528 })); slab.position.z = .02; g.add(slab);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: SKIN.stage.slab })); slab.position.z = .02; g.add(slab);
     const halo = new THREE.Mesh(new THREE.PlaneGeometry(PW * 1.3, PH * 1.2), new THREE.MeshBasicMaterial({ map: glowTex(), color: tileGlow, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
     halo.position.z = -.06; g.add(halo);
     const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH; const tex = mkTex(cv);
@@ -56,15 +55,15 @@ function buildStage() {
     const glow = new THREE.Mesh(new THREE.RingGeometry(1.2, 2.2, 48), new THREE.MeshBasicMaterial({ color: tileGlow, transparent: true, opacity: .08, side: THREE.DoubleSide, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.set(x, .02, z);
     scene.add(glow, g);
-    Object.assign(m, { group: g, baseY: g.position.y, face, halo, glow, ctx: cv.getContext('2d'), tex, FH, PH });
+    Object.assign(m, { group: g, baseY: g.position.y, face, slab, halo, glow, ctx: cv.getContext('2d'), tex, FH, PH });
     face.userData = { type: 'face', mod: m }; pickables.push(face);
   });
 
   const endX = half * SPACING + 4.5;
   flowCurve = new THREE.CatmullRomCurve3([new THREE.Vector3(-endX, 1.0, -3.2), ...MODS.map((m) => new THREE.Vector3(m.group.position.x, .55, m.group.position.z + .6)), new THREE.Vector3(endX, 1.0, -3.2)]);
-  scene.add(new THREE.Mesh(new THREE.TubeGeometry(flowCurve, 160, .05, 8, false), new THREE.MeshBasicMaterial({ color: ACC, transparent: true, opacity: .35 })));
+  flowTube = new THREE.Mesh(new THREE.TubeGeometry(flowCurve, 160, .05, 8, false), new THREE.MeshBasicMaterial({ color: SKIN.stage.flow, transparent: true, opacity: .35 })); scene.add(flowTube);
   flowPos = new Float32Array(NP * 3); flowGeo = new THREE.BufferGeometry(); flowGeo.setAttribute('position', new THREE.BufferAttribute(flowPos, 3));
-  flowMat = new THREE.PointsMaterial({ color: ACC, size: .22, transparent: true, opacity: .95 });
+  flowMat = new THREE.PointsMaterial({ color: SKIN.stage.flow, size: .22, transparent: true, opacity: .95 });
   const flowDots = new THREE.Points(flowGeo, flowMat); flowDots.frustumCulled = false; scene.add(flowDots);
   inLbl = pill('IN'); outLbl = pill('OUT'); inLbl.s.position.set(-endX, 1.9, -3.2); outLbl.s.position.set(endX, 1.9, -3.2); scene.add(inLbl.s, outLbl.s);
 
@@ -82,7 +81,7 @@ function buildStage() {
   });
 
   carryGeo = new THREE.BufferGeometry(); carryGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(CN * 3), 3));
-  carryLine = new THREE.Line(carryGeo, new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: .25, gapSize: .18 })); carryLine.frustumCulled = false; carryLine.visible = false; scene.add(carryLine);
+  carryLine = new THREE.Line(carryGeo, new THREE.LineDashedMaterial({ color: SKIN.stage.carry, dashSize: .25, gapSize: .18 })); carryLine.frustumCulled = false; carryLine.visible = false; scene.add(carryLine);
   syncCables();
 }
 function knobWorld(p) { const m = p.mod, [kx, ky] = knobXY(p); return m.face.localToWorld(new THREE.Vector3((kx / FW - .5) * PW, (.5 - ky / m.FH) * m.PH, .12)); }

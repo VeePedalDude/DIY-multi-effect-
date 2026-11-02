@@ -5,7 +5,7 @@
 using namespace rigtest;
 
 // Count heap calls made while the audio path runs (glibc builds only): the audio thread must never allocate.
-#if defined(__GLIBC__)
+#if defined(__GLIBC__) && !defined(__SANITIZE_ADDRESS__)   // AddressSanitizer brings its own malloc
 extern "C" void* __libc_malloc(size_t);
 extern "C" void* __libc_calloc(size_t, size_t);
 extern "C" void* __libc_realloc(void*, size_t);
@@ -76,6 +76,9 @@ TEST("22 amp: broken or unsupported files are rejected with a reason; the curren
   auto str = [](const char* s) { return std::vector<unsigned char>(s, s + strlen(s)); };
   struct Bad { const char* what; std::vector<unsigned char> b; } bad[] = {
     {"not JSON", str("this is not a capture")},
+    {"no config section", str("{\"version\":\"0.5.4\",\"architecture\":\"LSTM\",\"weights\":[0.1],\"sample_rate\":48000}")},
+    {"no version", str("{\"architecture\":\"LSTM\",\"config\":{\"input_size\":1,\"hidden_size\":1,\"num_layers\":1},\"weights\":[]}")},
+    {"nested model without config", str("{\"version\":\"0.7.0\",\"architecture\":\"Sequential\",\"config\":{\"models\":[{\"version\":\"0.7.0\",\"architecture\":\"Linear\",\"weights\":[1]}]},\"weights\":[]}")},
     {"no network in it", str("{\"version\":\"0.5.2\",\"architecture\":\"WaveNet\",\"sample_rate\":48000,\"weights\":[0.1]}")},
     {"cut-off file", str("{\"version\":\"0.5.4\",\"architecture\":\"WaveNet\",\"config\":{")},
     {"unknown architecture", str("{\"version\":\"0.5.4\",\"architecture\":\"Theremin\",\"config\":{},\"weights\":[]}")},

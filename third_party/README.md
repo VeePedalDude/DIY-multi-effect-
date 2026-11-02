@@ -30,3 +30,10 @@ without a bounds check (AddressSanitizer confirms reads past the end with too fe
 cut-off download is invalid JSON and is refused before that point, and `engine/core/nam.h` checks
 LSTM counts (where NAM core only has a debug `assert`). A well-formed file with too few weights
 for another architecture could still read past the list.
+
+A second one: NAM core reads `version`, `architecture` and `config` from a const JSON object without
+checking they exist. In release builds that is undefined behaviour in nlohmann/json: usually an
+exception, occasionally a crash (1 run in 25 of our test suite, on a test file with no `config`).
+`engine/core/nam.h` (`checkShape`) checks every model in a file has them first, and
+`engine/core/json_assert.h` (force-included by build.sh) turns nlohmann's precondition checks into
+exceptions. After the fix: 0 crashes in 300 runs of that test.

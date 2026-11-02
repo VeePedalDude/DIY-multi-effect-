@@ -6,6 +6,5 @@ screen('holo', (c, b, m, h) => {
     const bx = b.x + 18 + k * ((b.w - 36) / n), bh = (b.h - 44) * amp * (1 + sh);
     c.globalAlpha = .35 + .65 * amp; c.fillRect(bx, b.y + b.h - 12 - bh, 16, bh);
   }
-  c.globalAlpha = 1; c.fillStyle = '#94A3BD'; c.fillText(h.meter('delay_ms', 375).toFixed(0) + ' ms', b.x + 20, b.y + 26);
+  c.globalAlpha = 1; c.fillStyle = h.col.text; c.fillText(h.meter('delay_ms', 375).toFixed(0) + ' ms', b.x + 20, b.y + 26);
 });
-TILE.holo = 'purple';   // card colour (ui/assets/tile-purple.webp)

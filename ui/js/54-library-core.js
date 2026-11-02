@@ -1,5 +1,5 @@
 // 54-library-core.js - the library over any root directory handle (see 52-vfs.js).
-// Layout:  <root>/ir/*.wav   <root>/nam/*.nam   <root>/presets/*.rig.json   (one folder per kind)
+// Layout:  <root>/ir/*.wav   <root>/nam/*.nam   <root>/presets/*.rig.json   <root>/skins/*.rigskin   (one folder per kind)
 // No DOM here, so it is unit-tested in Node against the in-memory backend.
 class LibraryCore {
   constructor(root, kinds) { this.root = root; this.kinds = kinds; this.meta = new Map(); this.hashes = new Map(); }
@@ -8,6 +8,7 @@ class LibraryCore {
   async readMeta(kind, file) {
     if (kind === 'ir') return parseWavInfo(await file.arrayBuffer());
     if (kind === 'nam') return parseNamMeta(await file.text());
+    if (kind === 'skins') { const r = await readSkinPacket(new Uint8Array(await file.arrayBuffer())); return r.error ? null : { name: r.skin.name || '', author: r.skin.author || '', description: r.skin.description || '' }; }
     if (kind === 'presets') { try { const j = JSON.parse(await file.text()); return j && j.format === 'rig-preset' ? { name: j.name || '', version: j.version } : null; } catch (e) { return null; } }
     return null;
   }
@@ -40,9 +41,11 @@ class LibraryCore {
     if (!kind) return { status: 'skipped', name: file.name, reason: 'not a file type the rig uses' };
     if (wantKind && kind !== wantKind) return { status: 'skipped', name: file.name, reason: `this slot takes ${this.kinds[wantKind].join(', ')} files` };
     const bytes = new Uint8Array(await file.arrayBuffer());
+    let skinErr = '';
     const check = kind === 'ir' ? parseWavInfo(bytes.buffer) : kind === 'nam' ? parseNamMeta(new TextDecoder().decode(bytes))
+      : kind === 'skins' ? await readSkinPacket(bytes).then((r) => { skinErr = r.error || ''; return !r.error; })
       : (() => { try { return JSON.parse(new TextDecoder().decode(bytes)).format === 'rig-preset'; } catch (e) { return false; } })();
-    if (!check) return { status: 'skipped', name: file.name, reason: `couldn't read it as a ${kind === 'ir' ? 'WAV' : kind === 'nam' ? 'NAM capture' : 'RIG preset'}` };
+    if (!check) return { status: 'skipped', name: file.name, reason: kind === 'skins' ? `not a usable skin: ${skinErr}` : `couldn't read it as a ${kind === 'ir' ? 'WAV' : kind === 'nam' ? 'NAM capture' : 'RIG preset'}` };
     const h = fnv1a(bytes), existing = await this.list(kind);
     for (const e of existing) if (e.size === bytes.length && (await this.hash(kind, e.name)) === h) return { status: 'duplicate', kind, name: e.name };
     const name = uniqueName(new Set(existing.map((e) => e.name)), safeFileName(file.name));

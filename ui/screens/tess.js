@@ -14,4 +14,3 @@ screen('tess', (c, b, m, h) => {
   for (let i = 0; i < 16; i++) for (let j = 0; j < 4; j++) { const k = i ^ (1 << j); if (k > i) { c.moveTo(P[i][0], P[i][1]); c.lineTo(P[k][0], P[k][1]); } }
   c.stroke();
 });
-TILE.tess = 'purple';   // card colour (ui/assets/tile-purple.webp)

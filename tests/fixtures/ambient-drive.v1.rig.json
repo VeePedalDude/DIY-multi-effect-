@@ -1,0 +1,30 @@
+{
+  "format": "rig-preset",
+  "version": 1,
+  "name": "Ambient Drive",
+  "saved": "2026-10-28T23:00:00.000Z",
+  "chain": [
+    { "id": "gate", "bypass": false, "params": { "thresh": -59, "release": 212 } },
+    { "id": "amp", "bypass": false, "params": { "input": 9.6, "output": -6 },
+      "asset": { "kind": "nam", "name": "Plexi crunch.nam", "size": 4096, "hash": "0a1b2c3d" } },
+    { "id": "cab", "bypass": false, "params": { "locut": 42.2698, "mix": 90 },
+      "asset": { "kind": "ir", "name": "V30 SM57.wav", "size": 8236, "hash": "deadbeef" } },
+    { "id": "holo", "bypass": false, "params": { "feedback": 42.75, "halo": 60 } },
+    { "id": "tess", "bypass": false, "params": { "size": 5.4, "fold": 0.3 } }
+  ],
+  "mods": [
+    { "target": "amp.input", "source": "env", "depth": 0.22 },
+    { "target": "holo.feedback", "source": "lfo", "depth": 0.22 },
+    { "target": "holo.halo", "source": "orbit", "depth": 0.22 },
+    { "target": "tess.fold", "source": "heart", "depth": 0.3 }
+  ],
+  "tempo": 120,
+  "master": -12,
+  "scenes": {
+    "A": {
+      "chain": [ { "id": "holo", "bypass": false, "params": { "feedback": 60, "halo": 90 } } ],
+      "mods": [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 } ],
+      "tempo": 120
+    }
+  }
+}

@@ -1,0 +1,43 @@
+// tests/ui/library.test.mjs - file helpers and the library over the in-memory backend
+import { loadUi, check, done, wav, nam } from './load.mjs';
+const u = await loadUi(); await u.loadModel();
+const kinds = { ir: ['.wav'], nam: ['.nam'], presets: ['.rig.json'] };
+const file = (name, bytes) => new File([bytes], name);
+
+console.log('helpers');
+check(u.extOf('My Amp.RIG.JSON') === '.rig.json' && u.extOf('V30.WAV') === '.wav' && u.extOf('noext') === '', 'extensions, including .rig.json and upper case');
+check(u.kindForName('a.nam', kinds) === 'nam' && u.kindForName('x.rig.json', kinds) === 'presets' && u.kindForName('x.json', kinds) === null, 'kind from file name');
+const w1 = u.parseWavInfo(wav({ frames: 2048 }).buffer), w2 = u.parseWavInfo(wav({ sr: 44100, ch: 2, bits: 32, frames: 441, extraChunk: true }).buffer);
+check(w1 && w1.sampleRate === 48000 && w1.channels === 1 && w1.bits === 16 && w1.frames === 2048 && Math.abs(w1.ms - 42.667) < 0.01, `PCM16 mono: ${w1 && w1.frames} frames, ${w1 && w1.ms.toFixed(1)} ms`);
+check(w2 && w2.format === 3 && w2.channels === 2 && w2.frames === 441 && Math.abs(w2.ms - 10) < 0.01, 'float32 stereo with a LIST chunk before data');
+check(u.parseWavInfo(new TextEncoder().encode('not a wav at all').buffer) === null, 'garbage is not a WAV');
+const n1 = u.parseNamMeta(nam({ name: 'JCM800 crunch', modeled_by: 'KC', gear_make: 'Marshall', gear_model: 'JCM800', tone_type: 'crunch' }));
+check(n1 && n1.architecture === 'WaveNet' && n1.gear === 'Marshall JCM800' && n1.modeledBy === 'KC', `NAM metadata: ${u.metaLine({ kind: 'nam', meta: n1 })}`);
+check(u.parseNamMeta('{"foo":1}') === null && u.parseNamMeta('{{{') === null, 'non-NAM JSON and garbage rejected');
+const e = { kind: 'nam', name: 'cap.nam', meta: n1 };
+check(u.matchesQuery(e, 'marshall crunch') && u.matchesQuery(e, 'JCM') && !u.matchesQuery(e, 'mesa'), 'search matches every word against name and details');
+check(u.uniqueName(new Set(['V30.wav', 'V30 (2).wav']), 'V30.wav') === 'V30 (3).wav' && u.uniqueName(new Set(), 'x.nam') === 'x.nam', 'unique names');
+check(u.safeFileName('a/b:c*?.wav') === 'a_b_c__.wav' && u.safeFileName('..') === 'untitled', 'unsafe characters replaced');
+
+console.log('library core (memory backend, same handle API as a real folder)');
+const lib = new u.LibraryCore(new u.KvDir(u.memStore(), '', 'mem'), kinds); await lib.ensure();
+const irA = wav({ frames: 1000 }), irB = wav({ frames: 1000, fill: (i) => (i === 3 ? 0.4 : 0) });
+let r = await lib.importFile(file('V30 SM57.wav', irA));
+check(r.status === 'added' && r.kind === 'ir', `import IR -> ${r.status} ${r.kind}/${r.name}`);
+r = await lib.importFile(file('V30 SM57.wav', irA)); check(r.status === 'duplicate', 'same file again -> duplicate');
+r = await lib.importFile(file('renamed copy.wav', irA)); check(r.status === 'duplicate' && r.name === 'V30 SM57.wav', 'same content under another name -> duplicate of the original');
+r = await lib.importFile(file('V30 SM57.wav', irB)); check(r.status === 'renamed' && r.name === 'V30 SM57 (2).wav', `different content, same name -> ${r.name}`);
+r = await lib.importFile(file('cap.nam', new TextEncoder().encode(nam({ name: 'Plexi' }))), 'ir'); check(r.status === 'skipped', `NAM into an IR slot -> skipped (${r.reason})`);
+r = await lib.importFile(file('broken.wav', new TextEncoder().encode('RIFF....nope'))); check(r.status === 'skipped', `corrupt WAV -> skipped (${r.reason})`);
+r = await lib.importFile(file('photo.jpg', new Uint8Array([1, 2, 3]))); check(r.status === 'skipped', 'unknown type -> skipped');
+r = await lib.importFile(file('Plexi.nam', new TextEncoder().encode(nam({ name: 'Plexi', gear_make: 'Marshall' }))));
+check(r.status === 'added' && r.kind === 'nam', 'import NAM capture');
+const irs = await lib.list('ir'), nams = await lib.list('nam');
+check(irs.map((x) => x.name).join('|') === 'V30 SM57.wav|V30 SM57 (2).wav' && irs[0].meta.frames === 1000, `IR list with details: ${irs.map((x) => x.name).join(', ')}`);
+check(nams.length === 1 && nams[0].meta.gear === 'Marshall', 'NAM list with details');
+const h = await lib.hash('ir', 'V30 SM57.wav');
+await lib.write('ir', 'moved.wav', irA); await lib.remove('ir', 'V30 SM57.wav');
+const found = await lib.findRef({ kind: 'ir', name: 'V30 SM57.wav', size: irA.length, hash: h });
+check(found && found.name === 'moved.wav', `preset reference found after the file was renamed (${found && found.name})`);
+check((await lib.findRef({ kind: 'ir', name: 'gone.wav', hash: '00000000' })) === null, 'missing reference -> null');
+done('library');

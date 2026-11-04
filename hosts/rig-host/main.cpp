@@ -31,6 +31,10 @@
 #define MA_NO_NODE_GRAPH
 #define MA_NO_ENGINE
 #define MA_NO_GENERATION
+// COM on Windows: ASIO drivers need this thread in a single-threaded apartment, and miniaudio by default
+// asks for a multithreaded one. Asking for both on one thread fails, and miniaudio then pairs its failed
+// CoInitializeEx with a CoUninitialize that takes ours away. So miniaudio asks for the same apartment.
+#define MA_COINIT_VALUE 2                                    /* COINIT_APARTMENTTHREADED */
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 #include "../../engine/api/rig_api.cpp"
@@ -495,13 +499,42 @@ static std::string latencyJson(const LatResult& r, int sr, double nominalMs) {
   return b;
 }
 
+#ifdef _WIN32
+// Started by double-clicking, the console window is ours alone and closes the moment the program ends,
+// taking any error message with it. So on an error (or a crash) it stays open until Enter is pressed.
+static bool ownConsole() { DWORD ids[4]; return GetConsoleProcessList(ids, 4) <= 1; }
+static void holdWindow() {
+  if (!ownConsole()) return;
+  printf("\nPress Enter to close this window.\n"); fflush(stdout);
+  (void)getchar();
+}
+static LONG WINAPI onCrash(EXCEPTION_POINTERS* x) {
+  fprintf(stderr, "\nrig-host stopped with an error (code 0x%08lX at %p). Please send this line and the ones above it.\n",
+          (unsigned long)x->ExceptionRecord->ExceptionCode, x->ExceptionRecord->ExceptionAddress);
+  holdWindow();
+  return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif
+static int run(int argc, char** argv);
 int main(int argc, char** argv) {
+#ifdef _WIN32
+  SetUnhandledExceptionFilter(onCrash);
+  SetConsoleTitleA("rig-host");
+#endif
+  const int rc = run(argc, argv);
+#ifdef _WIN32
+  if (rc != 0) holdWindow();
+#endif
+  return rc;
+}
+static int run(int argc, char** argv) {
   Host* host = new Host(); Host& h = *host; G = host;
   if (!parseOpts(argc, argv, h.o)) return 2;
   Audio* audio = new Audio(); Audio& a = *audio;
 #ifdef _WIN32
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);            // ASIO drivers are COM objects, created and called on this thread
 #endif
+  if (!h.o.list) { printf("rig-host %s: finding the audio devices...\n", RIG_HOST_VERSION); fflush(stdout); }
   if (!openContext(h, a)) {
 #ifdef _WIN32
     if (h.o.list) chooseAsio(h, a, true);
@@ -529,7 +562,7 @@ int main(int argc, char** argv) {
     if (!a.note.empty()) printf("  note:    %s\n", a.note.c_str());
     fflush(stdout);
   };
-  printf("rig-host %s\n", RIG_HOST_VERSION); describe();
+  describe();
   if (!audioStart(a)) {
     if (!a.asio) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
     fprintf(stderr, "  ASIO: %s wouldn't start\n", a.asioName.c_str());

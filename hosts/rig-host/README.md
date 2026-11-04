@@ -43,12 +43,12 @@ control panel (for a Scarlett, Buffer Size in Focusrite Control's settings); cha
 host picks it up, or force one with `--frames 64`. The latency shown is the driver's own report, in and
 out.
 
-The host only picks an ASIO driver by itself when it's the interface's own: its name shares a word
-with a device Windows lists ("Focusrite USB ASIO" and "Speakers (Focusrite USB Audio)"). Drivers that
-wrap Windows' audio or a virtual mixer (FL Studio ASIO, ASIO4ALL, FlexASIO, Voicemeeter) are no better
-than the WASAPI path below, and their own panel decides where the sound goes, so they're used only by
-name (`--asio asio4all`). If a driver starts but never calls back, the host says so after 2 s and
-switches to WASAPI. `--list` shows the ASIO drivers, `--asio NAME` picks one,
+Which driver, by itself: first one whose name shares a word with a device Windows lists ("Focusrite
+USB ASIO" and "Speakers (Focusrite USB Audio)"); failing that, any installed driver that isn't a known
+wrapper of Windows' audio or a virtual mixer (FL Studio ASIO, ASIO4ALL, FlexASIO, Voicemeeter), since
+some makers name their driver differently from the device. Wrappers are used only by name (`--asio
+asio4all`): they're no better than the WASAPI path below, and their own panel decides where the sound
+goes. If a driver starts but never calls back, the host says so after 2 s and switches to WASAPI. `--list` shows the ASIO drivers, `--asio NAME` picks one,
 `--backend wasapi` turns ASIO off. While rig-host has the driver, other programs can't use it.
 
 ASIO comes from Steinberg's ASIO SDK, which is GPLv3 since 2.3.4, so this repository is GPLv3.

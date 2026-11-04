@@ -451,7 +451,7 @@ static void chooseAsio(Host& h, Audio& a, bool list) {
   const auto d = asioDrivers();
   if (list) {
     printf("\nASIO drivers:\n");
-    for (size_t i = 0; i < d.size(); i++) printf("  %2u  %s%s\n", (unsigned)i, d[i].name.c_str(), asioOwnDriver(d[i].name, a.hw) ? "  (your interface's own: used by default)" : "  (not an interface's own driver: used only by name)");
+    for (size_t i = 0; i < d.size(); i++) printf("  %2u  %s%s\n", (unsigned)i, d[i].name.c_str(), asioOwnDriver(d[i].name, a.hw) ? "  (matches your interface: used by default)" : asioGeneric(d[i].name) ? "  (wraps Windows' audio: used only by name)" : "  (used by default if none matches your interface)");
     if (d.empty()) printf("  (none installed: your interface maker's driver adds one)\n");
     printf("\nASIO is used when the interface has its own driver; --asio NAME picks one, --backend wasapi turns it off\n");
     return;
@@ -466,11 +466,17 @@ static void chooseAsio(Host& h, Audio& a, bool list) {
     for (const std::string& w : {h.o.in, h.o.out})
       for (size_t i = 0; i < d.size() && k < 0 && !w.empty(); i++) if (asioOwnDriver(d[i].name, a.hw) && lower(d[i].name).find(lower(w)) != std::string::npos) k = (int)i;
     for (size_t i = 0; i < d.size() && k < 0; i++) if (asioOwnDriver(d[i].name, a.hw)) k = (int)i;
+    // Not every maker names its driver after what Windows calls the device (a first-generation Scarlett
+    // is "Focusrite USB Audio" to Windows; its driver may not say "Focusrite"). So next: any driver that
+    // isn't a known wrapper. If it turns out silent, the watchdog moves to WASAPI after 2 s.
+    for (size_t i = 0; i < d.size() && k < 0; i++) if (!asioGeneric(d[i].name)) k = (int)i;
     if (k < 0 && h.o.backend == "asio" && !d.empty()) k = 0;
-    if (k < 0 && !d.empty()) {
-      std::string names; for (const auto& x : d) names += (names.empty() ? "" : ", ") + x.name;
-      printf("  (ASIO: %s installed, but not an interface's own driver, so not used; install your interface's driver, or --asio NAME)\n", names.c_str());
-    }
+    std::string names; for (const auto& x : d) names += (names.empty() ? "" : ", ") + x.name;
+    if (k < 0 && !d.empty())
+      printf("  (ASIO: only %s installed, which wrap Windows' own audio, so not used; install your interface's driver, or --asio NAME)\n", names.c_str());
+    else if (d.empty())
+      printf("  (ASIO: no ASIO driver installed; your interface maker's control software adds one)\n");
+    else printf("  (ASIO drivers here: %s)\n", names.c_str());
   }
   if (k >= 0) { a.asio = true; a.asioName = d[(size_t)k].name; a.asioClsid = d[(size_t)k].clsid; }
 }

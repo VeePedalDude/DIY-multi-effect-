@@ -30,8 +30,11 @@ out=$(timeout 60 wine dist/rig-host.exe --backend wasapi --latency-test 2>&1 | t
 if grep -q 'audio:   ASIO' <<<"$out"; then echo "  [FAIL] --backend wasapi still opened ASIO"; fail=1; else echo "  [PASS] --backend wasapi leaves ASIO alone"; fi
 out=$(RIGTEST_ASIO_SILENT=1 timeout 60 wine dist/rig-host.exe --asio "rig test" --latency-test 2>&1 | tr -d '\r' || true)
 if grep -q "isn't passing audio, so using Windows' own audio path" <<<"$out"; then echo "  [PASS] a driver that never calls back: the host says so and moves to WASAPI"; else echo "  [FAIL] silent driver:"; echo "$out" | sed 's/^/        /'; fail=1; fi
+# The same driver registered a second time as "FL Studio ASIO" (a wrapper: it sorts first, and must be passed over)
+wine reg add 'HKLM\Software\ASIO\FL Studio ASIO' /v CLSID /t REG_SZ /d "$CLSID" /f /reg:64 >/dev/null
 out=$(timeout 60 wine dist/rig-host.exe --latency-test 2>&1 | tr -d '\r' || true)
-if grep -q 'audio:   ASIO' <<<"$out"; then echo "  [FAIL] picked RIG Test ASIO without being asked (it isn't an interface's own driver)"; fail=1
-elif grep -q 'RIG Test ASIO installed, but not an interface' <<<"$out"; then echo "  [PASS] a driver that names no interface (like FL Studio ASIO) isn't picked by default, and the console says why"
+wine reg delete 'HKLM\Software\ASIO\FL Studio ASIO' /f /reg:64 >/dev/null 2>&1 || true
+if grep -q 'audio:   ASIO' <<<"$out" && grep -q 'input:   RIG Test ASIO' <<<"$out" && grep -q '"samples":437' <<<"$out"; then
+  echo "  [PASS] by default: a driver that doesn't match the interface's name is used (like a first-gen Scarlett's), FL Studio ASIO passed over"
 else echo "  [FAIL] default choice:"; echo "$out" | sed 's/^/        /'; fail=1; fi
 exit $fail

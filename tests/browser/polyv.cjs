@@ -52,7 +52,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   console.log('3. MODEL is a selector with named stops');
   const panel = await page.textContent('#panel');
-  await setSlider('[data-pid="polyv.model"]', 0.6); await sleep(500);
+  await setSlider('[data-pid="polyv.model"]', 0.6);
+  // the panel's readout redraws every few frames, and headless Chromium draws about once a second: wait for it
+  await page.waitForFunction(() => /SYNTH SAW/.test(document.querySelector('#panel').textContent), null, { timeout: 5000 }).catch(() => {});
   const shown = await page.evaluate(() => window.__rig.eff('polyv', 'model'));
   const panel2 = await page.textContent('#panel');
   check(/TAPE STRINGS/.test(panel) && /SYNTH SAW/.test(panel2) && Math.abs(shown - 0.6) < 1e-6, `TAPE STRINGS to SYNTH SAW (${/SYNTH SAW/.test(panel2) ? 'shown' : 'not shown'} in the panel)`);

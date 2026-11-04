@@ -168,6 +168,12 @@ cutoff follows your picking, up to 4 octaves either way), DRIVE and LEVEL; the s
 | Diode ladder | | TB-303 / EMS: coupled stages, squelchy; acid with ENV |
 | Sallen-Key | HP CUT, HP PEAK, LP CUT, LP PEAK | Korg MS-20 style: high-pass into low-pass, peaks screaming through clipping diodes |
 
+Amps & drive, besides the amp:
+
+| Module | Knobs | Notes |
+|---|---|---|
+| Hyped Fuzz | GAIN, BASS, TREBLE, LEVEL 0..10; MODE: FULL / SCOOP / BOOST; OCTAVE (R14); BITE (C11); ENGINE: 2x REF / 2x FAST / 1x FAST | a circuit model of PedalPCB's Hyped Fuzz (Boss Hyper Fuzz FZ-2): the whole schematic solved by nodal analysis, sample by sample (`third_party/hypedfuzz`). Semiconductor and op-amp values are estimates, not measured from a pedal. The heaviest module by far: see Known gaps |
+
 Modulation sources: LFO, envelope follower, pick-triggered ADSR, three-body orbit, heart rate
 (simulated, or a Bluetooth strap), CONTROLLER (any control on a USB gamepad, joystick, flight stick or MIDI
 controller: open it, press LEARN and move the control; INVERT, 0…+1 or −1…+1, momentary or toggle buttons;
@@ -334,6 +340,10 @@ Linux host there. In the browser on a recent PC they run comfortably.
 - Slimmable (A2) captures play at full size; a size control comes later.
 - NAM core trusts a capture file's weight count (see `third_party/README.md`); LSTM counts are checked.
 - Reverb decay runs about 18% shorter than its label at large sizes.
+- HYPED FUZZ is heavy. Per 128-sample block at 48 kHz (2.67 ms) on the build machine, natively:
+  2x REF 1.8 ms (68%), 2x FAST 1.5 ms (56%, the default), 1x FAST 0.8 ms (32%); in the browser's
+  WebAssembly: 2.3 ms (87%), 2.1 ms (79%), 1.1 ms (41%). In the browser, or with other heavy modules,
+  use 1x FAST (or rig-host with a larger buffer). Not yet measured on the iMac.
 - ASIO is tested against a stand-in driver under Wine (`tests/asio/`), not yet on a real interface.
 - Amp INPUT now defaults to 0 dB (unity into a capture). A fresh start of the built-in amp is cleaner and
   about 6 dB quieter than before; saved presets sound the same.

@@ -24,6 +24,9 @@ the plugin's own range. The browser runs `.rigfx` bundles only, since it can't r
 
 ## Writing one
 
+Writing one in another chat or tool? [WRITING_A_PLUGIN_EFFECT.md](WRITING_A_PLUGIN_EFFECT.md) is a
+self-contained brief: the API, the rules, the helpers and how to test it.
+
 An effect plugin is written exactly like a built-in effect
 ([ADDING_A_MODULE.md](ADDING_A_MODULE.md)), and a source plugin like a built-in source
 ([ADDING_A_SOURCE.md](ADDING_A_SOURCE.md)). Make a folder in `plugins/` holding the header and a

@@ -5,11 +5,11 @@ const assetStatus = {};                     // module id -> short status line
 const removeArmed = {};                     // module id -> timer while 'Confirm remove' is showing
 
 function assetListHtml(m) {
-  const all = library.entries[m.asset.kind] || [], q = assetQuery[m.id] || '', cur = state.assets[m.id];
-  const hits = all.filter((e) => matchesQuery(e, q)).slice(0, 200);
-  if (!all.length) return `<li class="meta">No ${kindLabel(m.asset.kind)} in the library yet.</li>`;
-  if (!hits.length) return `<li class="meta">Nothing matches “${q.replace(/</g, '&lt;')}”.</li>`;
-  return hits.map((e) => `<li><button data-asset-pick="${encodeURIComponent(e.name)}" aria-current="${cur && cur.name === e.name}"><span>${e.name.replace(/</g, '&lt;')}</span><span class="meta">${metaLine(e)}</span></button></li>`).join('');
+  const kind = m.asset.kind, all = library.entries[kind] || [], q = assetQuery[m.id] || '', cur = state.assets[m.id], scope = 'file:' + kind;
+  const hits = all.filter((e) => matchesQuery(e, q) && passesTags(scope, e)).slice(0, 200);
+  if (!all.length) return `<li class="meta">No ${kindLabel(kind)} in the library yet.</li>`;
+  if (!hits.length) return `<li class="meta">Nothing matches${q ? ` “${q.replace(/</g, '&lt;')}”` : ''}${tagFilter(scope).fav || tagFilter(scope).tags.size ? ' with the chosen tags' : ''}.</li>`;
+  return hits.map((e) => `<li class="filerow">${starHtml(e.fav, `data-fav-file="${encodeURIComponent(kind + '/' + e.name)}"`, e.name)}<button data-asset-pick="${encodeURIComponent(e.name)}" aria-current="${cur && cur.name === e.name}"><span>${e.name.replace(/</g, '&lt;')}</span><span class="meta">${metaLine(e)}</span>${tagLineHtml(e)}${e.note ? `<span class="meta">${e.note.replace(/</g, '&lt;')}</span>` : ''}</button></li>`).join('');
 }
 function assetPanelHtml(m) {
   if (!m.asset) return '';
@@ -18,7 +18,9 @@ function assetPanelHtml(m) {
     <span class="eyebrow">${a.label} · ${total} in library</span>
     <div class="cur">${cur ? `<b>${cur.name.replace(/</g, '&lt;')}</b>` : '<b>Built-in</b>'}<span class="muted">${assetStatus[m.id] || ''}</span></div>
     ${a.ready ? '' : `<p class="note warnline">This build can’t load these files yet. They are stored, searchable and saved in presets.</p>`}
-    <input type="search" id="as-${m.id}" data-asset-search="${m.id}" placeholder="Search ${kindLabel(a.kind)}…" aria-label="Search ${kindLabel(a.kind)}" value="${(assetQuery[m.id] || '').replace(/"/g, '&quot;')}">
+    ${cur && !cur.missing ? tagEditorHtml(a.kind, cur.name) : ''}
+    <input type="search" id="as-${m.id}" data-asset-search="${m.id}" placeholder="Search ${kindLabel(a.kind)}, tags, notes…" aria-label="Search ${kindLabel(a.kind)}" value="${(assetQuery[m.id] || '').replace(/"/g, '&quot;')}">
+    ${chipsHtml('file:' + a.kind, library.entries[a.kind] || [])}
     <ul id="al-${m.id}">${assetListHtml(m)}</ul>
     <div class="drop" data-drop="${m.id}">Drop ${a.exts} files here, or
       <button class="btn" data-act="asset-import" data-mod="${m.id}" style="min-height:32px;font-size:11px;margin-left:6px">Import…</button>

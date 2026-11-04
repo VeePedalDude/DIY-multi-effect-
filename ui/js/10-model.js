@@ -39,8 +39,11 @@ function formatter(q) {
   return { real, fmt, snap };
 }
 
+// The engine imports five functions for plugins (engine/core/plugin_js.h); the worklet's engine gets the
+// real ones (ui/worklet/wclap-host.js). The page's own copy (for its model and views) never runs a plugin.
+const RIG_IMPORT_STUBS = { rig: { plugin_create: () => 0, plugin_destroy: () => {}, plugin_process: () => {}, plugin_output: () => 0, plugin_meters: () => 0 } };
 async function loadModel() {
-  const { instance } = await WebAssembly.instantiate(WASM_BYTES, {});
+  const { instance } = await WebAssembly.instantiate(WASM_BYTES, RIG_IMPORT_STUBS);
   const X = instance.exports; if (X._initialize) X._initialize();
   X.rig_init(48000); VIEWX = X;
   DESC = JSON.parse(cStringMain(X.memory, X.rig_describe()));

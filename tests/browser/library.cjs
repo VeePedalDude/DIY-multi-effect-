@@ -82,7 +82,7 @@ async function drop(page, target, files) {
   console.log('4. Search inside the cab panel');
   await page.keyboard.press('3'); await sleep(400);
   await page.fill('#as-cab', 'green'); await sleep(200);
-  const hits = await page.$$eval('#al-cab li button', (b) => b.map((x) => x.querySelector('span').textContent));
+  const hits = await page.$$eval('#al-cab li [data-asset-pick]', (b) => b.map((x) => x.querySelector('span').textContent));
   check(hits.length === 1 && hits[0] === 'Greenback 4x12.wav', `“green” finds ${JSON.stringify(hits)}`);
   await page.fill('#as-cab', '');
 

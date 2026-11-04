@@ -40,11 +40,23 @@ function cString(mem, ptr) {                 // UTF-8 C string from wasm memory 
   return s;
 }
 
+function utf8(s) {                             // (no TextEncoder in worklets either)
+  const o = [];
+  for (const ch of s) {
+    const c = ch.codePointAt(0);
+    if (c < 0x80) o.push(c); else if (c < 0x800) o.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+    else if (c < 0x10000) o.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+    else o.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+  }
+  return new Uint8Array(o);
+}
+
 class RigEngine extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const mod = new WebAssembly.Module(options.processorOptions.wasm);
-    this.x = new WebAssembly.Instance(mod, {}).exports;
+    this.libs = [null];                                      // loaded plugins (wclap-host.js); the engine knows them by index
+    this.x = new WebAssembly.Instance(mod, { rig: wclapImports(this.libs, () => this.f32()) }).exports;
     if (this.x._initialize) this.x._initialize();
     this.x.rig_init(sampleRate);
     this.desc = JSON.parse(cString(this.x.memory, this.x.rig_describe()));
@@ -65,6 +77,25 @@ class RigEngine extends AudioWorkletProcessor {
       this.vR = new Float32Array(b, this.x.rig_out_r(), 128);
       this.vM = new Float32Array(b, this.x.rig_meters(), this.mlen);
     }
+  }
+  f32() { const b = this.x.memory.buffer; if (this._f32b !== b) { this._f32b = b; this._f32 = new Float32Array(b); } return this._f32; }
+  // A plugin (a .rigfx bundle's module.wclap): instantiate it here, read what it is, and add it to the
+  // engine as a new type; the page gets the new description.
+  loadPlugin(d) {
+    let status = -1, note = '';
+    try {
+      const lib = new WclapLib(d.bytes), json = utf8(lib.json), file = String(d.file || '');
+      const X = this.x, p = X.rig_plugin_buf(json.length);
+      new Uint8Array(X.memory.buffer, p, json.length).set(json);
+      const fb = new Uint8Array(X.memory.buffer, X.rig_cmd_buf(), X.rig_cmd_len()); let n = 0;
+      for (; n < file.length && n < X.rig_cmd_len() - 1; n++) fb[n] = file.charCodeAt(n) & 0x7f; fb[n] = 0;
+      this.libs.push(lib);
+      status = X.rig_plugin_register(this.libs.length - 1, X.rig_cmd_buf());
+      note = cString(X.memory, X.rig_plugin_status());
+      if (status < 0) this.libs.pop();
+      else { this.desc = JSON.parse(cString(X.memory, X.rig_describe())); this.port.postMessage({ type: 'describe', desc: this.desc }); }
+    } catch (e) { note = e.message; }
+    this.port.postMessage({ type: 'plugin', file: d.file, status, note });
   }
   readChain() { this.chain = JSON.parse(cString(this.x.memory, this.x.rig_chain())).modules; }
   sendChain() { this.port.postMessage({ type: 'chain', chain: this.chain }); }
@@ -107,6 +138,8 @@ class RigEngine extends AudioWorkletProcessor {
         note = cString(this.x.memory, this.x.rig_asset_status(m));
       }
       this.port.postMessage({ type: 'asset', inst: m, id: this.modId(m), ref: d.ref, status, note, bytes, max, ms: Date.now() - t0 });
+    } else if (d.type === 'plugin') {
+      this.loadPlugin(d);
     } else if (d.type === 'asset_clear') {
       const m = this.inst(d.inst); if (m >= 0) this.x.rig_asset_clear(m);
       this.port.postMessage({ type: 'asset', inst: m, id: this.modId(m), ref: null, status: m >= 0 ? 0 : ERR.INSTANCE_INVALID, note: m >= 0 ? cString(this.x.memory, this.x.rig_asset_status(m)) : '', bytes: 0, max: 0 });

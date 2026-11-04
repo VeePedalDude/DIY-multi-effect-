@@ -37,7 +37,13 @@ function onEngineMsg(d) {
   }
   if (d.type === 'rack') { onEngineRack(d.rack); rig.engineRack = d.rack; return; }
   if (d.type === 'chain') { onEngineChain(d.chain); rig.engineChain = d.chain; return; }
-  if (d.type === 'describe') { rig.engineDesc = d.desc; logLine(`engine: ${d.desc.modules.length} modules, ${d.desc.sources.length} sources @ ${d.desc.sr} Hz`); return; }
+  if (d.type === 'describe') {
+    const plugged = rig.engineDesc ? mergeTypes(d.desc) : 0;   // later describes: new plugin types (61-plugins.js)
+    rig.engineDesc = d.desc;
+    if (!plugged) logLine(`engine: ${d.desc.modules.length} modules, ${d.desc.sources.length} sources @ ${d.desc.sr} Hz`);
+    return;
+  }
+  if (d.type === 'plugin') { onPluginMsg(d); return; }
   if (d.type === 'asset') onAssetReply(d);
 }
 function sendAll() {

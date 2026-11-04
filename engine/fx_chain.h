@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include "modules/registry.h"
+#include "core/plugin.h"
 
 namespace rig {
 
@@ -25,10 +26,23 @@ constexpr int MAXMOD = 12;                // instances in the chain (the order p
 constexpr int MOD_ID_LEN = 16;            // id, including the terminating zero
 static_assert(MAXMOD <= 15, "the chain order packs a slot into 4 bits");
 
-struct ModuleType { const ModuleDesc& (*desc)(); Module* (*make)(); const char* category; };
-#define RIG_MTYPE(T, m, c) ModuleType{ []() -> const ModuleDesc& { static T* proto = new T(); return proto->desc(); }, []() -> Module* { return new T(); }, #c },
-inline const ModuleType* moduleTypes() { static const ModuleType t[NMODTYPES] = { RIG_MODULES(RIG_MTYPE) }; return t; }
+// The types: the built-ins (the registry), then plugins loaded while the rig runs (core/plugin.h),
+// up to MAXPLUGINTYPES. A plugin type is added once and stays until the engine is rebuilt.
+constexpr int MAXPLUGINTYPES = 32;
+struct ModuleType {
+  const ModuleDesc& (*descFn)(); Module* (*makeFn)(); const char* category; PluginInfo* plugin;
+  const ModuleDesc& desc() const { return plugin ? plugin->mdesc : descFn(); }
+  Module* make() const { return plugin ? new PluginModule(plugin) : makeFn(); }
+};
+#define RIG_MTYPE(T, m, c) ModuleType{ []() -> const ModuleDesc& { static T* proto = new T(); return proto->desc(); }, []() -> Module* { return new T(); }, #c, nullptr },
+struct ModuleTypeTable {
+  ModuleType t[NMODTYPES + MAXPLUGINTYPES] = { RIG_MODULES(RIG_MTYPE) };
+  int n = NMODTYPES;
+};
 #undef RIG_MTYPE
+inline ModuleTypeTable& moduleTypeTable() { static ModuleTypeTable t; return t; }
+inline const ModuleType* moduleTypes() { return moduleTypeTable().t; }
+inline int moduleTypeCount() { return moduleTypeTable().n; }
 inline const ModuleDesc& moduleTypeDesc(int t) { return moduleTypes()[t].desc(); }
 // The categories (the folders, and the tabs of the add panel), in order.
 struct Category { const char* id; const char* label; const char* blurb; };
@@ -37,7 +51,7 @@ inline const Category* moduleCategories() { static const Category t[NMODCATS] = 
 #undef RIG_MCAT
 // What a fresh chain holds, in order (engine/modules/default_chain.txt).
 inline const char* const* defaultChain(int& n) { static const char* const ids[] = { RIG_DEFAULT_CHAIN }; n = (int)(sizeof ids / sizeof ids[0]); return ids; }
-inline int moduleTypeIndex(const char* type) { for (int t = 0; t < NMODTYPES; t++) if (!strcmp(moduleTypeDesc(t).id, type)) return t; return -1; }
+inline int moduleTypeIndex(const char* type) { for (int t = 0; t < moduleTypeCount(); t++) if (!strcmp(moduleTypeDesc(t).id, type)) return t; return -1; }
 
 enum ChainError { CHAIN_BAD_TYPE = -1, CHAIN_FULL = -2, CHAIN_BAD_ID = -3, CHAIN_NO_SUCH = -4 };
 

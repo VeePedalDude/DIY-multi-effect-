@@ -153,6 +153,19 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   check(new RegExp(`frames=${want}`).test(saved) && /device=/.test(saved), `remembered in ${path.basename(cfg)}: ${saved.split('\n').filter((l) => /=/.test(l)).join(', ')}`);
   try { require('fs').unlinkSync(cfg); } catch (e) { /* */ }
 
+  console.log('7. A plugin bundle from the library: the host loads its own platform\'s .clap and plays it');
+  const rigfx = fs.readFileSync(path.join(root, 'dist/plugins/trem.rigfx')).toString('base64');
+  const imp = await page.evaluate(async (b) => (await window.__rig.importFiles([new File([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))], 'trem.rigfx')])).map((r) => r.status), rigfx);
+  await page.waitForFunction(() => window.__rig.plugins.results['trem.rigfx'], null, { timeout: 20000 });
+  const pr = await V("window.__rig.plugins.results['trem.rigfx']");
+  check(imp[0] === 'added' && pr.status >= 0, `imported and loaded by the host: “${pr.note}”`);
+  await page.waitForFunction(() => window.__rig.engineDesc.moduleTypes.some((t) => t.type === 'trem'), null, { timeout: 10000 });
+  await V("window.__rig.chain.add('trem')");
+  await page.waitForFunction(() => window.__rig.engineChain.some((e) => e.id === 'trem'), null, { timeout: 10000 });
+  await page.evaluate(() => { window.__rig.cmd('param_set trem depth 1'); window.__rig.cmd('param_set trem rate 0.4'); });
+  const g = await page.evaluate(async () => { let lo = 9, hi = -9, pk = 0; const t0 = performance.now(); while (performance.now() - t0 < 2000) { const v = window.__rig.modMeter('trem', 'gain'); if (v !== undefined) { lo = Math.min(lo, v); hi = Math.max(hi, v); } pk = Math.max(pk, window.__rig.meters.outPk || 0); await new Promise((r) => setTimeout(r, 20)); } return [lo, hi, pk]; });
+  check(g[0] < 0.2 && g[1] > 0.8 && g[2] > 0.003, `TREMOLO in the host's chain at DEPTH 100%: its gain swings ${g[0].toFixed(2)}..${g[1].toFixed(2)}, and the rig plays on (output peak ${g[2].toFixed(3)})`);
+
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();
   proc.kill('SIGINT'); await sleep(500);

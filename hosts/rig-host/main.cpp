@@ -40,6 +40,10 @@
 #include "../../engine/api/rig_api.cpp"
 #include "spsc.h"
 #include "riff.h"
+#include "zip.h"
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 #include <thread>
 #include <chrono>
 #include <algorithm>
@@ -114,7 +118,7 @@ static bool parseOpts(int argc, char** argv, Opts& o) {
 }
 
 // ------------------------------------------------------------------ what passes between the threads
-enum { K_CMD, K_ASSET, K_CLEAR, K_SNAPSHOT, K_FIND };
+enum { K_CMD, K_ASSET, K_CLEAR, K_SNAPSHOT, K_FIND, K_PLUGIN, K_PCOMMIT };
 struct Cmd { int client, id, kind; char line[1024]; char inst[64]; char ref[256]; unsigned char* data; int bytes; };
 struct Reply { int client, id, kind, status, changed, bytes, max, ms; char line[1024]; char note[512]; char inst[64]; char ref[256]; char rack[4096]; char chain[2048]; unsigned char* data; };
 struct Meter { double t; float inPk, outPk, load, worstMs, worstCpuMs; float m[rig::M_LEN]; };   // the slowest audio callback since the last packet: wall time, and its own CPU time (-1 where the host can't measure it)
@@ -148,6 +152,7 @@ static void runJob(Cmd& c, Reply& r) {
   if (c.kind == K_CMD) {
     copyStr(rig_cmd_buf(), (size_t)rig_cmd_len(), c.line); r.status = rig_exec(); r.changed = rig_exec_changed();
   } else if (c.kind == K_SNAPSHOT) r.changed = 3;
+  else if (c.kind == K_PCOMMIT) { r.status = rig_plugin_commit(c.bytes); copyStr(r.note, sizeof r.note, rig_plugin_status()); r.data = nullptr; }
   else if (c.kind == K_FIND) { copyStr(rig_cmd_buf(), (size_t)rig_cmd_len(), c.inst); r.status = rig_find_module(); }   // which slot a file goes to (in order with the commands before it)
   if (r.changed & 1) copyStr(r.rack, sizeof r.rack, rig_rack()); else r.rack[0] = 0;
   if (r.changed & 2) copyStr(r.chain, sizeof r.chain, rig_chain()); else r.chain[0] = 0;
@@ -258,6 +263,34 @@ static void onAudio(ma_device* dev, void* pOut, const void* pIn, ma_uint32 frame
 
 // ------------------------------------------------------------------ the loader thread (files)
 // One file at a time: build it into the module's slot while the audio keeps playing.
+// A plugin file from the page (a .rigfx bundle, or a plain .clap): this machine's .clap is written to a
+// cache folder and opened (engine/plugins.h), here on the loader thread; the audio thread then adds the
+// type (K_PCOMMIT). Returns the handle for rig_plugin_commit, or -1 with `why`.
+static int openPlugin(const Cmd& w, std::string& why) {
+#ifdef _WIN32
+  const char* inside = "clap/x86_64-windows.clap";
+  char tmp[MAX_PATH] = {0}; GetTempPathA(MAX_PATH, tmp); std::string dir = std::string(tmp) + "rig-host-plugins";
+  CreateDirectoryA(dir.c_str(), nullptr); dir += "\\";
+#else
+  const char* inside = "clap/x86_64-linux.clap";
+  const char* t = getenv("TMPDIR"); std::string dir = std::string(t && *t ? t : "/tmp") + "/rig-host-plugins";
+  mkdir(dir.c_str(), 0755); dir += "/";
+#endif
+  std::string name = w.ref, bytes;
+  for (char& c : name) if (!(isalnum((unsigned char)c) || c == '.' || c == '-' || c == '_')) c = '_';
+  std::string low = name; for (char& c : low) c = (char)tolower((unsigned char)c);
+  const bool bundle = low.size() > 6 && low.compare(low.size() - 6, 6, ".rigfx") == 0;
+  if (bundle) { if (!zip::find(w.data, (size_t)w.bytes, inside, bytes, why)) return -1; }
+  else bytes.assign((const char*)w.data, (size_t)w.bytes);
+  char h[16]; uint32_t x = 2166136261u; for (unsigned char c : bytes) x = (x ^ c) * 16777619u; snprintf(h, sizeof h, "%08x", x);
+  const std::string path = dir + name + "-" + h + ".clap";       // by content: a changed file is a new path (a loaded library can't be overwritten)
+  FILE* f = fopen(path.c_str(), "wb");
+  if (!f || fwrite(bytes.data(), 1, bytes.size(), f) != bytes.size()) { if (f) fclose(f); why = "couldn't write " + path; return -1; }
+  fclose(f);
+  const int hnd = rig_plugin_open(path.c_str(), w.ref);
+  why = rig_plugin_status();
+  return hnd;
+}
 struct Loader {
   std::mutex mu; std::condition_variable cv; bool job = false, done = false, stop = false;
   Cmd c{}; int slot = -1; int status = 0, max = 0, ms = 0; char note[512] = {0};
@@ -269,13 +302,14 @@ struct Loader {
       cv.wait(lk, [this] { return job || stop; }); if (stop) return;
       const Cmd w = c; const int m = slot; lk.unlock();
       const auto t0 = std::chrono::steady_clock::now(); int st = 0, mx = 0; char nt[512] = {0};
-      if (w.kind == K_CLEAR) rig_asset_clear(m);
+      if (w.kind == K_PLUGIN) { std::string why; st = openPlugin(w, why); copyStr(nt, sizeof nt, why.c_str()); }
+      else if (w.kind == K_CLEAR) rig_asset_clear(m);
       else {
         mx = rig_asset_max(m);
         if (!w.bytes || w.bytes > mx) st = -207;
         else { unsigned char* p = rig_asset_buf(m, w.bytes); if (!p) st = -207; else { memcpy(p, w.data, (size_t)w.bytes); st = rig_asset_commit(m, w.bytes); } }
       }
-      copyStr(nt, sizeof nt, rig_asset_status(m));
+      if (w.kind != K_PLUGIN) copyStr(nt, sizeof nt, rig_asset_status(m));
       const int took = (int)std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
       lk.lock(); status = st; max = mx; ms = took; memcpy(note, nt, sizeof note); job = false; done = true;
     }
@@ -730,6 +764,7 @@ static int run(int argc, char** argv) {
   std::vector<net::Client*> clients; std::deque<Cmd> backlog; int nextClient = 1; std::vector<int> ids;
   std::deque<Cmd> loads, held; int loadState = 0;            // files waiting; commands waiting for a load; 0 idle, 1 finding the module, 2 loading
   Loader loader; loader.start();
+  std::string descCache = rig_describe();                     // the engine's description: refreshed when a plugin adds a type
   auto dropT = std::chrono::steady_clock::now(); int dropSeen = h.drops.load();
   auto reopen = [&](int frames) {                              // same devices, same rate (the engine runs at it), new buffer size
     audioClose(a);
@@ -744,16 +779,26 @@ static int run(int argc, char** argv) {
     const std::string ref = L.kind == K_ASSET ? "\"" + net::esc(L.ref) + "\"" : "null";
     broadcast("{\"type\":\"asset\",\"id\":\"" + net::esc(L.inst) + "\",\"inst\":\"" + net::esc(L.inst) + "\",\"ref\":" + ref + ",\"note\":\"" + net::esc(note) + "\"" + b);
   };
+  auto pluginReply = [&](const Cmd& L, int status, const std::string& note) {
+    broadcast("{\"type\":\"plugin\",\"file\":\"" + net::esc(L.ref) + "\",\"status\":" + std::to_string(status) + ",\"note\":\"" + net::esc(note) + "\"}");
+  };
   auto loadFinished = [&] {                                   // the file is in (or refused): the held commands go on
     free(loads.front().data); loads.pop_front(); loadState = 0;
     while (!held.empty()) { backlog.push_back(held.front()); held.pop_front(); }
   };
   while (g_run) {
-    if (!loadState && !loads.empty()) {                       // next file: first ask the audio thread which slot it goes to
-      Cmd f{}; f.client = loads.front().client; f.kind = K_FIND; copyStr(f.inst, sizeof f.inst, loads.front().inst); backlog.push_back(f); loadState = 1;
+    if (!loadState && !loads.empty()) {
+      if (loads.front().kind == K_PLUGIN) { loader.give(loads.front(), -1); loadState = 2; }   // a plugin: straight to the loader thread
+      else {                                                  // a file: first ask the audio thread which slot it goes to
+        Cmd f{}; f.client = loads.front().client; f.kind = K_FIND; copyStr(f.inst, sizeof f.inst, loads.front().inst); backlog.push_back(f); loadState = 1;
+      }
     }
     { int st, mx, took; std::string nt;
-      if (loadState == 2 && loader.take(st, mx, took, nt)) { assetReply(loads.front(), st, mx, took, nt); loadFinished(); } }
+      if (loadState == 2 && loader.take(st, mx, took, nt)) {
+        if (loads.front().kind != K_PLUGIN) { assetReply(loads.front(), st, mx, took, nt); loadFinished(); }
+        else if (st < 0) { pluginReply(loads.front(), st, nt); loadFinished(); }
+        else { Cmd j{}; j.client = loads.front().client; j.kind = K_PCOMMIT; j.bytes = st; backlog.push_back(j); loadState = 3; }   // the audio thread adds the type
+      } }
     while (!backlog.empty()) { Cmd* c = h.cmdq.claim(); if (!c) break; *c = backlog.front(); backlog.pop_front(); h.cmdq.publish(); }
     fd_set rd; FD_ZERO(&rd); FD_SET(ls, &rd); sock_t mx = ls;
     for (auto* c : clients) { FD_SET(c->s, &rd); if (c->s > mx) mx = c->s; }
@@ -772,12 +817,17 @@ static int run(int argc, char** argv) {
             if (st == 1) drop = true;
             else if (st == 2) {                                // a page connected: who we are, the engine's description, then a snapshot
               net::wsSend(c, hostInfo(h, a));
-              net::wsSend(c, std::string("{\"type\":\"describe\",\"raw\":") + rig_describe() + "}");   // written once at start-up: safe to read here
+              net::wsSend(c, std::string("{\"type\":\"describe\",\"raw\":") + descCache + "}");   // copied when it changes (start-up, a plugin added)
               Cmd s{}; s.client = cid; s.kind = K_SNAPSHOT; queue(s);
             }
           }
           if (c.ws && !drop) drop = !net::wsParse(c, [&](int op, const std::string& m) {
-            if (op == 2) {                                   // a file's bytes, after its {type:'asset'} header
+            if (op == 2) {                                   // a file's bytes, after its {type:'asset'} or {type:'plugin'} header
+              if (c.pendPlugin) {
+                Cmd j{}; j.client = cid; j.kind = K_PLUGIN; copyStr(j.ref, sizeof j.ref, c.pendRef.c_str());
+                j.bytes = (int)m.size(); j.data = (unsigned char*)malloc(m.size() ? m.size() : 1); if (m.size()) memcpy(j.data, m.data(), m.size());
+                c.pendPlugin = false; loads.push_back(j); return;
+              }
               if (!c.pend) return;
               Cmd j{}; j.client = cid; j.kind = K_ASSET; copyStr(j.inst, sizeof j.inst, c.pendInst.c_str()); copyStr(j.ref, sizeof j.ref, c.pendRef.c_str());
               j.bytes = (int)m.size(); j.data = (unsigned char*)malloc(m.size() ? m.size() : 1); if (m.size()) memcpy(j.data, m.data(), m.size());
@@ -822,6 +872,7 @@ static int run(int argc, char** argv) {
                     a.note = st ? why + "; staying with what was playing" : a.note;
                     dropSeen = h.drops.load();
                     broadcast(hostInfo(h, a)); broadcast(devicesJson(h, a));
+                    descCache = rig_describe();
                     if (engineSr != sr0) { printf("  the engine now runs at %d Hz; the page sends its rig again\n", engineSr); broadcast("{\"type\":\"resync\"}"); }
                   }
                 }
@@ -834,6 +885,7 @@ static int run(int argc, char** argv) {
               if (w == "latency_test") { h.latencyReq = true; net::wsSend(c, "{\"type\":\"resp\",\"id\":" + std::to_string(id) + ",\"line\":\"latency_test\",\"status\":0}"); return; }
               Cmd j{}; j.client = cid; j.id = id; j.kind = K_CMD; copyStr(j.line, sizeof j.line, line.c_str()); queue(j);
             } else if (type == "asset") { c.pend = true; c.pendInst = net::field(m, "inst"); c.pendRef = net::field(m, "ref"); }
+            else if (type == "plugin") { c.pendPlugin = true; c.pendRef = net::field(m, "ref"); }
             else if (type == "asset_clear") { Cmd j{}; j.client = cid; j.kind = K_CLEAR; copyStr(j.inst, sizeof j.inst, net::field(m, "inst").c_str()); loads.push_back(j); }
           });
         }
@@ -842,6 +894,11 @@ static int run(int argc, char** argv) {
     }
     while (Reply* r = h.repq.front()) {                       // answers from the audio thread
       if (r->kind == K_CMD) sendTo(r->client, "{\"type\":\"resp\",\"id\":" + std::to_string(r->id) + ",\"line\":\"" + net::esc(r->line) + "\",\"status\":" + std::to_string(r->status) + "}");
+      else if (r->kind == K_PCOMMIT && loadState == 3 && !loads.empty()) {   // the plugin's type is in: everyone gets the new description
+        pluginReply(loads.front(), r->status, r->note);
+        if (r->status >= 0) { descCache = rig_describe(); broadcast(std::string("{\"type\":\"describe\",\"raw\":") + descCache + "}"); }
+        loadFinished();
+      }
       else if (r->kind == K_FIND && loadState == 1 && !loads.empty()) {   // the slot for the waiting file: build it on the loader thread
         if (r->status < 0) { assetReply(loads.front(), -1, 0, 0, ""); loadFinished(); }
         else { loader.give(loads.front(), r->status); loadState = 2; }

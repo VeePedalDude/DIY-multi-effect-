@@ -189,7 +189,7 @@ int exec(char* line) {
     E().moveModule(m, (int)strtol(t[2], nullptr, 10)); g_changed |= 2; return 0;
   }
   if (!strcmp(c, "src_add")) {
-    bool known = false; for (int k = 0; k < rig::NSRCTYPES && t[1]; k++) known = known || !strcmp(rig::sourceTypeDesc(k).id, t[1]);
+    bool known = false; for (int k = 0; k < rig::sourceTypeCount() && t[1]; k++) known = known || !strcmp(rig::sourceTypeDesc(k).id, t[1]);
     if (!known) return ERR_INSTANCE;
     const int k = E().addSource(t[1], t[2] ? t[2] : ""); if (k < 0) return k == -2 ? ERR_FULL : k == -3 ? ERR_ID_TAKEN : ERR_INSTANCE;
     g_changed |= 1; return 0;
@@ -231,3 +231,26 @@ EXPORT(rig_input_channel) int rig_input_channel() { return g_inCh; }
 // The slot of the module named in rig_cmd_buf() (an id, or a position in the chain), or -1: for hosts
 // that load files into a module by name (asset messages).
 EXPORT(rig_find_module) int rig_find_module() { g_cmd[sizeof g_cmd - 1] = 0; const int m = inst(g_cmd); return E().used(m) ? m : -1; }
+
+// ---------------------------------------------------------------- plugins (engine/plugins.h)
+// A plugin becomes a new effect or source type. Natively: rig_plugin_open(path) loads a .clap and reads
+// what it is (may take a while: call it off the audio thread), rig_plugin_commit(handle) adds the type
+// (on the engine's thread, between blocks). In the browser the worklet has already instantiated the
+// .wclap and read its description: it writes that JSON into rig_plugin_buf() and calls
+// rig_plugin_register(lib). Either way rig_plugin_status() says what happened, and describe() lists the
+// new type. Errors: -1 unusable, -2 id taken by another type, -3 no room for more plugin types.
+#include "../plugins.h"
+EXPORT(rig_plugin_status) const char* rig_plugin_status() { return rig::pluginStatus().c_str(); }
+#if defined(__wasm__)
+static std::vector<char> g_pluginJson;
+EXPORT(rig_plugin_buf) char* rig_plugin_buf(int bytes) { g_pluginJson.assign((size_t)(bytes > 0 ? bytes : 0) + 1, 0); return g_pluginJson.data(); }
+EXPORT(rig_plugin_register) int rig_plugin_register(int lib, const char* file) {
+  const int r = rig::registerJsPlugin(lib, g_pluginJson.empty() ? "" : g_pluginJson.data(), file);
+  if (r >= 0 && g_engine) E().describe();
+  return r;
+}
+#else
+EXPORT(rig_plugin_open) int rig_plugin_open(const char* path, const char* file) { return rig::openClapPlugin(path, file); }
+EXPORT(rig_plugin_commit) int rig_plugin_commit(int h) { const int r = rig::commitPluginHandle(h); if (r >= 0 && g_engine) E().describe(); return r; }
+EXPORT(rig_plugin_load) int rig_plugin_load(const char* path) { const int h = rig_plugin_open(path, nullptr); return h < 0 ? h : rig_plugin_commit(h); }
+#endif

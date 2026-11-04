@@ -10,6 +10,9 @@ RIG Library/
   ir/        cabinet impulse responses (.wav)
   nam/       Neural Amp Modeler captures (.nam)
   presets/   RIG presets (.rig.json)
+  skins/     looks for the page (.rigskin)
+  plugins/   effects and sources as files (.rigfx bundles; in the rig-host also plain .clap): docs/PLUGINS.md
+  library.json   your tags, favorites and notes (below)
 ```
 
 These are ordinary files. Copy IRs straight into `ir/` from Explorer or Finder and press **Rescan**,
@@ -108,3 +111,37 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
 The Linux host will use the same folder layout on disk (for example `~/RIG Library`). Files can
 be added over the network or from a USB stick, and the host loads them with
 `asset_load <inst> <kind>/<file name>`.
+
+## Tags, favorites and notes
+
+Every file in the library and every kind of effect and source can be found by tag:
+
+- **Automatic tags** come from what a thing is:
+  - a NAM capture's gear type, tone, architecture, maker and who modeled it;
+  - an IR's length (up to 150 ms *cab*, up to 800 ms *room*, longer *reverb*), mono or stereo, and the
+    gear its file name mentions (V30, Greenback, SM57, 4x12…);
+  - a plugin's own tags, its category and *plugin*;
+  - a built-in effect or source is tagged *built-in*.
+- **Your tags and a note**: choose a file in a module's panel and type tags (comma separated) and a
+  note under its name.
+- **Favorites**: the ☆ beside any file, effect or source.
+
+Each list gets a row of chips: ★ (favorites only), then the tags used in that list, most used first.
+Choosing chips narrows the list to what has all of them. In the add panels a chosen chip searches every
+tab. The search box matches tags and notes too.
+
+Your tags, favorites and notes live in `library.json` at the top of the library folder. The files
+themselves are never changed, and the tags travel when you copy or back up the folder. The file is
+plain JSON:
+
+```json
+{ "format": "rig-library", "version": 1,
+  "files": { "nam/JCM800 crunch.nam": { "tags": ["rhythm"], "fav": true, "note": "for the verse" } },
+  "types": { "fx:holo": { "fav": true } } }
+```
+
+## Plugins in presets
+
+A preset that uses a plugin effect or source names its file (`"plugin": { "file": "trem.rigfx",
+"version": "1.0.0" }` on that chain or rack entry; older builds ignore it). Opened where the plugin
+isn't in the library, the preset says which file to add, and keeps that module's settings in the file.

@@ -75,3 +75,6 @@ function wirePresets() {
   $('presetDelete').onclick = deletePreset;
   refreshPresetList();
 }
+
+rig.buildPreset = buildPreset;                                     // tests and the console
+rig.loadPresetJson = async (json, name = 'Console.rig.json') => { await library.core.write('presets', name, json); return loadPresetFile(name); };

@@ -21,24 +21,27 @@ function pickTab(kind) {
   const first = cats.find((c) => items.some((i) => i.category === c.id)) || cats[0];
   return first ? first.id : null;
 }
-const pickMatch = (i, q) => !q || [i.name, i.type, i.sub, i.detail].join(' ').toLowerCase().includes(q.toLowerCase().trim());
+const pickMatch = (i, q) => !q || [i.name, i.type, i.sub, i.detail, (i.tags || []).join(' ')].join(' ').toLowerCase().includes(q.toLowerCase().trim());
+// Items with their tags and favorite mark (62-tags.js), filtered by the chosen chips.
+function pickItems(kind) { return PICKERS[kind].items().map((i) => ({ ...i, ...typeTags(kind, i.type, i.d || {}) })); }
 
 function pickerTabsHtml(kind) {
-  const P = PICKERS[kind], st = pickGet(kind), tab = pickTab(kind), items = P.items(), searching = !!st.q.trim();
+  const P = PICKERS[kind], st = pickGet(kind), tab = pickTab(kind), items = pickItems(kind), searching = !!st.q.trim();
   return P.cats().map((c) => {
-    const n = items.filter((i) => i.category === c.id && pickMatch(i, st.q)).length, on = !searching && c.id === tab;
+    const n = items.filter((i) => i.category === c.id && pickMatch(i, st.q) && passesTags('pick:' + kind, i)).length, on = !searching && c.id === tab;
     return `<button role="tab" class="tab${n ? '' : ' empty'}" id="tab-${kind}-${c.id}" data-pick-tab="${kind}:${c.id}" aria-selected="${on}" aria-controls="pick-${kind}" tabindex="${on || (searching && c === P.cats()[0]) ? 0 : -1}" title="${pickEsc(c.blurb)}">${pickEsc(c.label)} <small>${n}</small></button>`;
   }).join('');
 }
 function pickerListHtml(kind) {
   const P = PICKERS[kind], st = pickGet(kind), tab = pickTab(kind), full = P.full(), cats = P.cats();
   const searching = !!st.q.trim(), catOf = (id) => cats.find((c) => c.id === id) || { id, label: id, blurb: '' };
-  const items = P.items().filter((i) => (searching ? pickMatch(i, st.q) : i.category === tab));
-  const row = (i) => `<div class="patch"><div class="prow"><span><b${i.color ? ` style="color:${i.color}"` : ''}>${pickEsc(i.name)}</b> <small class="muted">${pickEsc(i.sub)}${i.have ? ` · ${i.have} in use` : ''}${searching ? ` · ${pickEsc(catOf(i.category).label)}` : ''}</small></span>
+  const filtering = tagFilter('pick:' + kind).fav || tagFilter('pick:' + kind).tags.size;
+  const items = pickItems(kind).filter((i) => passesTags('pick:' + kind, i) && (searching ? pickMatch(i, st.q) : filtering ? true : i.category === tab));
+  const row = (i) => `<div class="patch"><div class="prow"><span>${starHtml(i.fav, `data-fav-type="${kind}:${i.type}"`, i.name)}<b${i.color ? ` style="color:${i.color}"` : ''}>${pickEsc(i.name)}</b> <small class="muted">${pickEsc(i.sub)}${i.have ? ` · ${i.have} in use` : ''}${searching || filtering ? ` · ${pickEsc(catOf(i.category).label)}` : ''}${i.d && i.d.plugin ? ` · plugin ${pickEsc(i.d.plugin.file || '')}` : ''}</small></span>
       <button class="btn mini" ${P.attr}="${i.type}" ${full ? 'disabled' : ''} aria-label="Add ${pickEsc(i.name)}">Add</button></div>
       <small class="muted">${pickEsc(i.detail)}</small></div>`;
   if (items.length) return items.map(row).join('');
-  if (searching) return `<p class="note">No ${P.noun} matches “${pickEsc(st.q.trim())}”.</p>`;
+  if (searching || filtering) return `<p class="note">No ${P.noun} matches${searching ? ` “${pickEsc(st.q.trim())}”` : ''}${filtering ? ' with the chosen tags' : ''}.</p>`;
   const c = catOf(tab);
   return `<p class="note">Nothing in <b>${pickEsc(c.label)}</b> yet (${pickEsc(c.blurb)}). New ones go in <span class="mono">${P.folder}/${c.id}/</span>: see <span class="mono">${P.doc}</span>.</p>`;
 }
@@ -46,6 +49,7 @@ function pickerListHtml(kind) {
 function pickerHtml(kind) {
   const P = PICKERS[kind], st = pickGet(kind), tab = pickTab(kind);
   return `<label class="pick-search"><span class="sr-only">Search ${P.noun}s</span><input type="search" data-pick-q="${kind}" placeholder="Search every ${P.noun}…" value="${pickEsc(st.q)}" autocomplete="off"></label>
+  <div data-pick-chips="${kind}">${chipsHtml('pick:' + kind, pickItems(kind), 12)}</div>
   <div class="tabs" role="tablist" aria-label="Kinds of ${P.noun}" data-pick-tabs="${kind}">${pickerTabsHtml(kind)}</div>
   <div class="types" role="tabpanel" id="pick-${kind}" aria-labelledby="tab-${kind}-${tab}" data-pick-list="${kind}">${pickerListHtml(kind)}</div>`;
 }
@@ -53,6 +57,7 @@ function pickerHtml(kind) {
 function pickerRefresh(kind) {
   const t = document.querySelector(`[data-pick-tabs="${kind}"]`), l = document.querySelector(`[data-pick-list="${kind}"]`);
   if (t) t.innerHTML = pickerTabsHtml(kind);
+  const ch = document.querySelector(`[data-pick-chips="${kind}"]`); if (ch) ch.innerHTML = chipsHtml('pick:' + kind, pickItems(kind), 12);
   if (l) { l.innerHTML = pickerListHtml(kind); l.setAttribute('aria-labelledby', `tab-${kind}-${pickTab(kind)}`); }
 }
 function pickSetTab(kind, tab, focus) {

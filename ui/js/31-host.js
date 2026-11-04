@@ -39,8 +39,9 @@ function hostMsg(d) {
   onEngineMsg(d);
 }
 // Connected and described: hand the host this page's state (the page is the source of truth, as with the worklet).
-function hostReady() {
+async function hostReady() {
   host.up = true; rig.node = { port: hostPort };
+  await loadLibraryPlugins();                                  // the host loads them too; the rig may use them (61-plugins.js)
   syncChain(); syncRack(); sendAll(); pushAllAssets();
   rig.cmd(`host_input ${host.want === 'riff' ? 'riff' : 'interface'}`);
   rig.cmd('host_devices');

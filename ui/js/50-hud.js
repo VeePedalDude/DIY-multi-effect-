@@ -39,7 +39,7 @@ function renderPanel() {
 // The add panel for effects: a tab per category (engine/modules/<category>/), search across them all.
 PICKERS.fx = {
   cats: () => DESC.moduleCategories,
-  items: () => MTYPE_ORDER.map((t) => { const d = MTYPES[t]; return { type: t, name: d.name, sub: d.kind, category: d.category, have: MODS.filter((m) => m.type === t).length,
+  items: () => MTYPE_ORDER.map((t) => { const d = MTYPES[t]; return { type: t, d, name: d.name, sub: d.kind, category: d.category, have: MODS.filter((m) => m.type === t).length,
     detail: d.params.map((q) => q.label.toLowerCase()).join(' · ') + (d.asset ? ` · loads ${d.asset.label.toLowerCase()} files` : '') }; }),
   full: () => chainFull(), attr: 'data-addfx-type', noun: 'effect', folder: 'engine/modules', doc: 'docs/ADDING_A_MODULE.md',
 };

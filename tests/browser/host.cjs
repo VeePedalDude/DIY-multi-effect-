@@ -17,7 +17,9 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   const bin = (process.env.RIG_HOST_BIN || path.join(root, 'build/rig-host')).split(' ');
   // RIG_HOST_AUDIO replaces the simulated device, e.g. "--asio rig" (tests/asio/asio.sh's stand-in driver, also a 437-sample loop)
   const audio = process.env.RIG_HOST_AUDIO ? process.env.RIG_HOST_AUDIO.trim().split(/\s+/) : ['--backend', 'null', '--sim-loopback', String(LOOP)];
-  const args = [...bin.slice(1), ...audio, '--riff', '--port', String(PORT), '--no-browser'];
+  const cfg = path.join(require('os').tmpdir(), `rig-host-test-${PORT}.cfg`);       // where the Driver menu's choice is remembered
+  const cfgArg = /wine/.test(bin[0]) ? require('child_process').execSync(`winepath -w ${cfg}`).toString().trim() : cfg;
+  const args = [...bin.slice(1), ...audio, '--riff', '--port', String(PORT), '--no-browser', '--config', cfgArg];
   const proc = spawn(bin[0], args, { cwd: root, env: { ...process.env, WINEDEBUG: '-all' } });
   let out = ''; proc.stdout.on('data', (d) => { out += d; }); proc.stderr.on('data', (d) => { out += d; });
   for (let i = 0; i < 200 && !/page:/.test(out); i++) await sleep(100);
@@ -119,6 +121,37 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   await page.check('input[name=src][value=riff]'); await page.click('#startBtn');
   await page.waitForFunction(() => window.__rig.meters && window.__rig.engineChain, null, { timeout: 15000 }); await sleep(800);
   check(/rig-host/.test(await page.textContent('#engineState')) && (await V('window.__rig.meters.outPk')) > 0.005, 'connected again, and playing');
+
+  console.log('6. The Driver menu: every device, a buffer size, switching while it plays, remembered');
+  await page.click('#settingsBtn'); await sleep(300);
+  await page.waitForFunction(() => window.__rig.host.devices && document.querySelectorAll('#hostDev option').length > 0, null, { timeout: 10000 });
+  const menu = await page.evaluate(() => ({ dev: [...document.querySelectorAll('#hostDev option')].map((o) => [o.textContent, o.selected]), shown: !document.getElementById('hostDevRow').hidden && !document.getElementById('hostBufRow').hidden, panel: !document.getElementById('hostPanel').hidden, d: window.__rig.host.devices }));
+  check(menu.shown && menu.dev.some(([t, s]) => s && (asio ? /^ASIO · RIG Test ASIO/.test(t) : /choose input and output/.test(t))) && menu.panel === asio,
+    `Driver menu: ${menu.dev.map(([t, s]) => (s ? '[' : '') + t + (s ? ']' : '')).join(' | ')}; Buffer menu shown${asio ? ', Driver settings button' : ''}`);
+  const switchTo = async (sel, value) => {
+    await page.selectOption(sel, value);
+    await page.waitForFunction(() => !document.getElementById('hostDev').disabled, null, { timeout: 20000 }); await sleep(600);
+    return page.evaluate(() => ({ info: window.__rig.host.info, d: window.__rig.host.devices, resp: window.__rig.host.lastSwitch }));
+  };
+  const want = asio ? 128 : 256;
+  let r = await switchTo('#hostBuf', String(want));
+  const t0 = await V('window.__rig.meters.t'); await sleep(800);
+  check(r.info.frames === want && r.d.frames === want && (await V('window.__rig.meters.t')) > t0 + 0.4 && (await V('window.__rig.meters.outPk')) > 0.005,
+    `Buffer ${want}: the host reopened at ${r.info.frames} frames, and plays on`);
+  if (asio) {
+    const absent = menu.d.asio.findIndex((x) => /Thunderbolt/.test(x.name));
+    if (absent >= 0) {
+      r = await switchTo('#hostDev', `asio:${absent}`);
+      check(r.resp.status !== 0 && r.d.asioOn && /RIG Test/.test(menu.d.asio[r.d.drv].name) && (await V('window.__rig.meters.outPk')) > 0.005,
+        `a driver whose interface isn't there (${menu.d.asio[absent].name}): refused, and RIG Test ASIO plays on`);
+    }
+  } else {
+    r = await switchTo('#hostDev', 'device');
+    check(r.resp.status === 0 && !r.d.asioOn && !(await page.isHidden('#inSelRow')) && (await V('window.__rig.meters.outPk')) > 0.005, `input / output menus: ${r.d.inputs.join(', ')} → ${r.d.outputs.join(', ')}; plays on`);
+  }
+  const saved = require('fs').existsSync(cfg) ? require('fs').readFileSync(cfg, 'utf8') : '';
+  check(new RegExp(`frames=${want}`).test(saved) && /device=/.test(saved), `remembered in ${path.basename(cfg)}: ${saved.split('\n').filter((l) => /=/.test(l)).join(', ')}`);
+  try { require('fs').unlinkSync(cfg); } catch (e) { /* */ }
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

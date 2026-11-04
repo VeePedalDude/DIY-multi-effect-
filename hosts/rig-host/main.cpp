@@ -64,7 +64,7 @@ static const char* RIG_HOST_VERSION = "0.1";
 
 // ------------------------------------------------------------------ options
 struct Opts {
-  std::string backend, in, out, page, listen = "127.0.0.1", asio;
+  std::string backend, in, out, page, listen = "127.0.0.1", asio, config;
   int frames = 64, periods = 2, rate = 0, port = 8000, simLoop = 0, simStall = 0;
   bool shared = false, list = false, riff = false, browser = true, latencyTest = false, framesSet = false;
 };
@@ -88,6 +88,8 @@ static void usage() {
          "  --listen ADDR        address to serve on (default 127.0.0.1; 0.0.0.0 to use a phone or tablet)\n"
          "  --page FILE          serve this page instead of the built-in one\n"
          "  --no-browser         don't open the page in the browser\n"
+         "  --config FILE        where the device chosen in the page is remembered (default: rig-host.cfg\n"
+         "                       next to the program)\n"
          "  --sim-loopback N     (testing, with --backend null) feed the output back to the input N samples later\n"
          "  --sim-stall MS       (testing) stall the audio thread 20 ms every MS ms, to test the dropout handling\n",
          RIG_HOST_VERSION);
@@ -103,7 +105,7 @@ static bool parseOpts(int argc, char** argv, Opts& o) {
     else if (a == "--listen") o.listen = next(); else if (a == "--page") o.page = next();
     else if (a == "--no-browser") o.browser = false; else if (a == "--sim-loopback") o.simLoop = atoi(next().c_str());
     else if (a == "--sim-stall") o.simStall = atoi(next().c_str());
-    else if (a == "--asio") o.asio = next();
+    else if (a == "--asio") o.asio = next(); else if (a == "--config") o.config = next();
     else if (a == "--help" || a == "-h" || a == "/?") { usage(); exit(0); }
     else { fprintf(stderr, "unknown option %s (--help lists them)\n", a.c_str()); return false; }
   }
@@ -285,6 +287,11 @@ struct Loader {
 static bool structural(const char* line) { return !strncmp(line, "fx_add", 6) || !strncmp(line, "fx_remove", 9) || !strncmp(line, "fx_move", 7); }
 
 // ------------------------------------------------------------------ devices
+#ifdef _WIN32
+struct AsioDriverInfo { std::string name; CLSID clsid; };
+#endif
+// A device to try: an ASIO driver, or a Windows/ALSA input and output (-1 = the default, paired).
+struct Choice { bool asio = false; int drv = -1, in = -1, out = -1; };
 struct Audio {
   ma_context ctx; ma_device dev; bool exclusive = false, open = false, running = false; std::string inName, outName, note;
   ma_device_id inId{}, outId{}; bool hasIn = false, hasOut = false;
@@ -293,8 +300,12 @@ struct Audio {
   bool judge = true;                                         // dropouts are worth counting (not on the null device's coarse timer)
   bool asio = false; std::string asioName;
   std::vector<std::string> hw;                               // the hardware behind every input and output Windows lists (for matching an ASIO driver)
+  std::vector<std::string> inList, outList; std::vector<ma_device_id> inIds, outIds;   // every input and output (for the page's menu)
+  int defIn = -1, defOut = -1;                               // the pair used when none is chosen
+  Choice cur;                                                // what's playing
 #ifdef _WIN32
   CLSID asioClsid{};
+  std::vector<AsioDriverInfo> drivers;
 #endif
 };
 static std::string lower(std::string s) { for (char& c : s) c = (char)tolower((unsigned char)c); return s; }
@@ -355,8 +366,9 @@ static bool openContext(Host& h, Audio& a) {
     }
   }
   a.hasIn = hasIn; a.hasOut = hasOut; if (hasIn) a.inId = ins[iIn].id; if (hasOut) a.outId = outs[iOut].id;
-  for (ma_uint32 i = 0; i < nIn; i++) a.hw.push_back(hardware(ins[i].name));
-  for (ma_uint32 i = 0; i < nOut; i++) a.hw.push_back(hardware(outs[i].name));
+  a.defIn = hasIn ? (int)iIn : -1; a.defOut = hasOut ? (int)iOut : -1;
+  for (ma_uint32 i = 0; i < nIn; i++) { a.hw.push_back(hardware(ins[i].name)); a.inList.push_back(ins[i].name); a.inIds.push_back(ins[i].id); }
+  for (ma_uint32 i = 0; i < nOut; i++) { a.hw.push_back(hardware(outs[i].name)); a.outList.push_back(outs[i].name); a.outIds.push_back(outs[i].id); }
   return true;
 }
 // Open (or reopen) the device: `frames` per buffer, `rate` 0 for the interface's own.
@@ -445,42 +457,145 @@ static bool asioOwnDriver(const std::string& driver, const std::vector<std::stri
   }
   return false;
 }
-static void chooseAsio(Host& h, Audio& a, bool list) {
+// The ASIO drivers to try, in order. --asio NAME: that one. Otherwise drivers whose name matches a device
+// Windows lists, then (not every maker names its driver after the device: a first-generation Scarlett is
+// "Focusrite USB Audio" to Windows) any other that isn't a known wrapper of Windows' audio. Each is
+// tried in turn: one that won't open (Focusrite's installer also registers "Focusrite Thunderbolt ASIO",
+// for interfaces you may not have) or never calls back is passed over.
+static std::vector<int> asioOrder(Host& h, Audio& a, bool list) {
+  std::vector<int> order;
   const bool wantAsio = h.o.backend.empty() || h.o.backend == "asio";
-  if (!wantAsio && h.o.asio.empty() && !list) return;
-  const auto d = asioDrivers();
+  if (!wantAsio && h.o.asio.empty() && !list) return order;
+  a.drivers = asioDrivers(); const auto& d = a.drivers;
   if (list) {
     printf("\nASIO drivers:\n");
-    for (size_t i = 0; i < d.size(); i++) printf("  %2u  %s%s\n", (unsigned)i, d[i].name.c_str(), asioOwnDriver(d[i].name, a.hw) ? "  (matches your interface: used by default)" : asioGeneric(d[i].name) ? "  (wraps Windows' audio: used only by name)" : "  (used by default if none matches your interface)");
+    for (size_t i = 0; i < d.size(); i++) printf("  %2u  %s%s\n", (unsigned)i, d[i].name.c_str(), asioOwnDriver(d[i].name, a.hw) ? "  (matches your interface: tried first)" : asioGeneric(d[i].name) ? "  (wraps Windows' audio: used only by name)" : "  (tried next)");
     if (d.empty()) printf("  (none installed: your interface maker's driver adds one)\n");
-    printf("\nASIO is used when the interface has its own driver; --asio NAME picks one, --backend wasapi turns it off\n");
-    return;
+    printf("\nThe page's settings drawer has a Driver menu; or --asio NAME picks one, --backend wasapi turns ASIO off\n");
+    return order;
   }
-  int k = -1;
+  auto add = [&](int k) { if (std::find(order.begin(), order.end(), k) == order.end()) order.push_back(k); };
   if (!h.o.asio.empty()) {
     char* e; const long n = strtol(h.o.asio.c_str(), &e, 10);
-    if (!*e && n >= 0 && (size_t)n < d.size()) k = (int)n;
-    for (size_t i = 0; i < d.size() && k < 0; i++) if (lower(d[i].name).find(lower(h.o.asio)) != std::string::npos) k = (int)i;
-    if (k < 0) fprintf(stderr, "no ASIO driver matches \"%s\" (--list shows them)\n", h.o.asio.c_str());
-  } else if (wantAsio) {
-    for (const std::string& w : {h.o.in, h.o.out})
-      for (size_t i = 0; i < d.size() && k < 0 && !w.empty(); i++) if (asioOwnDriver(d[i].name, a.hw) && lower(d[i].name).find(lower(w)) != std::string::npos) k = (int)i;
-    for (size_t i = 0; i < d.size() && k < 0; i++) if (asioOwnDriver(d[i].name, a.hw)) k = (int)i;
-    // Not every maker names its driver after what Windows calls the device (a first-generation Scarlett
-    // is "Focusrite USB Audio" to Windows; its driver may not say "Focusrite"). So next: any driver that
-    // isn't a known wrapper. If it turns out silent, the watchdog moves to WASAPI after 2 s.
-    for (size_t i = 0; i < d.size() && k < 0; i++) if (!asioGeneric(d[i].name)) k = (int)i;
-    if (k < 0 && h.o.backend == "asio" && !d.empty()) k = 0;
-    std::string names; for (const auto& x : d) names += (names.empty() ? "" : ", ") + x.name;
-    if (k < 0 && !d.empty())
-      printf("  (ASIO: only %s installed, which wrap Windows' own audio, so not used; install your interface's driver, or --asio NAME)\n", names.c_str());
-    else if (d.empty())
-      printf("  (ASIO: no ASIO driver installed; your interface maker's control software adds one)\n");
-    else printf("  (ASIO drivers here: %s)\n", names.c_str());
+    if (!*e && n >= 0 && (size_t)n < d.size()) add((int)n);
+    for (size_t i = 0; i < d.size() && order.empty(); i++) if (lower(d[i].name).find(lower(h.o.asio)) != std::string::npos) add((int)i);
+    if (order.empty()) fprintf(stderr, "no ASIO driver matches \"%s\" (--list shows them)\n", h.o.asio.c_str());
+    return order;
   }
-  if (k >= 0) { a.asio = true; a.asioName = d[(size_t)k].name; a.asioClsid = d[(size_t)k].clsid; }
+  for (const std::string& w : {h.o.in, h.o.out})
+    for (size_t i = 0; i < d.size() && !w.empty(); i++) if (asioOwnDriver(d[i].name, a.hw) && lower(d[i].name).find(lower(w)) != std::string::npos) add((int)i);
+  for (size_t i = 0; i < d.size(); i++) if (asioOwnDriver(d[i].name, a.hw)) add((int)i);
+  for (size_t i = 0; i < d.size(); i++) if (!asioGeneric(d[i].name)) add((int)i);
+  if (h.o.backend == "asio") for (size_t i = 0; i < d.size(); i++) add((int)i);
+  std::string names; for (const auto& x : d) names += (names.empty() ? "" : ", ") + x.name;
+  if (d.empty()) printf("  (ASIO: no ASIO driver installed; your interface maker's control software adds one)\n");
+  else if (order.empty()) printf("  (ASIO: only %s installed, which wrap Windows' own audio, so not used; the page's Driver menu or --asio NAME picks one anyway)\n", names.c_str());
+  else printf("  (ASIO drivers here: %s)\n", names.c_str());
+  return order;
 }
 #endif
+
+// Open, start and check one choice. The engine is (re)initialised when the device's rate differs from
+// the one it runs at (engineSr; the caller then has the page send its state again). ASIO drivers get
+// 2 s to call back. On failure everything is closed again and `why` says what happened.
+static bool bringUp(Host& h, Audio& a, const Choice& c, int frames, int rate, int& engineSr, std::string& why) {
+  a.asio = c.asio;
+#ifdef _WIN32
+  if (c.asio) {
+    if (c.drv < 0 || (size_t)c.drv >= a.drivers.size()) { why = "no such ASIO driver"; return false; }
+    a.asioName = a.drivers[(size_t)c.drv].name; a.asioClsid = a.drivers[(size_t)c.drv].clsid;
+  }
+#else
+  if (c.asio) { why = "ASIO is Windows only"; return false; }
+#endif
+  if (!c.asio) {
+    const int in = c.in >= 0 ? c.in : a.defIn, out = c.out >= 0 ? c.out : a.defOut;
+    a.hasIn = in >= 0 && (size_t)in < a.inIds.size(); if (a.hasIn) a.inId = a.inIds[(size_t)in];
+    a.hasOut = out >= 0 && (size_t)out < a.outIds.size(); if (a.hasOut) a.outId = a.outIds[(size_t)out];
+  }
+  const std::string what = c.asio ? "ASIO: " + a.asioName : "the audio device";
+  if (!audioOpen(h, a, frames, rate)) { why = what + " wouldn't open"; return false; }
+  if (h.sr != engineSr) { rig_init((float)h.sr); engineSr = h.sr; h.riff = makeRiff((float)h.sr); h.riffPos = 0; }
+  const long long c0 = h.calls.load();
+  if (!audioStart(a)) { audioClose(a); why = what + " wouldn't start"; return false; }
+  if (c.asio) {                                              // a driver that starts but never calls back plays nothing
+    for (int i = 0; i < 40 && h.calls.load() == c0; i++) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+#ifdef _WIN32
+      MSG msg; while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessage(&msg); }
+#endif
+    }
+    if (h.calls.load() == c0) { audioClose(a); why = what + " isn't passing audio"; return false; }
+  }
+  a.cur = c;
+  return true;
+}
+
+// The device chosen in the page, remembered between runs: rig-host.cfg next to the program (--config).
+struct Saved { std::string device; int frames = 0; };
+static std::string configPath(const Opts& o) {
+  if (!o.config.empty()) return o.config;
+  char b[1024] = {0};
+#ifdef _WIN32
+  GetModuleFileNameA(nullptr, b, sizeof b - 1);
+#elif defined(__linux__)
+  if (readlink("/proc/self/exe", b, sizeof b - 1) < 0) b[0] = 0;
+#endif
+  std::string p = b; const size_t k = p.find_last_of("/\\");
+  return (k == std::string::npos ? std::string() : p.substr(0, k + 1)) + "rig-host.cfg";
+}
+static Saved loadSaved(const Opts& o) {
+  Saved v; FILE* f = fopen(configPath(o).c_str(), "rb"); if (!f) return v;
+  char line[1024];
+  while (fgets(line, sizeof line, f)) {
+    std::string l = line; while (!l.empty() && (l.back() == '\n' || l.back() == '\r')) l.pop_back();
+    if (!l.compare(0, 7, "device=")) v.device = l.substr(7); else if (!l.compare(0, 7, "frames=")) v.frames = atoi(l.c_str() + 7);
+  }
+  fclose(f); return v;
+}
+static void saveChoice(const Opts& o, const Audio& a, int frames) {
+  std::string dev;
+#ifdef _WIN32
+  if (a.cur.asio && a.cur.drv >= 0) dev = "asio:" + a.drivers[(size_t)a.cur.drv].name;
+#endif
+  if (!a.cur.asio) dev = "device:" + (a.cur.in >= 0 ? a.inList[(size_t)a.cur.in] : std::string()) + "|" + (a.cur.out >= 0 ? a.outList[(size_t)a.cur.out] : std::string());
+  FILE* f = fopen(configPath(o).c_str(), "wb"); if (!f) return;
+  fprintf(f, "# rig-host: the device chosen in the page (delete this file to go back to automatic)\ndevice=%s\nframes=%d\n", dev.c_str(), frames);
+  fclose(f);
+}
+// A saved "asio:NAME" or "device:IN|OUT" back into a Choice (false if that device isn't here now).
+static bool fromSaved(const Audio& a, const std::string& d, Choice& c) {
+  c = Choice{};
+  if (!d.compare(0, 5, "asio:")) {
+#ifdef _WIN32
+    for (size_t i = 0; i < a.drivers.size(); i++) if (a.drivers[i].name == d.substr(5)) { c.asio = true; c.drv = (int)i; return true; }
+#endif
+    return false;
+  }
+  if (d.compare(0, 7, "device:")) return false;
+  const std::string rest = d.substr(7); const size_t bar = rest.find('|');
+  const std::string in = rest.substr(0, bar), out = bar == std::string::npos ? "" : rest.substr(bar + 1);
+  auto find = [](const std::vector<std::string>& v, const std::string& n) { for (size_t i = 0; i < v.size(); i++) if (v[i] == n) return (int)i; return -1; };
+  c.in = in.empty() ? -1 : find(a.inList, in); c.out = out.empty() ? -1 : find(a.outList, out);
+  return (in.empty() || c.in >= 0) && (out.empty() || c.out >= 0);
+}
+// Everything the page's Driver menu needs.
+static std::string devicesJson(const Host& h, const Audio& a) {
+  std::string s = "{\"type\":\"devices\",\"asio\":[";
+#ifdef _WIN32
+  for (size_t i = 0; i < a.drivers.size(); i++)
+    s += std::string(i ? "," : "") + "{\"name\":\"" + net::esc(a.drivers[i].name) + "\",\"match\":" + (asioOwnDriver(a.drivers[i].name, a.hw) ? "true" : "false") + ",\"wrapper\":" + (asioGeneric(a.drivers[i].name) ? "true" : "false") + "}";
+#endif
+  s += "],\"inputs\":[";
+  for (size_t i = 0; i < a.inList.size(); i++) s += std::string(i ? "," : "") + "\"" + net::esc(a.inList[i]) + "\"";
+  s += "],\"outputs\":[";
+  for (size_t i = 0; i < a.outList.size(); i++) s += std::string(i ? "," : "") + "\"" + net::esc(a.outList[i]) + "\"";
+  auto idx = [](const std::vector<std::string>& v, const std::string& n) { for (size_t i = 0; i < v.size(); i++) if (v[i] == n) return (int)i; return -1; };
+  const int in = a.cur.asio ? -1 : (a.cur.in >= 0 ? a.cur.in : idx(a.inList, a.inName)), out = a.cur.asio ? -1 : (a.cur.out >= 0 ? a.cur.out : idx(a.outList, a.outName));
+  char b[256]; snprintf(b, sizeof b, "],\"asioOn\":%s,\"drv\":%d,\"in\":%d,\"out\":%d,\"frames\":%d,\"fixed\":%s,\"system\":\"%s\"}",
+                        a.cur.asio ? "true" : "false", a.cur.drv, in, out, a.frames, h.o.framesSet ? "true" : "false", ma_get_backend_name(a.ctx.backend));
+  return s + b;
+}
 
 // ------------------------------------------------------------------ the network side
 static std::atomic<bool> g_run{true};
@@ -543,24 +658,37 @@ static int run(int argc, char** argv) {
   if (!h.o.list) { printf("rig-host %s: finding the audio devices...\n", RIG_HOST_VERSION); fflush(stdout); }
   if (!openContext(h, a)) {
 #ifdef _WIN32
-    if (h.o.list) chooseAsio(h, a, true);
+    if (h.o.list) asioOrder(h, a, true);
 #endif
     return h.o.list ? 0 : 1;
   }
+  // What to try, in order: the device chosen in the page last time (unless the command line names one),
+  // the ASIO drivers (asioOrder), then Windows' own path (or ALSA/JACK...) with the default pair.
+  std::vector<Choice> tries; std::vector<int> framesFor;
+  const bool cliDevice = !h.o.asio.empty() || !h.o.in.empty() || !h.o.out.empty() || !h.o.backend.empty();
+  const Saved saved = cliDevice ? Saved{} : loadSaved(h.o);
 #ifdef _WIN32
-  chooseAsio(h, a, false);
+  const std::vector<int> asioTry = asioOrder(h, a, false);
+#else
+  const std::vector<int> asioTry;
 #endif
-  if (!audioOpen(h, a, a.asio && !h.o.framesSet ? 0 : h.o.frames, h.o.rate)) {   // ASIO: the size set in the driver's panel
-    if (!a.asio) { ma_context_uninit(&a.ctx); return 1; }
-    fprintf(stderr, "ASIO didn't open; using Windows' own audio path instead\n"); a.asio = false;
-    if (!openDevice(h, a, h.o.frames, h.o.rate)) { ma_context_uninit(&a.ctx); return 1; }
+  auto framesOf = [&](bool asio) { return h.o.framesSet ? h.o.frames : saved.frames > 0 ? saved.frames : asio ? 0 : h.o.frames; };   // ASIO 0: its panel's size
+  { Choice c; if (!saved.device.empty() && fromSaved(a, saved.device, c)) { tries.push_back(c); printf("  (the device chosen in the page last time: %s)\n", saved.device.c_str()); } }
+  for (int k : asioTry) { Choice c; c.asio = true; c.drv = k; tries.push_back(c); }
+  tries.push_back(Choice{});                                   // last: the system's own path
+  if (h.o.simLoop > 0) h.sim.assign(65536, 0.f);              // (before any device starts: the callback reads it)
+  int engineSr = 0; bool up = false;
+  for (const Choice& c : tries) {
+    std::string why;
+    if (bringUp(h, a, c, framesOf(c.asio), h.o.rate, engineSr, why)) { up = true; break; }
+    printf("  %s; trying the next\n", why.c_str()); fflush(stdout);
   }
-  if (a.asio) h.o.frames = a.frames;
-  rig_init((float)h.sr);
+  if (!up) { fprintf(stderr, "couldn't open any audio device (--list shows them)\n"); ma_context_uninit(&a.ctx); return 1; }
+  h.o.frames = a.frames;
 #ifdef _WIN32
   calibrateCycles();
 #endif
-  h.useRiff = h.o.riff; h.riff = makeRiff((float)h.sr); if (h.o.simLoop > 0) h.sim.assign(65536, 0.f);
+  h.useRiff = h.o.riff;
   auto describe = [&] {
     printf("  audio:   %s%s, %d Hz, %d frames x %d buffers (%.2f ms %s)\n  input:   %s (%d ch)\n  output:  %s\n",
            a.backend.c_str(), a.backend == "WASAPI" ? (a.exclusive ? " exclusive" : " shared") : "", h.sr,
@@ -569,22 +697,6 @@ static int run(int argc, char** argv) {
     fflush(stdout);
   };
   describe();
-  if (!audioStart(a)) {
-    if (!a.asio) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
-    fprintf(stderr, "  ASIO: %s wouldn't start\n", a.asioName.c_str());
-  }
-  // A driver that opens and starts but never calls back plays nothing (a wrapper driver routed
-  // elsewhere, or one held by another program): give it 2 s, then use Windows' own path instead.
-  for (int i = 0; i < 40 && a.asio && a.running && h.calls.load() == 0; i++) std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  if (a.asio && (!a.running || h.calls.load() == 0)) {
-    printf("  ASIO: %s isn't passing audio, so using Windows' own audio path instead (--backend wasapi skips ASIO)\n", a.asioName.c_str());
-    audioClose(a); a.asio = false; const int sr0 = h.sr;
-    if (!openDevice(h, a, h.o.framesSet ? h.o.frames : 64, h.o.rate)) { ma_context_uninit(&a.ctx); return 1; }
-    h.o.frames = h.o.framesSet ? h.o.frames : 64;
-    if (h.sr != sr0) { rig_init((float)h.sr); h.riff = makeRiff((float)h.sr); }
-    describe();
-    if (!audioStart(a)) { fprintf(stderr, "couldn't start the audio device\n"); return 1; }
-  }
   signal(SIGINT, onSignal); signal(SIGTERM, onSignal);
 
   if (h.o.latencyTest) {                                       // measure, print, exit
@@ -680,6 +792,45 @@ static int run(int argc, char** argv) {
                 net::wsSend(c, "{\"type\":\"resp\",\"id\":" + std::to_string(id) + ",\"line\":\"" + net::esc(line) + "\",\"status\":0}");
                 broadcast(hostInfo(h, a)); return;
               }
+              // The Driver menu: list, switch (asio K | device IN OUT, -1 = default | auto), buffer size, driver panel.
+              if (w == "host_devices") { net::wsSend(c, devicesJson(h, a)); net::wsSend(c, "{\"type\":\"resp\",\"id\":" + std::to_string(id) + ",\"line\":\"host_devices\",\"status\":0}"); return; }
+              if (w == "host_device" || w == "host_frames") {
+                int st = 0;
+                if (loadState) st = -902;                    // a file is loading into the engine: try again in a moment
+                else {
+                  char kind[16] = {0}; int x = -1, y = -1;
+                  Choice next = a.cur; int frames = a.frames;
+                  if (w == "host_frames") { frames = atoi(line.c_str() + 11); h.o.framesSet = frames > 0; if (frames <= 0) frames = a.asio ? 0 : 64; }
+                  else if (sscanf(line.c_str() + 12, "%15s %d %d", kind, &x, &y) >= 1) {
+                    next = Choice{};
+                    if (!strcmp(kind, "asio")) { next.asio = true; next.drv = x; }
+                    else if (!strcmp(kind, "device")) { next.in = x; next.out = y; }
+                    frames = h.o.framesSet ? h.o.frames : next.asio ? 0 : 64;
+                  } else st = -103;
+                  if (!st) {
+                    const Choice prev = a.cur; const int prevFrames = a.frames, sr0 = engineSr;
+                    audioClose(a);
+                    std::string why;
+                    if (bringUp(h, a, next, frames, h.o.rate, engineSr, why)) {
+                      h.o.frames = a.frames; saveChoice(h.o, a, h.o.framesSet ? a.frames : 0);
+                      printf("  switched:\n"); describe();
+                    } else {
+                      st = -902; printf("  %s; staying with what was playing\n", why.c_str());
+                      std::string why2;
+                      if (!bringUp(h, a, prev, prevFrames, h.o.rate, engineSr, why2)) { fprintf(stderr, "  and couldn't reopen it (%s)\n", why2.c_str()); g_run = false; }
+                    }
+                    a.note = st ? why + "; staying with what was playing" : a.note;
+                    dropSeen = h.drops.load();
+                    broadcast(hostInfo(h, a)); broadcast(devicesJson(h, a));
+                    if (engineSr != sr0) { printf("  the engine now runs at %d Hz; the page sends its rig again\n", engineSr); broadcast("{\"type\":\"resync\"}"); }
+                  }
+                }
+                net::wsSend(c, "{\"type\":\"resp\",\"id\":" + std::to_string(id) + ",\"line\":\"" + net::esc(line) + "\",\"status\":" + std::to_string(st) + "}");
+                return;
+              }
+#ifdef _WIN32
+              if (w == "host_panel") { const int st = a.asio && g_asio.drv && g_asio.drv->controlPanel() == ASE_OK ? 0 : -902; net::wsSend(c, "{\"type\":\"resp\",\"id\":" + std::to_string(id) + ",\"line\":\"host_panel\",\"status\":" + std::to_string(st) + "}"); return; }
+#endif
               if (w == "latency_test") { h.latencyReq = true; net::wsSend(c, "{\"type\":\"resp\",\"id\":" + std::to_string(id) + ",\"line\":\"latency_test\",\"status\":0}"); return; }
               Cmd j{}; j.client = cid; j.id = id; j.kind = K_CMD; copyStr(j.line, sizeof j.line, line.c_str()); queue(j);
             } else if (type == "asset") { c.pend = true; c.pendInst = net::field(m, "inst"); c.pendRef = net::field(m, "ref"); }

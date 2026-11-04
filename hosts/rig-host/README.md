@@ -25,6 +25,7 @@ rig-host.exe --in scarlett --out scarlett --frames 64
 | `--list` | lists inputs and outputs, with numbers |
 | `--in N\|NAME`, `--out N\|NAME` | the devices (a number from `--list`, or part of the name). Choose one and the other follows it onto the same interface; choose neither and the input follows the default output |
 | `--asio NAME` | the ASIO driver (part of its name); without it, the interface's own driver if there is one (see ASIO below) |
+| `--config FILE` | where the Driver menu's choice is remembered (default `rig-host.cfg` next to the program) |
 | `--frames N` | a fixed buffer size. Without it the host starts at 64 and doubles the buffer (up to 512) whenever the audio drops out |
 | `--periods N` | buffers in the queue (default 2) |
 | `--rate N` | sample rate (default: the interface's own, so nothing is resampled; set the interface to 48 kHz, what NAM captures are made at) |
@@ -33,6 +34,23 @@ rig-host.exe --in scarlett --out scarlett --frames 64
 | `--latency-test` | measure the round trip and exit (see below) |
 | `--port N`, `--listen ADDR` | where the page is served (`--listen 0.0.0.0` to use a phone or tablet on the same network) |
 | `--no-browser` | don't open the page |
+
+### Choosing the device: the Driver menu
+
+Settings (the drawer) → **Driver** lists every ASIO driver installed and Windows' own audio path
+(WASAPI); choosing Windows audio shows an input and an output menu. **Buffer** sets the size (for
+ASIO, "driver's setting" follows the size set in the driver's own panel), and **Driver settings…**
+opens that panel. Switching happens while the page stays open: the host closes the device, opens the
+new one, and if it won't start, goes back to what was playing and says so. If the new device runs at a
+different sample rate, the engine restarts at it and the page sends the rig again. The choice is
+remembered in `rig-host.cfg` next to the program (delete it to go back to automatic; `--config`
+puts it elsewhere); options on the command line take precedence.
+
+Without a remembered choice the host tries, in order: ASIO drivers whose name matches a device Windows
+lists, then any other ASIO driver that isn't a wrapper, then Windows' own path. A driver that won't
+open (Focusrite's installer also registers "Focusrite Thunderbolt ASIO", for Thunderbolt interfaces you
+may not have; it's only a name in the registry) or never calls back is passed over, and the console
+says so.
 
 ### ASIO
 

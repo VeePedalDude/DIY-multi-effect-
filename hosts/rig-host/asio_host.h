@@ -16,7 +16,6 @@
 #include "asio.h"
 #include "iasiodrv.h"
 
-struct AsioDriverInfo { std::string name; CLSID clsid; };
 static std::vector<AsioDriverInfo> asioDrivers() {
   std::vector<AsioDriverInfo> v; HKEY root;
   if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, "SOFTWARE\\ASIO", 0, KEY_READ, &root) != ERROR_SUCCESS) return v;

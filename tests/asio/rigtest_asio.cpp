@@ -25,6 +25,10 @@
 
 // {5A1F0D3E-6C2B-4E8A-9B71-2F4D8C3A9E10}
 static const CLSID CLSID_RigTest = {0x5a1f0d3e, 0x6c2b, 0x4e8a, {0x9b, 0x71, 0x2f, 0x4d, 0x8c, 0x3a, 0x9e, 0x10}};
+// {5A1F0D3E-6C2B-4E8A-9B71-2F4D8C3A9E11}: a second driver in the same DLL whose interface isn't there:
+// init() fails, as a driver installed for hardware that isn't plugged in does (asio.sh registers it as
+// "Focusrite Thunderbolt ASIO", which Focusrite's installer adds whether or not you have one).
+static const CLSID CLSID_RigAbsent = {0x5a1f0d3e, 0x6c2b, 0x4e8a, {0x9b, 0x71, 0x2f, 0x4d, 0x8c, 0x3a, 0x9e, 0x11}};
 static std::atomic<long> g_objects{0};
 
 static int envInt(const char* k, int d) { const char* v = getenv(k); return v && *v ? atoi(v) : d; }
@@ -78,16 +82,18 @@ class RigTestAsio : public IASIO {
   }
 
  public:
-  RigTestAsio() { g_objects++; }
+  bool absent = false; CLSID id = CLSID_RigTest;
+  explicit RigTestAsio(bool a) : absent(a), id(a ? CLSID_RigAbsent : CLSID_RigTest) { g_objects++; }
   virtual ~RigTestAsio() { stop(); g_objects--; }
   HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
-    if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, CLSID_RigTest)) { *ppv = this; AddRef(); return S_OK; }
+    if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, id)) { *ppv = this; AddRef(); return S_OK; }
     *ppv = nullptr; return E_NOINTERFACE;
   }
   ULONG STDMETHODCALLTYPE AddRef() override { return (ULONG)++refs; }
   ULONG STDMETHODCALLTYPE Release() override { const long r = --refs; if (!r) delete this; return (ULONG)r; }
 
   ASIOBool init(void*) override {
+    if (absent) { strcpy(err, "no interface connected"); return ASIOFalse; }
     const char* fmt = getenv("RIGTEST_ASIO_FORMAT"); const std::string f = fmt ? fmt : "int32";
     if (f == "int16") { type = ASIOSTInt16LSB; bytes = 2; } else if (f == "int24") { type = ASIOSTInt24LSB; bytes = 3; }
     else if (f == "float") { type = ASIOSTFloat32LSB; bytes = 4; } else { type = ASIOSTInt32LSB; bytes = 4; }
@@ -138,6 +144,7 @@ class RigTestAsio : public IASIO {
 
 class Factory : public IClassFactory {
  public:
+  bool absent = false;
   HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
     if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, IID_IClassFactory)) { *ppv = this; return S_OK; }
     *ppv = nullptr; return E_NOINTERFACE;
@@ -146,13 +153,14 @@ class Factory : public IClassFactory {
   ULONG STDMETHODCALLTYPE Release() override { return 1; }
   HRESULT STDMETHODCALLTYPE CreateInstance(IUnknown* outer, REFIID riid, void** ppv) override {
     if (outer) return CLASS_E_NOAGGREGATION;
-    RigTestAsio* d = new RigTestAsio(); const HRESULT r = d->QueryInterface(riid, ppv); d->Release(); return r;
+    RigTestAsio* d = new RigTestAsio(absent); const HRESULT r = d->QueryInterface(riid, ppv); d->Release(); return r;
   }
   HRESULT STDMETHODCALLTYPE LockServer(BOOL) override { return S_OK; }
 };
-static Factory g_factory;
+static Factory g_factory, g_absentFactory = [] { Factory f; f.absent = true; return f; }();
 
 extern "C" HRESULT STDAPICALLTYPE DllGetClassObject(REFCLSID clsid, REFIID riid, void** ppv) {
+  if (IsEqualCLSID(clsid, CLSID_RigAbsent)) return g_absentFactory.QueryInterface(riid, ppv);
   if (!IsEqualCLSID(clsid, CLSID_RigTest)) return CLASS_E_CLASSNOTAVAILABLE;
   return g_factory.QueryInterface(riid, ppv);
 }

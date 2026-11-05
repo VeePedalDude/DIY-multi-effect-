@@ -391,6 +391,15 @@ static inline double tri(double ph) {
    return ph < 0.5 ? 4.0 * ph - 1.0 : 3.0 - 4.0 * ph;
 }
 
+/* tanh: Lambert continued fraction (7/6) for |x| <= 3 (abs error < 1e-6), libm beyond. */
+static inline double fast_tanh(double x) {
+   if (x > 3.0 || x < -3.0)
+      return tanh(x);
+   double x2 = x * x;
+   return x * (135135.0 + x2 * (17325.0 + x2 * (378.0 + x2))) /
+          (135135.0 + x2 * (62370.0 + x2 * (3150.0 + 28.0 * x2)));
+}
+
 static inline double smoothstep(double t) { return t * t * (3.0 - 2.0 * t); }
 
 /* Constant-power pan, p in [-1, 1] */
@@ -814,7 +823,7 @@ static clap_process_status cl_process(const clap_plugin_t *p, const clap_process
          double y = fsrc[ch] - c->dc_x[ch] + c->dc_r * c->dc_y[ch];
          c->dc_x[ch] = fsrc[ch];
          c->dc_y[ch] = y;
-         c->line[ch][c->w] = wr_in[ch] + (float)(fb * tanh(y));
+         c->line[ch][c->w] = wr_in[ch] + (float)(fb * fast_tanh(y));
       }
 
       float wl, wrr, fl, fr;

@@ -1,0 +1,24 @@
+{
+  "rig01_spec": "0.3",
+  "id": "chorus-lab",
+  "clap_id": "com.veepedaldude.rig01.chorus-lab",
+  "name": "Chorus Lab",
+  "version": "1.0.0",
+  "author": "KC",
+  "license": "GPL-3.0-or-later",
+  "category": "mod",
+  "tags": ["chorus", "modulation", "stereo", "ensemble", "vibrato", "detune", "lo-fi", "dimension"],
+  "params": {
+    "0": { "ui": "selector", "group": "voicing", "label": "Voicing",  "mod": false },
+    "1": { "ui": "knob",     "group": "main",    "label": "Rate",     "mod": true },
+    "2": { "ui": "knob",     "group": "main",    "label": "Depth",    "mod": true },
+    "3": { "ui": "knob",     "group": "main",    "label": "Mix",      "mod": true },
+    "4": { "ui": "knob",     "group": "tone",    "label": "Tone",     "mod": true },
+    "5": { "ui": "knob",     "group": "tone",    "label": "Feedback", "mod": true },
+    "6": { "ui": "knob",     "group": "space",   "label": "Width",    "mod": true },
+    "7": { "ui": "knob",     "group": "space",   "label": "Time",     "mod": true },
+    "8": { "ui": "knob",     "group": "output",  "label": "Level",    "mod": true }
+  },
+  "library": [],
+  "ui": { "color": "#4fd1c5" }
+}

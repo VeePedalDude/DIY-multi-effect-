@@ -1,0 +1,4 @@
+effects/*/build/
+effects/*/clap
+effects/*/.tools/
+__pycache__/

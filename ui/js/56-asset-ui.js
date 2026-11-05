@@ -11,6 +11,8 @@ function assetListHtml(m) {
   if (!hits.length) return `<li class="meta">Nothing matches${q ? ` “${q.replace(/</g, '&lt;')}”` : ''}${tagFilter(scope).fav || tagFilter(scope).tags.size ? ' with the chosen tags' : ''}.</li>`;
   return hits.map((e) => `<li class="filerow">${starHtml(e.fav, `data-fav-file="${encodeURIComponent(kind + '/' + e.name)}"`, e.name)}<button data-asset-pick="${encodeURIComponent(e.name)}" aria-current="${cur && cur.name === e.name}"><span>${e.name.replace(/</g, '&lt;')}</span><span class="meta">${metaLine(e)}</span>${tagLineHtml(e)}${e.note ? `<span class="meta">${e.note.replace(/</g, '&lt;')}</span>` : ''}</button></li>`).join('');
 }
+// The side panel shows only the current file and its buttons; choosing one happens in the file browser
+// (63-filedlg.js), opened from here or from the file strip on the module's card.
 function assetPanelHtml(m) {
   if (!m.asset) return '';
   const a = m.asset, cur = state.assets[m.id], total = (library.entries[a.kind] || []).length;
@@ -18,13 +20,10 @@ function assetPanelHtml(m) {
     <span class="eyebrow">${a.label} · ${total} in library</span>
     <div class="cur">${cur ? `<b>${cur.name.replace(/</g, '&lt;')}</b>` : '<b>Built-in</b>'}<span class="muted">${assetStatus[m.id] || ''}</span></div>
     ${a.ready ? '' : `<p class="note warnline">This build can’t load these files yet. They are stored, searchable and saved in presets.</p>`}
-    ${cur && !cur.missing ? tagEditorHtml(a.kind, cur.name) : ''}
-    <input type="search" id="as-${m.id}" data-asset-search="${m.id}" placeholder="Search ${kindLabel(a.kind)}, tags, notes…" aria-label="Search ${kindLabel(a.kind)}" value="${(assetQuery[m.id] || '').replace(/"/g, '&quot;')}">
-    ${chipsHtml('file:' + a.kind, library.entries[a.kind] || [])}
-    <ul id="al-${m.id}">${assetListHtml(m)}</ul>
+    <div class="row"><button class="btn primary" data-act="asset-browse" data-mod="${m.id}">Browse ${kindLabel(a.kind)}…</button>
+      ${cur ? `<button class="btn" data-act="asset-clear" data-mod="${m.id}">Use built-in</button>` : ''}</div>
     <div class="drop" data-drop="${m.id}">Drop ${a.exts} files here, or
       <button class="btn" data-act="asset-import" data-mod="${m.id}" style="min-height:32px;font-size:11px;margin-left:6px">Import…</button>
-      ${cur ? `<button class="btn" data-act="asset-clear" data-mod="${m.id}" style="min-height:32px;font-size:11px;margin-left:6px">Use built-in</button>` : ''}
       ${cur && !cur.missing ? `<button class="btn" data-act="asset-remove" data-mod="${m.id}" style="min-height:32px;font-size:11px;margin-left:6px">${removeArmed[m.id] ? 'Confirm remove' : 'Remove file'}</button>` : ''}
     </div>
   </div>`;
@@ -109,26 +108,29 @@ function irResponse(d, sr) {
 }
 
 function wireAssetUi() {
-  panel.addEventListener('input', (e) => {
-    const id = e.target.dataset && e.target.dataset.assetSearch; if (!id) return;
-    assetQuery[id] = e.target.value; const m = MODS.find((x) => x.id === id); $('al-' + id).innerHTML = assetListHtml(m);
-  });
-  panel.addEventListener('click', (e) => {
-    const pick = e.target.closest('[data-asset-pick]');
-    if (pick) { const m = MODS.find((x) => x.id === pick.closest('[data-asset-mod]').dataset.assetMod); selectAsset(m, decodeURIComponent(pick.dataset.assetPick)); return; }
-    const b = e.target.closest('[data-act="asset-import"],[data-act="asset-clear"],[data-act="asset-remove"]'); if (!b) return;
-    const m = MODS.find((x) => x.id === b.dataset.mod);
-    if (b.dataset.act === 'asset-clear') clearAsset(m);
-    else if (b.dataset.act === 'asset-remove') removeAssetFile(m);
-    else { $('libFiles').dataset.target = m.id; $('libFiles').accept = m.asset.exts; $('libFiles').click(); }
-  });
-  // drop onto a module's panel
-  panel.addEventListener('dragover', (e) => { const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); z.classList.add('over'); });
-  panel.addEventListener('dragleave', (e) => { const z = e.target.closest('[data-drop]'); if (z) z.classList.remove('over'); });
-  panel.addEventListener('drop', (e) => {
-    const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); e.stopPropagation(); z.classList.remove('over');
-    importFiles([...e.dataTransfer.files], MODS.find((m) => m.id === z.dataset.drop));
-  });
+  for (const root of [panel, $('fileDlg')]) {                  // the side panel and the file browser
+    root.addEventListener('input', (e) => {
+      const id = e.target.dataset && e.target.dataset.assetSearch; if (!id) return;
+      assetQuery[id] = e.target.value; const m = MODS.find((x) => x.id === id); $('al-' + id).innerHTML = assetListHtml(m);
+    });
+    root.addEventListener('click', (e) => {
+      const pick = e.target.closest('[data-asset-pick]');
+      if (pick) { const m = MODS.find((x) => x.id === pick.closest('[data-asset-mod]').dataset.assetMod); selectAsset(m, decodeURIComponent(pick.dataset.assetPick)); return; }
+      const b = e.target.closest('[data-act="asset-import"],[data-act="asset-clear"],[data-act="asset-remove"],[data-act="asset-browse"]'); if (!b) return;
+      const m = MODS.find((x) => x.id === b.dataset.mod); if (!m) return;
+      if (b.dataset.act === 'asset-clear') clearAsset(m);
+      else if (b.dataset.act === 'asset-remove') removeAssetFile(m);
+      else if (b.dataset.act === 'asset-browse') openFileDlg(m, b);
+      else { $('libFiles').dataset.target = m.id; $('libFiles').accept = m.asset.exts; $('libFiles').click(); }
+    });
+    // drop onto a module's panel, or onto the file browser
+    root.addEventListener('dragover', (e) => { const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); z.classList.add('over'); });
+    root.addEventListener('dragleave', (e) => { const z = e.target.closest('[data-drop]'); if (z) z.classList.remove('over'); });
+    root.addEventListener('drop', (e) => {
+      const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); e.stopPropagation(); z.classList.remove('over');
+      importFiles([...e.dataTransfer.files], MODS.find((m) => m.id === z.dataset.drop));
+    });
+  }
   // drop onto the stage: onto a module face = import + load there; elsewhere = sort into the library by type
   const target = (e) => { const h = pick(e); return h && h.type === 'face' && h.mod.asset ? h.mod : null; };
   canvas.addEventListener('dragover', (e) => { e.preventDefault(); const m = target(e); const el = $('dropHint'); el.hidden = false; el.textContent = m ? `Drop to import into the library and load into ${m.name}` : 'Drop to import into the library'; });

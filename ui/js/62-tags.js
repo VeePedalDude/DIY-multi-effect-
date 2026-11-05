@@ -75,7 +75,8 @@ function wireTags() {
     if (scope.startsWith('pick:')) pickerRefresh(scope.slice(5));
     else renderPanel();
   };
-  panel.addEventListener('click', (e) => {
+  for (const root of [panel, $('fileDlg')]) {
+  root.addEventListener('click', (e) => {
     const fav = e.target.closest('[data-chip-fav]');
     if (fav) { const f = tagFilter(fav.dataset.chipFav); f.fav = !f.fav; redraw(fav.dataset.chipFav); return; }
     const chip = e.target.closest('[data-chip]');
@@ -87,11 +88,12 @@ function wireTags() {
     if (st) { e.stopPropagation(); const [scope, type] = st.dataset.favType.split(':'), d = scope === 'fx' ? MTYPES[type] : TYPES[type];
       setTypeFav(scope, type, !typeTags(scope, type, d).fav); pickerRefresh(scope); return; }
   }, true);
-  panel.addEventListener('change', (e) => {
+  root.addEventListener('change', (e) => {
     const t = e.target.dataset && (e.target.dataset.tagsFile || e.target.dataset.noteFile); if (!t) return;
     const [kind, ...rest] = decodeURIComponent(t).split('/'), name = rest.join('/');
     if (e.target.dataset.tagsFile) setFileTags(kind, name, { tags: parseTagText(e.target.value) });
     else setFileTags(kind, name, { note: e.target.value.trim().slice(0, 300) });
-    renderPanel();
+    e.target.blur(); renderPanel();
   });
+  }
 }

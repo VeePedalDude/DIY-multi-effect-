@@ -10,6 +10,7 @@ function tapRowHtml(pid, color) {
 }
 let fxRemoveArmed = null;                // the module whose Remove was clicked once (click again to confirm)
 function renderPanel() {
+  renderFileDlg();
   if (state.focus === 'add') { renderAddPanel(); return; }
   if (state.focus === 'addfx') { renderAddFxPanel(); return; }
   const s = srcFocus(); if (s) { renderSourcePanel(s); return; }

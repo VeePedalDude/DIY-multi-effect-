@@ -74,6 +74,8 @@ Rules:
 - No memory allocation in `process`. Size buffers as members (fixed arrays).
 - Use `undenorm()` in feedback paths and keep loop gain below 1.
 - Up to 8 parameters (`MAXPAR`) and 2 display meters (`meters()` + names in the desc).
+  The first four knobs are on the front of the card and the rest on its back, so put the knobs
+  people reach for most first.
 - `Context` gives `sr` and `bpm` for tempo-synced effects.
 
 ## 2. Run `./build.sh`

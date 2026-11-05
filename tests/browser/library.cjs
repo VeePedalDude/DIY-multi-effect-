@@ -79,12 +79,26 @@ async function drop(page, target, files) {
   check(L.ir.includes('Greenback 4x12.wav') && st.cab === 'V30 SM57.wav', 'stage background: imported, cab keeps its IR');
   check(L.nam.includes('Plexi crunch.nam') && st.amp === 'Plexi crunch.nam', `amp face: NAM imported and assigned (${st.amp})`);
 
-  console.log('4. Search inside the cab panel');
-  await page.keyboard.press('3'); await sleep(400);
+  console.log('4. The file browser: opens from the file strip on the cab card; search, pick (it stays open), Escape');
+  await page.keyboard.press('3'); await sleep(300); await page.evaluate(() => window.__rig.camSnap()); await sleep(200);
+  const strip = await page.evaluate(() => window.__rig.cardScreen('cab', 'file'));
+  await page.mouse.click(strip.x, strip.y); await sleep(400);
+  const dlg = await page.evaluate(() => ({ id: window.__rig.fileDlg.id, shown: !document.getElementById('fileDlg').hidden, focus: document.activeElement && document.activeElement.id, title: document.getElementById('fileDlgTitle').textContent }));
+  check(dlg.id === 'cab' && dlg.shown && dlg.focus === 'as-cab' && dlg.title === 'Choose an IR', `clicking the card's file strip opens “${dlg.title}”, search box focused`);
   await page.fill('#as-cab', 'green'); await sleep(200);
   const hits = await page.$$eval('#al-cab li [data-asset-pick]', (b) => b.map((x) => x.querySelector('span').textContent));
   check(hits.length === 1 && hits[0] === 'Greenback 4x12.wav', `“green” finds ${JSON.stringify(hits)}`);
-  await page.fill('#as-cab', '');
+  await page.click('#al-cab li [data-asset-pick]'); await sleep(700);
+  const picked = await page.evaluate(() => ({ cab: window.__rig.state.assets.cab.name, open: window.__rig.fileDlg.id }));
+  await page.fill('#as-cab', ''); await sleep(200);
+  await page.click('#al-cab [data-asset-pick="V30%20SM57.wav"]'); await sleep(700);
+  check(picked.cab === 'Greenback 4x12.wav' && picked.open === 'cab' && await page.evaluate(() => window.__rig.state.assets.cab.name) === 'V30 SM57.wav', 'a click loads the file and the browser stays open for the next one');
+  await page.keyboard.press('Escape'); await sleep(200);
+  check(await page.evaluate(() => window.__rig.fileDlg.id === null && document.getElementById('fileDlg').hidden), 'Escape closes it');
+  await page.click('[data-act="asset-browse"][data-mod="cab"]'); await sleep(300);
+  const viaPanel = await page.evaluate(() => window.__rig.fileDlg.id);
+  await page.click('#fileDlg', { position: { x: 5, y: 5 } }); await sleep(200);
+  check(viaPanel === 'cab' && await page.evaluate(() => window.__rig.fileDlg.id === null), 'the side panel’s Browse button opens it too; a click outside closes it');
 
   console.log('5. Save a preset file');
   await page.click('#settingsBtn'); await page.fill('#presetInput', 'Lib Test'); await page.click('#presetSave'); await sleep(500);

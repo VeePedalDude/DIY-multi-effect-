@@ -153,7 +153,8 @@ struct Module {
    - Centre the range on the default where possible.
    - On a Log knob, a default of √(min × max) sits at 0.5.
    - In `reset()`, set smoothers to the default's real value so nothing sweeps at start-up.
-7. **Limits:** up to **8 knobs** and **2 meters**. Meters are display values, named in the desc and
+7. **Limits:** up to **8 knobs** and **2 meters**. The first four knobs go on the front of the
+   card and the rest on its back, so list the most-used knobs first. Meters are display values, named in the desc and
    read by the face screen. Typical meters: the gain now, the delay time in ms, a gate's state.
 8. **Pick an id the rig doesn't already have.** The built-in effect ids are:
    - amp, hyped, gate, cab, holo, tess

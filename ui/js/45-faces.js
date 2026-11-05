@@ -64,18 +64,59 @@ function drawScreen(m, c, st) {
 }
 // Subtitle under a module's name: the loaded file if there is one, otherwise the module's kind.
 function moduleSubtitle(m) { const an = MODDATA[m.id] && MODDATA[m.id].assetName; return an ? `${m.asset.kind.toUpperCase()} · ${an}` : m.kind; }
-function drawFace(m) {
-  const c = m.ctx, byp = !!state.bypass[m.id], st = styleOf(m), C = st.card;
+// A card: the front (screen, first four knobs, a file module's file strip) and, for modules with more
+// than four knobs, the back (same card art and screen, the other knobs). Each frame only the side that
+// faces the camera is drawn, both while the card is turning.
+function drawFace(m, force) {
+  if (!m.back) { drawSide(m, 0); return; }
+  const turning = m.flipA > 0 && m.flipA < 1;
+  if (force || turning || m.flipA < .5) drawSide(m, 0);
+  if (force || turning || m.flipA >= .5) drawSide(m, 1);
+}
+function drawSide(m, side) {
+  const c = side ? m.bctx : m.ctx, byp = !!state.bypass[m.id], st = styleOf(m), C = st.card;
   c.globalAlpha = 1; c.clearRect(0, 0, FW, m.FH);
   drawCard(c, st, m.FH);
   c.textBaseline = 'alphabetic';
   c.beginPath(); c.arc(64, 146, 9, 0, Math.PI * 2); c.fillStyle = byp ? C.powerOff : C.powerOn; c.fill(); c.strokeStyle = C.title; c.lineWidth = 2; c.stroke();
   c.fillStyle = C.title; c.font = `700 36px ${SKIN.ui.fontDisplay}`; c.fillText(m.name, 84, 158);
-  const sub = byp ? 'bypassed' : moduleSubtitle(m);
-  c.fillStyle = byp ? C.bypassed : C.text; c.font = `400 18px ${SKIN.ui.fontMono}`; c.fillText(sub.length > 36 ? sub.slice(0, 35) + '…' : sub, 58, 190);
+  if (!side && m.asset) drawFileStrip(m, c, st, byp);
+  else {
+    const n = m.params.length, sub = byp ? 'bypassed' : side ? `back · knobs ${FRONT_KNOBS + 1}${n > FRONT_KNOBS + 1 ? '–' + n : ''} of ${n}` : moduleSubtitle(m);
+    c.fillStyle = byp ? C.bypassed : C.text; c.font = `400 18px ${SKIN.ui.fontMono}`; c.fillText(sub.length > 36 ? sub.slice(0, 35) + '…' : sub, 58, 190);
+  }
   c.globalAlpha = byp ? .45 : 1;
-  drawScreen(m, c, st); m.params.forEach((p) => { const [kx, ky] = knobXY(p); drawKnob(c, kx, ky, p, st); });
-  c.globalAlpha = 1; m.tex.needsUpdate = true;
+  drawScreen(m, c, st);
+  m.params.forEach((p) => { if (knobSide(p) !== side) return; const [kx, ky] = knobXY(p); drawKnob(c, kx, ky, p, st); });
+  c.globalAlpha = 1;
+  if (m.back) drawFlipTab(m, c, st, side);
+  (side ? m.btex : m.tex).needsUpdate = true;
+}
+// A file module's file strip, under its name: what's loaded, and that clicking it opens the file browser.
+function drawFileStrip(m, c, st, byp) {
+  const b = FILE_STRIP, C = st.card, an = MODDATA[m.id] && MODDATA[m.id].assetName;
+  rr(c, b.x, b.y, b.w, b.h, b.h / 2); c.fillStyle = SKIN.screen.glass; c.fill();
+  c.strokeStyle = st.accent; c.lineWidth = 3; c.stroke();
+  c.font = `600 15px ${SKIN.ui.fontDisplay}`; c.fillStyle = st.accent; c.textAlign = 'right'; c.fillText('BROWSE ▾', b.x + b.w - 16, b.y + 22);
+  const w = c.measureText('BROWSE ▾').width;
+  c.textAlign = 'left'; c.font = `400 16px ${SKIN.ui.fontMono}`; c.fillStyle = byp ? C.bypassed : SKIN.screen.text;
+  let t = byp ? 'bypassed' : `${m.asset.kind.toUpperCase()} · ${an || 'built-in: choose a file'}`;
+  const room = b.w - 32 - w - 12;
+  if (c.measureText(t).width > room) { while (t.length > 4 && c.measureText(t + '…').width > room) t = t.slice(0, -1); t += '…'; }
+  c.fillText(t, b.x + 16, b.y + 22);
+}
+// The turn-over tab: on the front, how many knobs wait on the back (a dot in a source's colour for
+// each one that's patched); on the back, the way to the front.
+function drawFlipTab(m, c, st, side) {
+  const t = flipTab(m), x = t.x - t.w / 2, y = t.y - t.h / 2;
+  rr(c, x, y, t.w, t.h, t.h / 2); c.fillStyle = SKIN.screen.glass; c.fill();
+  c.strokeStyle = st.accent; c.lineWidth = 3; c.stroke();
+  const more = m.params.length - FRONT_KNOBS;
+  c.font = `700 17px ${SKIN.ui.fontDisplay}`; c.fillStyle = SKIN.screen.bright; c.textAlign = 'center';
+  c.fillText(side ? '↺  FRONT' : `↻  ${more} MORE ON BACK`, t.x, t.y + 6);
+  c.textAlign = 'left';
+  const patched = m.params.filter((p) => knobSide(p) !== side && state.conns[p.id] && SRCMAP[state.conns[p.id]]);
+  patched.forEach((p, i) => { c.beginPath(); c.arc(x + 22 + i * 14, t.y, 5, 0, Math.PI * 2); c.fillStyle = SRCMAP[state.conns[p.id]].color; c.fill(); });
 }
 function drawLabel(s) {
   const c = s.ctx, on = state.carrying === s.id, open = state.focus === 'src:' + s.id;
@@ -88,4 +129,5 @@ function drawLabel(s) {
 // Test helpers: face screens that threw (type: message); redraw one face now; one pixel of a face canvas, [r, g, b, a].
 rig.screenErrors = [];
 rig.redrawFace = (id) => { const m = MODS.find((q) => q.id === id); if (m) drawFace(m); return !!m; };
-rig.facePixel = (id, x, y) => { const m = MODS.find((q) => q.id === id); return m ? Array.from(m.ctx.getImageData(x, y, 1, 1).data) : null; };
+rig.facePixel = (id, x, y, side) => { const m = MODS.find((q) => q.id === id); const c = m && (side ? m.bctx : m.ctx); return c ? Array.from(c.getImageData(x, y, 1, 1).data) : null; };
+rig.faceImage = (id, side) => { const m = MODS.find((q) => q.id === id); const c = m && (side ? m.bctx : m.ctx); return c ? c.canvas.toDataURL('image/png') : null; };

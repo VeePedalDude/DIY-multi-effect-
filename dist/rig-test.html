@@ -135,15 +135,23 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .star[aria-pressed="true"]{color:var(--accent)}
 .asset li.filerow{display:flex;align-items:flex-start;gap:2px}
 .asset li.filerow > button[data-asset-pick]{flex:1}
+.asset li.filerow > button.star{width:auto;flex:none;align-self:center;background:none;border:0;padding:8px 6px}
 .taglist{display:flex;flex-wrap:wrap;gap:3px;margin-top:2px}
 .taglist span{font:400 10px var(--mono);color:var(--muted);border:1px solid var(--line2);border-radius:6px;padding:0 5px}
 .taglist span.own{color:var(--fg);border-color:var(--accent)}
 .tagedit{display:flex;flex-direction:column;gap:4px;font-size:12px}
-.tagedit label{display:flex;gap:6px;align-items:center}
+.tagedit label{display:flex;flex-direction:row;gap:6px;align-items:center}
+.tagedit label > :first-child{min-width:0}
 .tagedit input{flex:1;min-height:30px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 8px;font:400 12px var(--mono);color:var(--fg)}
 #libPlugins div{font-size:12px;line-height:1.5}
 .asset li .meta{font:400 11px/1.3 var(--mono);color:var(--muted)}
 .drop{border:1px dashed var(--line2);border-radius:10px;padding:10px;text-align:center;font-size:13px;color:var(--muted)}
+.filedlg{width:min(760px,100%);max-height:min(860px,calc(100vh - 32px));padding:22px;gap:12px;overflow:hidden}
+.filedlg h2{margin:2px 0 0;font-size:24px;letter-spacing:.06em}
+.filedlg .fdhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.filedlg .fdcur{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
+.filedlg ul.fdlist{max-height:none;flex:1 1 auto;min-height:120px}
+.filedlg .fdbtns .spacer{flex:1}
 .drop.over,.stage-drop{border-color:var(--accent);color:var(--fg);background:var(--selected)}
 .warnline{color:var(--warn)}
 #dropHint{position:fixed;left:50%;top:calc(var(--topH) + 18px);transform:translateX(-50%);z-index:8;padding:10px 16px;border-radius:10px;background:var(--selected);border:1px solid var(--accent);font-size:15px;pointer-events:none}
@@ -352,6 +360,10 @@ body.panel-hidden .matrix{right:16px}
     <p class="err-box" id="startErr" hidden></p>
     <button class="btn primary" id="startBtn" style="min-height:52px;font-size:16px">Start audio</button>
   </div>
+</div>
+
+<div class="overlay" id="fileDlg" hidden>
+  <div class="card filedlg asset" id="fileDlgCard" role="dialog" aria-modal="true" aria-labelledby="fileDlgTitle"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -1767,12 +1779,24 @@ function mkTex(cv) { const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.
 
 // Face geometry, in canvas pixels: the card art's own size (518 x 754). One knob row per two params;
 // cards with more than one row grow by stretching a plain strip of the side rails (45-faces.js drawCard).
-const FW = 518, CARD_H = 754, PW = 3.4, ROW_H = 150, KNOB_Y0 = 492;
-const faceH = (m) => CARD_H + ROW_H * Math.max(0, Math.ceil(m.params.length / 2) - 1);
+// The front holds up to four knobs. A module with more keeps the rest on the back of its card, drawn
+// with the same card art, and a highlighted tab at the foot of the card turns it over.
+const FW = 518, CARD_H = 754, PW = 3.4, ROW_H = 200, KNOB_Y0 = 492, FRONT_KNOBS = 4;
+const faceH = (m) => CARD_H + ROW_H * Math.max(0, Math.ceil(Math.min(m.params.length, FRONT_KNOBS) / 2) - 1);
+const hasBack = (m) => m.params.length > FRONT_KNOBS;
+const knobSide = (p) => (p.pi >= FRONT_KNOBS ? 1 : 0);          // 0 front, 1 back
 function knobXY(p) {
-  const n = p.mod.params.length, row = Math.floor(p.pi / 2), inRow = Math.min(2, n - row * 2);
-  return [inRow === 2 ? (p.pi % 2 ? 372 : 146) : FW / 2, KNOB_Y0 + row * ROW_H];
+  const n = p.mod.params.length, side = knobSide(p), i = p.pi - side * FRONT_KNOBS;
+  const cnt = side ? n - FRONT_KNOBS : Math.min(n, FRONT_KNOBS), row = Math.floor(i / 2), inRow = Math.min(2, cnt - row * 2);
+  return [inRow === 2 ? (i % 2 ? 372 : 146) : FW / 2, KNOB_Y0 + row * ROW_H];
 }
+// The turn-over tab (centre, half size) and a file module's file strip, in face pixels.
+const flipTab = (m) => ({ x: FW / 2, y: m.FH - 100, w: 236, h: 44 });
+const FILE_STRIP = { x: 46, y: 163, w: 426, h: 33 };
+const inBox = (px, py, b) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+const inTab = (px, py, t) => Math.abs(px - t.x) <= t.w / 2 + 8 && Math.abs(py - t.y) <= t.h / 2 + 8;
+const cardFlip = {};                                             // module id -> showing its back
+rig.cardFlip = cardFlip;
 const SPACING = 4;
 const pickables = [];
 let flowCurve, flowTube, flowGeo, flowMat, flowPos, inLbl, outLbl, carryLine, carryGeo;
@@ -1827,17 +1851,27 @@ function buildModules() {
     const FH = faceH(m), PH = PW * FH / FW, tileGlow = styleOf(m).glow;
     const g = new THREE.Group(); g.position.set(pos.x, 0.8 + PH / 2, pos.z); g.lookAt(0, g.position.y, 22);
     // the card's thickness (inset so its rounded corners stay clear) and a glow behind it when focused
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: SKIN.stage.slab })); slab.position.z = .02; g.add(slab);
+    // 'spin' turns the card over; the glow behind it stays put
+    const spin = new THREE.Group(); g.add(spin);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: SKIN.stage.slab })); slab.position.z = .02; spin.add(slab);
     const halo = new THREE.Mesh(new THREE.PlaneGeometry(PW * 1.3, PH * 1.2), new THREE.MeshBasicMaterial({ map: glowTex(), color: tileGlow, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.position.z = -.06; g.add(halo);
+    halo.position.z = -.14; g.add(halo);
     const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH; const tex = mkTex(cv);
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); face.position.z = .1; g.add(face);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); face.position.z = .1; spin.add(face);
+    let back = null, bctx = null, btex = null;
+    if (hasBack(m)) {
+      const bcv = document.createElement('canvas'); bcv.width = FW; bcv.height = FH; btex = mkTex(bcv); bctx = bcv.getContext('2d');
+      back = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: btex, transparent: true }));
+      back.position.z = -.06; back.rotation.y = Math.PI; spin.add(back);
+      back.userData = { type: 'face', mod: m, side: 1 }; pickables.push(back);
+    }
+    const flip = cardFlip[m.id] && back ? 1 : 0; spin.rotation.y = flip * Math.PI;
     const glow = new THREE.Mesh(new THREE.RingGeometry(1.2, 2.2, 48), new THREE.MeshBasicMaterial({ color: tileGlow, transparent: true, opacity: .08, side: THREE.DoubleSide, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.set(pos.x, .02, pos.z);
     scene.add(glow, g); modObjs.push(glow, g);
-    Object.assign(m, { group: g, baseY: g.position.y, face, slab, halo, glow, ctx: cv.getContext('2d'), tex, FH, PH });
-    face.userData = { type: 'face', mod: m }; pickables.push(face);
-    drawFace(m);
+    Object.assign(m, { group: g, baseY: g.position.y, spin, face, back, slab, halo, glow, ctx: cv.getContext('2d'), tex, bctx, btex, FH, PH, flipA: flip });
+    face.userData = { type: 'face', mod: m, side: 0 }; pickables.push(face);
+    drawFace(m, true);
   });
   if (!chainFull()) {                                   // the "+" card: a plain dashed outline, half height
     const pos = cardSpot(MODS.length, n), PH = PW * 0.62, cv = document.createElement('canvas'); cv.width = FW; cv.height = Math.round(FW * 0.62);
@@ -1921,7 +1955,28 @@ function drawAddLabel(force) {
   c.font = `400 16px ${SKIN.ui.fontMono}`; c.fillText(`a source · ${SRC.length}/${DESC.maxSources}`, 16, 58);
   addOrb.lbl.material.map.needsUpdate = true;
 }
-function knobWorld(p) { const m = p.mod, [kx, ky] = knobXY(p); return m.face.localToWorld(new THREE.Vector3((kx / FW - .5) * PW, (.5 - ky / m.FH) * m.PH, .12)); }
+// A point on a side of a card, in world space (z lifts it off the face, towards the viewer of that side).
+function facePoint(m, side, x, y, z = .12) { return (side ? m.back : m.face).localToWorld(new THREE.Vector3((x / FW - .5) * PW, (.5 - y / m.FH) * m.PH, z)); }
+// Where a cable meets a knob. A knob on the side that's turned away: the cable goes to the turn-over tab.
+function knobWorld(p) {
+  const m = p.mod, side = knobSide(p), showing = cardFlip[m.id] ? 1 : 0;
+  if (side !== showing) { const t = flipTab(m); return facePoint(m, showing, t.x, t.y); }
+  const [kx, ky] = knobXY(p); return facePoint(m, side, kx, ky);
+}
+// Each frame: ease a card towards the side it should show.
+function flipStep(m, dt) {
+  if (!m.back) return;
+  const goal = cardFlip[m.id] ? 1 : 0;
+  if (m.flipA === goal) return;
+  m.flipA = RM ? goal : (Math.abs(goal - m.flipA) < .004 ? goal : m.flipA + (goal - m.flipA) * Math.min(1, dt * 9));
+  m.spin.rotation.y = m.flipA * Math.PI;
+}
+function turnCard(m, toBack) {
+  if (!hasBack(m)) return;
+  cardFlip[m.id] = toBack === undefined ? !cardFlip[m.id] : !!toBack;
+  if (!cardFlip[m.id]) delete cardFlip[m.id];
+  drawFace(m, true);
+}
 function bez(a, b) { return new THREE.CubicBezierCurve3(a, a.clone().add(new THREE.Vector3(0, -3.5, 1.5)), b.clone().add(new THREE.Vector3(0, 3, 2.5)), b); }
 // Where a cable ends: a module's knob, or just under the orb of the source whose knob it moves
 // (one point per knob, spread across the orb).
@@ -1963,9 +2018,11 @@ function pick(e) {
   const u = hit.object.userData; if (u.type === 'src' || u.type === 'srclabel') return { type: u.type, src: u.src };
   if (u.type === 'srcadd') return { type: 'srcadd' };
   if (u.type === 'fxadd') return { type: 'fxadd' };
-  const m = u.mod, px = hit.uv.x * FW, py = (1 - hit.uv.y) * m.FH; let knob = null;
-  m.params.forEach((p) => { const [kx, ky] = knobXY(p); if (Math.hypot(px - kx, py - ky) < 84) knob = p; });
-  return { type: 'face', mod: m, knob };
+  const m = u.mod, side = u.side || 0, px = hit.uv.x * FW, py = (1 - hit.uv.y) * m.FH; let knob = null;
+  if (hasBack(m) && inTab(px, py, flipTab(m))) return { type: 'face', mod: m, side, flip: true };
+  if (!side && m.asset && inBox(px, py, FILE_STRIP)) return { type: 'face', mod: m, side, file: true };
+  m.params.forEach((p) => { if (knobSide(p) !== side) return; const [kx, ky] = knobXY(p); if (Math.hypot(px - kx, py - ky) < 84) knob = p; });
+  return { type: 'face', mod: m, side, knob };
 }
 let drag = null;
 function wireStageInput() {
@@ -1999,11 +2056,28 @@ function stageClick(h) {
   if (h.type === 'src') { state.carrying = state.carrying === h.src.id ? null : h.src.id; state.focus = 'src:' + h.src.id; update(); return; }
   if (h.type === 'srclabel') { state.focus = 'src:' + h.src.id; update(); return; }
   if (h.knob && state.carrying) { connect(h.knob.id, state.conns[h.knob.id] === state.carrying ? null : state.carrying); state.carrying = null; state.focus = h.mod.id; update(); return; }
+  if (h.flip) { turnCard(h.mod); state.focus = h.mod.id; update(); return; }
+  if (h.file && !state.carrying) { state.focus = h.mod.id; update(); openFileDlg(h.mod, canvas); return; }
   state.focus = h.mod.id; flyTo(h.mod); update();
 }
 // Test helpers: where a module's face, or a source's orb or name label, is on screen (client px).
 rig.camSnap = () => { cam.r = camGoal.r; cam.target.copy(camGoal.target); placeCamera(); camera.updateMatrixWorld(); };   // tests: skip the camera's easing
 rig.fxAddScreen = () => { if (!addCard) return null; const v = addCard.group.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
+// Where a point on a card is on screen: part 'tab' (the turn-over tab), 'file' (the file strip), or a knob index.
+rig.cardScreen = (id, part) => {
+  const m = MODS.find((x) => x.id === id); if (!m) return null;
+  let side = cardFlip[m.id] ? 1 : 0, x, y;
+  if (part === 'tab') ({ x, y } = flipTab(m));
+  else if (part === 'file') { x = FILE_STRIP.x + FILE_STRIP.w / 2; y = FILE_STRIP.y + FILE_STRIP.h / 2; side = 0; }
+  else { const p = m.params[part]; if (!p) return null; side = knobSide(p); [x, y] = knobXY(p); }
+  m.group.updateMatrixWorld(true);
+  const v = facePoint(m, side, x, y, 0).project(camera), r = canvas.getBoundingClientRect();
+  return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height, side };
+};
+rig.cableEnd = (pid) => { if (!knobOf(pid)) return null; const v = targetWorld(pid).project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
+rig.pickAt = (x, y) => { const h = pick({ clientX: x, clientY: y }); return h && { type: h.type, mod: h.mod && h.mod.id, side: h.side, knob: h.knob && h.knob.id, flip: !!h.flip, file: !!h.file }; };
+rig.cardAngle = (id) => { const m = MODS.find((x) => x.id === id); return m ? m.flipA : null; };   // 0 front .. 1 back
+rig.turnCard = (id, toBack) => { const m = MODS.find((x) => x.id === id); if (m) turnCard(m, toBack); return !!(m && cardFlip[m.id]); };
 rig.cables = () => cables.map((c) => `${c.s.id}>${c.pid}`);
 rig.addScreen = () => { if (!addOrb) return null; const v = addOrb.lbl.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
 rig.srcScreen = (id, part = 'lbl') => { const s = SRCMAP[id]; if (!s) return null; const v = s[part].position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
@@ -2076,18 +2150,59 @@ function drawScreen(m, c, st) {
 }
 // Subtitle under a module's name: the loaded file if there is one, otherwise the module's kind.
 function moduleSubtitle(m) { const an = MODDATA[m.id] && MODDATA[m.id].assetName; return an ? `${m.asset.kind.toUpperCase()} · ${an}` : m.kind; }
-function drawFace(m) {
-  const c = m.ctx, byp = !!state.bypass[m.id], st = styleOf(m), C = st.card;
+// A card: the front (screen, first four knobs, a file module's file strip) and, for modules with more
+// than four knobs, the back (same card art and screen, the other knobs). Each frame only the side that
+// faces the camera is drawn, both while the card is turning.
+function drawFace(m, force) {
+  if (!m.back) { drawSide(m, 0); return; }
+  const turning = m.flipA > 0 && m.flipA < 1;
+  if (force || turning || m.flipA < .5) drawSide(m, 0);
+  if (force || turning || m.flipA >= .5) drawSide(m, 1);
+}
+function drawSide(m, side) {
+  const c = side ? m.bctx : m.ctx, byp = !!state.bypass[m.id], st = styleOf(m), C = st.card;
   c.globalAlpha = 1; c.clearRect(0, 0, FW, m.FH);
   drawCard(c, st, m.FH);
   c.textBaseline = 'alphabetic';
   c.beginPath(); c.arc(64, 146, 9, 0, Math.PI * 2); c.fillStyle = byp ? C.powerOff : C.powerOn; c.fill(); c.strokeStyle = C.title; c.lineWidth = 2; c.stroke();
   c.fillStyle = C.title; c.font = `700 36px ${SKIN.ui.fontDisplay}`; c.fillText(m.name, 84, 158);
-  const sub = byp ? 'bypassed' : moduleSubtitle(m);
-  c.fillStyle = byp ? C.bypassed : C.text; c.font = `400 18px ${SKIN.ui.fontMono}`; c.fillText(sub.length > 36 ? sub.slice(0, 35) + '…' : sub, 58, 190);
+  if (!side && m.asset) drawFileStrip(m, c, st, byp);
+  else {
+    const n = m.params.length, sub = byp ? 'bypassed' : side ? `back · knobs ${FRONT_KNOBS + 1}${n > FRONT_KNOBS + 1 ? '–' + n : ''} of ${n}` : moduleSubtitle(m);
+    c.fillStyle = byp ? C.bypassed : C.text; c.font = `400 18px ${SKIN.ui.fontMono}`; c.fillText(sub.length > 36 ? sub.slice(0, 35) + '…' : sub, 58, 190);
+  }
   c.globalAlpha = byp ? .45 : 1;
-  drawScreen(m, c, st); m.params.forEach((p) => { const [kx, ky] = knobXY(p); drawKnob(c, kx, ky, p, st); });
-  c.globalAlpha = 1; m.tex.needsUpdate = true;
+  drawScreen(m, c, st);
+  m.params.forEach((p) => { if (knobSide(p) !== side) return; const [kx, ky] = knobXY(p); drawKnob(c, kx, ky, p, st); });
+  c.globalAlpha = 1;
+  if (m.back) drawFlipTab(m, c, st, side);
+  (side ? m.btex : m.tex).needsUpdate = true;
+}
+// A file module's file strip, under its name: what's loaded, and that clicking it opens the file browser.
+function drawFileStrip(m, c, st, byp) {
+  const b = FILE_STRIP, C = st.card, an = MODDATA[m.id] && MODDATA[m.id].assetName;
+  rr(c, b.x, b.y, b.w, b.h, b.h / 2); c.fillStyle = SKIN.screen.glass; c.fill();
+  c.strokeStyle = st.accent; c.lineWidth = 3; c.stroke();
+  c.font = `600 15px ${SKIN.ui.fontDisplay}`; c.fillStyle = st.accent; c.textAlign = 'right'; c.fillText('BROWSE ▾', b.x + b.w - 16, b.y + 22);
+  const w = c.measureText('BROWSE ▾').width;
+  c.textAlign = 'left'; c.font = `400 16px ${SKIN.ui.fontMono}`; c.fillStyle = byp ? C.bypassed : SKIN.screen.text;
+  let t = byp ? 'bypassed' : `${m.asset.kind.toUpperCase()} · ${an || 'built-in: choose a file'}`;
+  const room = b.w - 32 - w - 12;
+  if (c.measureText(t).width > room) { while (t.length > 4 && c.measureText(t + '…').width > room) t = t.slice(0, -1); t += '…'; }
+  c.fillText(t, b.x + 16, b.y + 22);
+}
+// The turn-over tab: on the front, how many knobs wait on the back (a dot in a source's colour for
+// each one that's patched); on the back, the way to the front.
+function drawFlipTab(m, c, st, side) {
+  const t = flipTab(m), x = t.x - t.w / 2, y = t.y - t.h / 2;
+  rr(c, x, y, t.w, t.h, t.h / 2); c.fillStyle = SKIN.screen.glass; c.fill();
+  c.strokeStyle = st.accent; c.lineWidth = 3; c.stroke();
+  const more = m.params.length - FRONT_KNOBS;
+  c.font = `700 17px ${SKIN.ui.fontDisplay}`; c.fillStyle = SKIN.screen.bright; c.textAlign = 'center';
+  c.fillText(side ? '↺  FRONT' : `↻  ${more} MORE ON BACK`, t.x, t.y + 6);
+  c.textAlign = 'left';
+  const patched = m.params.filter((p) => knobSide(p) !== side && state.conns[p.id] && SRCMAP[state.conns[p.id]]);
+  patched.forEach((p, i) => { c.beginPath(); c.arc(x + 22 + i * 14, t.y, 5, 0, Math.PI * 2); c.fillStyle = SRCMAP[state.conns[p.id]].color; c.fill(); });
 }
 function drawLabel(s) {
   const c = s.ctx, on = state.carrying === s.id, open = state.focus === 'src:' + s.id;
@@ -2100,7 +2215,8 @@ function drawLabel(s) {
 // Test helpers: face screens that threw (type: message); redraw one face now; one pixel of a face canvas, [r, g, b, a].
 rig.screenErrors = [];
 rig.redrawFace = (id) => { const m = MODS.find((q) => q.id === id); if (m) drawFace(m); return !!m; };
-rig.facePixel = (id, x, y) => { const m = MODS.find((q) => q.id === id); return m ? Array.from(m.ctx.getImageData(x, y, 1, 1).data) : null; };
+rig.facePixel = (id, x, y, side) => { const m = MODS.find((q) => q.id === id); const c = m && (side ? m.bctx : m.ctx); return c ? Array.from(c.getImageData(x, y, 1, 1).data) : null; };
+rig.faceImage = (id, side) => { const m = MODS.find((q) => q.id === id); const c = m && (side ? m.bctx : m.ctx); return c ? c.canvas.toDataURL('image/png') : null; };
 
 // ===== ui/js/46-eq-plot.js =====
 // 46-eq-plot.js - frequency-response plots for the equaliser face screens (ui/screens/tilt.js, bax.js,
@@ -3001,6 +3117,7 @@ function tapRowHtml(pid, color) {
 }
 let fxRemoveArmed = null;                // the module whose Remove was clicked once (click again to confirm)
 function renderPanel() {
+  renderFileDlg();
   if (state.focus === 'add') { renderAddPanel(); return; }
   if (state.focus === 'addfx') { renderAddFxPanel(); return; }
   const s = srcFocus(); if (s) { renderSourcePanel(s); return; }
@@ -3715,6 +3832,8 @@ function assetListHtml(m) {
   if (!hits.length) return `<li class="meta">Nothing matches${q ? ` “${q.replace(/</g, '&lt;')}”` : ''}${tagFilter(scope).fav || tagFilter(scope).tags.size ? ' with the chosen tags' : ''}.</li>`;
   return hits.map((e) => `<li class="filerow">${starHtml(e.fav, `data-fav-file="${encodeURIComponent(kind + '/' + e.name)}"`, e.name)}<button data-asset-pick="${encodeURIComponent(e.name)}" aria-current="${cur && cur.name === e.name}"><span>${e.name.replace(/</g, '&lt;')}</span><span class="meta">${metaLine(e)}</span>${tagLineHtml(e)}${e.note ? `<span class="meta">${e.note.replace(/</g, '&lt;')}</span>` : ''}</button></li>`).join('');
 }
+// The side panel shows only the current file and its buttons; choosing one happens in the file browser
+// (63-filedlg.js), opened from here or from the file strip on the module's card.
 function assetPanelHtml(m) {
   if (!m.asset) return '';
   const a = m.asset, cur = state.assets[m.id], total = (library.entries[a.kind] || []).length;
@@ -3722,13 +3841,10 @@ function assetPanelHtml(m) {
     <span class="eyebrow">${a.label} · ${total} in library</span>
     <div class="cur">${cur ? `<b>${cur.name.replace(/</g, '&lt;')}</b>` : '<b>Built-in</b>'}<span class="muted">${assetStatus[m.id] || ''}</span></div>
     ${a.ready ? '' : `<p class="note warnline">This build can’t load these files yet. They are stored, searchable and saved in presets.</p>`}
-    ${cur && !cur.missing ? tagEditorHtml(a.kind, cur.name) : ''}
-    <input type="search" id="as-${m.id}" data-asset-search="${m.id}" placeholder="Search ${kindLabel(a.kind)}, tags, notes…" aria-label="Search ${kindLabel(a.kind)}" value="${(assetQuery[m.id] || '').replace(/"/g, '&quot;')}">
-    ${chipsHtml('file:' + a.kind, library.entries[a.kind] || [])}
-    <ul id="al-${m.id}">${assetListHtml(m)}</ul>
+    <div class="row"><button class="btn primary" data-act="asset-browse" data-mod="${m.id}">Browse ${kindLabel(a.kind)}…</button>
+      ${cur ? `<button class="btn" data-act="asset-clear" data-mod="${m.id}">Use built-in</button>` : ''}</div>
     <div class="drop" data-drop="${m.id}">Drop ${a.exts} files here, or
       <button class="btn" data-act="asset-import" data-mod="${m.id}" style="min-height:32px;font-size:11px;margin-left:6px">Import…</button>
-      ${cur ? `<button class="btn" data-act="asset-clear" data-mod="${m.id}" style="min-height:32px;font-size:11px;margin-left:6px">Use built-in</button>` : ''}
       ${cur && !cur.missing ? `<button class="btn" data-act="asset-remove" data-mod="${m.id}" style="min-height:32px;font-size:11px;margin-left:6px">${removeArmed[m.id] ? 'Confirm remove' : 'Remove file'}</button>` : ''}
     </div>
   </div>`;
@@ -3813,26 +3929,29 @@ function irResponse(d, sr) {
 }
 
 function wireAssetUi() {
-  panel.addEventListener('input', (e) => {
-    const id = e.target.dataset && e.target.dataset.assetSearch; if (!id) return;
-    assetQuery[id] = e.target.value; const m = MODS.find((x) => x.id === id); $('al-' + id).innerHTML = assetListHtml(m);
-  });
-  panel.addEventListener('click', (e) => {
-    const pick = e.target.closest('[data-asset-pick]');
-    if (pick) { const m = MODS.find((x) => x.id === pick.closest('[data-asset-mod]').dataset.assetMod); selectAsset(m, decodeURIComponent(pick.dataset.assetPick)); return; }
-    const b = e.target.closest('[data-act="asset-import"],[data-act="asset-clear"],[data-act="asset-remove"]'); if (!b) return;
-    const m = MODS.find((x) => x.id === b.dataset.mod);
-    if (b.dataset.act === 'asset-clear') clearAsset(m);
-    else if (b.dataset.act === 'asset-remove') removeAssetFile(m);
-    else { $('libFiles').dataset.target = m.id; $('libFiles').accept = m.asset.exts; $('libFiles').click(); }
-  });
-  // drop onto a module's panel
-  panel.addEventListener('dragover', (e) => { const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); z.classList.add('over'); });
-  panel.addEventListener('dragleave', (e) => { const z = e.target.closest('[data-drop]'); if (z) z.classList.remove('over'); });
-  panel.addEventListener('drop', (e) => {
-    const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); e.stopPropagation(); z.classList.remove('over');
-    importFiles([...e.dataTransfer.files], MODS.find((m) => m.id === z.dataset.drop));
-  });
+  for (const root of [panel, $('fileDlg')]) {                  // the side panel and the file browser
+    root.addEventListener('input', (e) => {
+      const id = e.target.dataset && e.target.dataset.assetSearch; if (!id) return;
+      assetQuery[id] = e.target.value; const m = MODS.find((x) => x.id === id); $('al-' + id).innerHTML = assetListHtml(m);
+    });
+    root.addEventListener('click', (e) => {
+      const pick = e.target.closest('[data-asset-pick]');
+      if (pick) { const m = MODS.find((x) => x.id === pick.closest('[data-asset-mod]').dataset.assetMod); selectAsset(m, decodeURIComponent(pick.dataset.assetPick)); return; }
+      const b = e.target.closest('[data-act="asset-import"],[data-act="asset-clear"],[data-act="asset-remove"],[data-act="asset-browse"]'); if (!b) return;
+      const m = MODS.find((x) => x.id === b.dataset.mod); if (!m) return;
+      if (b.dataset.act === 'asset-clear') clearAsset(m);
+      else if (b.dataset.act === 'asset-remove') removeAssetFile(m);
+      else if (b.dataset.act === 'asset-browse') openFileDlg(m, b);
+      else { $('libFiles').dataset.target = m.id; $('libFiles').accept = m.asset.exts; $('libFiles').click(); }
+    });
+    // drop onto a module's panel, or onto the file browser
+    root.addEventListener('dragover', (e) => { const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); z.classList.add('over'); });
+    root.addEventListener('dragleave', (e) => { const z = e.target.closest('[data-drop]'); if (z) z.classList.remove('over'); });
+    root.addEventListener('drop', (e) => {
+      const z = e.target.closest('[data-drop]'); if (!z) return; e.preventDefault(); e.stopPropagation(); z.classList.remove('over');
+      importFiles([...e.dataTransfer.files], MODS.find((m) => m.id === z.dataset.drop));
+    });
+  }
   // drop onto the stage: onto a module face = import + load there; elsewhere = sort into the library by type
   const target = (e) => { const h = pick(e); return h && h.type === 'face' && h.mod.asset ? h.mod : null; };
   canvas.addEventListener('dragover', (e) => { e.preventDefault(); const m = target(e); const el = $('dropHint'); el.hidden = false; el.textContent = m ? `Drop to import into the library and load into ${m.name}` : 'Drop to import into the library'; });
@@ -4623,7 +4742,8 @@ function wireTags() {
     if (scope.startsWith('pick:')) pickerRefresh(scope.slice(5));
     else renderPanel();
   };
-  panel.addEventListener('click', (e) => {
+  for (const root of [panel, $('fileDlg')]) {
+  root.addEventListener('click', (e) => {
     const fav = e.target.closest('[data-chip-fav]');
     if (fav) { const f = tagFilter(fav.dataset.chipFav); f.fav = !f.fav; redraw(fav.dataset.chipFav); return; }
     const chip = e.target.closest('[data-chip]');
@@ -4635,12 +4755,87 @@ function wireTags() {
     if (st) { e.stopPropagation(); const [scope, type] = st.dataset.favType.split(':'), d = scope === 'fx' ? MTYPES[type] : TYPES[type];
       setTypeFav(scope, type, !typeTags(scope, type, d).fav); pickerRefresh(scope); return; }
   }, true);
-  panel.addEventListener('change', (e) => {
+  root.addEventListener('change', (e) => {
     const t = e.target.dataset && (e.target.dataset.tagsFile || e.target.dataset.noteFile); if (!t) return;
     const [kind, ...rest] = decodeURIComponent(t).split('/'), name = rest.join('/');
     if (e.target.dataset.tagsFile) setFileTags(kind, name, { tags: parseTagText(e.target.value) });
     else setFileTags(kind, name, { note: e.target.value.trim().slice(0, 300) });
-    renderPanel();
+    e.target.blur(); renderPanel();
+  });
+  }
+}
+
+// ===== ui/js/63-filedlg.js =====
+// 63-filedlg.js - the file browser: a window in the middle of the page for choosing a module's NAM
+// capture or IR. It opens from the file strip on the module's card (40-stage.js) or the side panel's
+// Browse button. Clicking a file loads it straight away and the window stays open, so captures can be
+// auditioned one after another; Done, Escape or a click outside closes it. Search, tag chips, favorites,
+// the current file's tags and note, import, drop, "Use built-in" and remove all work here as they did in
+// the side panel (56-asset-ui.js and 62-tags.js handle the clicks).
+const fileDlg = { id: null, opener: null };
+rig.fileDlg = fileDlg;
+
+function openFileDlg(m, opener) {
+  if (!m || !m.asset) return;
+  const el = $('fileDlg'), card = $('fileDlgCard'), a = m.asset;
+  fileDlg.id = m.id; fileDlg.opener = opener || document.activeElement;
+  card.dataset.assetMod = m.id;
+  card.innerHTML = `<div class="fdhead"><div><div class="eyebrow" id="fdEyebrow"></div><h2 id="fileDlgTitle"></h2></div>
+      <button class="btn mini" data-act="fd-close" aria-label="Close the file browser">✕</button></div>
+    <div id="fdCur" class="fdcur"></div>
+    <input type="search" id="as-${m.id}" data-asset-search="${m.id}" placeholder="Search ${kindLabel(a.kind)}, tags, notes…" aria-label="Search ${kindLabel(a.kind)}" value="${(assetQuery[m.id] || '').replace(/"/g, '&quot;')}" autocomplete="off">
+    <div id="fdChips"></div>
+    <ul id="al-${m.id}" class="fdlist" aria-label="${a.label} files"></ul>
+    <div id="fdFoot"></div>`;
+  el.hidden = false;
+  renderFileDlg();
+  $('as-' + m.id).focus();
+}
+function closeFileDlg() {
+  const el = $('fileDlg'); if (el.hidden) return;
+  el.hidden = true; $('fileDlgCard').innerHTML = ''; fileDlg.id = null;
+  const o = fileDlg.opener; fileDlg.opener = null;
+  if (o && o.isConnected && o.focus) o.focus();
+}
+// Redrawn with the side panel (renderPanel calls it). The search box is left alone so typing never
+// loses its place, and so is the tag editor while it's being typed in.
+function renderFileDlg() {
+  if (!fileDlg.id) return;
+  const m = MODS.find((x) => x.id === fileDlg.id);
+  if (!m || !m.asset) { closeFileDlg(); return; }
+  const a = m.asset, cur = state.assets[m.id], total = (library.entries[a.kind] || []).length;
+  $('fdEyebrow').textContent = `${m.name} · ${a.label} · ${total} in library`;
+  $('fileDlgTitle').textContent = `Choose ${a.kind === 'nam' ? 'a NAM capture' : a.kind === 'ir' ? 'an IR' : 'a file'}`;
+  const curEl = $('fdCur');
+  if (!curEl.contains(document.activeElement)) {
+    curEl.innerHTML = `<div class="cur">${cur ? `<b>${cur.name.replace(/</g, '&lt;')}</b>` : '<b>Built-in</b>'}<span class="muted">${assetStatus[m.id] || ''}</span></div>
+      ${a.ready ? '' : `<p class="note warnline">This build can’t load these files yet. They are stored, searchable and saved in presets.</p>`}
+      ${cur && !cur.missing ? tagEditorHtml(a.kind, cur.name) : ''}`;
+  }
+  $('fdChips').innerHTML = chipsHtml('file:' + a.kind, library.entries[a.kind] || []);
+  const list = $('al-' + m.id), top = list.scrollTop;
+  list.innerHTML = assetListHtml(m); list.scrollTop = top;
+  $('fdFoot').innerHTML = `<div class="drop" data-drop="${m.id}">Drop ${a.exts} files here to add them, or
+      <button class="btn mini" data-act="asset-import" data-mod="${m.id}">Import…</button></div>
+    <div class="row fdbtns">
+      ${cur ? `<button class="btn" data-act="asset-clear" data-mod="${m.id}">Use built-in</button>` : ''}
+      ${cur && !cur.missing ? `<button class="btn" data-act="asset-remove" data-mod="${m.id}">${removeArmed[m.id] ? 'Confirm remove' : 'Remove file'}</button>` : ''}
+      <span class="spacer"></span><button class="btn primary" data-act="fd-close">Done</button></div>`;
+}
+function wireFileDlg() {
+  const el = $('fileDlg');
+  el.addEventListener('click', (e) => {
+    if (e.target === el || e.target.closest('[data-act="fd-close"]')) closeFileDlg();
+  });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && fileDlg.id) { e.preventDefault(); closeFileDlg(); } });
+  // Keep Tab inside the window while it's open.
+  el.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    const f = [...$('fileDlgCard').querySelectorAll('button,input,select,[tabindex]')].filter((x) => !x.disabled && x.offsetParent);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   });
 }
 
@@ -4986,7 +5181,7 @@ function loop() {
     cam.r += (camGoal.r - cam.r) * .06; cam.target.lerp(camGoal.target, .06); placeCamera();
     const level = meters ? clamp((20 * Math.log10(meters.outPk + 1e-9) + 50) / 50, 0, 1) : 0;
     flowMat.opacity = .25 + .75 * level; flowMat.size = .14 + .2 * level;
-    MODS.forEach((m, i) => { m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });
+    MODS.forEach((m, i) => { flipStep(m, dt); m.group.position.y = m.baseY + (RM ? 0 : .09 * Math.sin(T * .9 + i * 1.3)); const foc = state.focus === m.id; m.halo.material.opacity = foc ? .32 + (RM ? 0 : .06 * Math.sin(T * 2.4)) : 0; m.glow.material.opacity = foc ? .24 : .07; });
     SRC.forEach((s) => { if (!s.orb) return; const v = srcVal(s), k = 1 + .22 * v; s.orb.scale.setScalar(k); s.halo.scale.setScalar(state.carrying === s.id ? 1.5 + .2 * Math.sin(T * 8) : k); if (!RM) { s.ring.rotation.x = T * .7; s.ring.rotation.y = T * .5; } });
     moveBackdrop();
     if (frame % 2 === 0) { MODS.forEach(drawFace); SRC.forEach((s) => s.ctx && drawLabel(s)); drawAddLabel(); drawAddCard(); }
@@ -5036,7 +5231,7 @@ function wireStart() {
 (async function boot() {
   try { await loadModel(); }
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
-  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireHost(); wireControllers(); wirePresets(); wireTags(); wireStart();
+  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireHost(); wireControllers(); wirePresets(); wireTags(); wireFileDlg(); wireStart();
   const libraryReady = initLibrary().catch((e) => logLine('library: ' + e.message, true));
   restoreSkin(libraryReady).catch((e) => logLine('skin: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();

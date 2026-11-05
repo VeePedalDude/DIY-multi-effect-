@@ -42,11 +42,15 @@ different file with a taken name gets ` (2)` added.
 
 ## Choosing a file for a module
 
-Select the module (click it, or press its number). Its panel lists every file of its kind with
-details: sample rate, channels and length for IRs; architecture, gear, tone and author for NAM
-captures. Type in the search box: every word must match the name or the details.
+Click the file strip under the module's name on its card (it says what's loaded, and BROWSE), or
+**Browse…** in its panel. The file browser opens in the middle of the page. It lists every file of
+the module's kind with details: sample rate, channels and length for IRs; architecture, gear, tone
+and author for NAM captures. Type in the search box: every word must match the name or the details.
+A click loads a file straight away and the browser stays open, so you can try captures one after
+another; **Done**, Escape or a click outside closes it. Files dropped on it are imported.
 **Use built-in** returns to the module's default. **Remove file** deletes the file from the
-library; it asks you to press again to confirm.
+library; it asks you to press again to confirm. The module's panel keeps just the current file,
+these buttons and a drop area.
 
 **IRs** of any length up to 20 s, mono or stereo, play in full: a 20 ms cabinet, a room, or a long
 reverb. The browser decodes the WAV (16/24/32-bit or float, any sample rate it reads) and resamples
@@ -122,8 +126,8 @@ Every file in the library and every kind of effect and source can be found by ta
     gear its file name mentions (V30, Greenback, SM57, 4x12…);
   - a plugin's own tags, its category and *plugin*;
   - a built-in effect or source is tagged *built-in*.
-- **Your tags and a note**: choose a file in a module's panel and type tags (comma separated) and a
-  note under its name.
+- **Your tags and a note**: in the file browser, type tags (comma separated) and a note under the
+  loaded file's name.
 - **Favorites**: the ☆ beside any file, effect or source.
 
 Each list gets a row of chips: ★ (favorites only), then the tags used in that list, most used first.

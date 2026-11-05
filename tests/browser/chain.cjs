@@ -129,7 +129,36 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const se = await page.evaluate(() => window.__rig.screenErrors);
   check(drawn.length === 15 && se.length === 0 && ids((await C()).ui) === saved, `added and removed ${drawn.join(', ')}: every face screen drew${se.length ? ' (errors: ' + se.join(' | ') + ')' : ''}; the chain is back to ${saved}`);
 
-  console.log('10. A full chain');
+  console.log('10. More than four knobs: the rest are on the back of the card, a tab turns it over');
+  {
+    const id = await page.evaluate(() => { const m = window.__rig.chain.add('peq'); return m && m.id; }); await sleep(900);
+    const n = (await C()).ui.length;
+    await page.mouse.move(700, 120); await page.keyboard.press(String(n)); await sleep(300); await page.evaluate(() => window.__rig.camSnap()); await sleep(300);
+    const sides = await page.evaluate((id) => [0, 1, 2, 3, 4, 5, 6, 7].map((k) => window.__rig.cardScreen(id, k).side).join(''), id);
+    check(sides === '00001111', `PARAMETRIC (8 knobs): knobs 1-4 on the front, 5-8 on the back (${sides})`);
+    let tab = await page.evaluate((id) => window.__rig.cardScreen(id, 'tab'), id);
+    await page.mouse.click(tab.x, tab.y);
+    await page.waitForFunction((id) => window.__rig.cardAngle(id) === 1, id, { timeout: 10000 }).catch(() => {});
+    const flipped = await page.evaluate((id) => !!window.__rig.cardFlip[id], id);
+    const back = await page.evaluate((id) => window.__rig.cardScreen(id, 5), id);
+    const before = await page.evaluate((id) => document.querySelector(`[data-pid="${id}.g2"]`).value, id);
+    await page.mouse.move(back.x, back.y); await page.mouse.down(); await page.mouse.move(back.x, back.y - 40, { steps: 6 }); await page.mouse.move(back.x, back.y - 80, { steps: 6 }); await page.mouse.up(); await sleep(300);
+    const after = await page.evaluate((id) => document.querySelector(`[data-pid="${id}.g2"]`).value, id);
+    check(flipped && back.side === 1 && Number(after) > Number(before) + 0.1, `the tab turns it over; GAIN 2 (the 6th knob, on the back) turns by dragging (${Number(before).toFixed(2)} → ${Number(after).toFixed(2)})`);
+    await page.selectOption(`[data-patch="${id}.q2"]`, 'lfo'); await sleep(400);
+    tab = await page.evaluate((id) => window.__rig.cardScreen(id, 'tab'), id);
+    await page.mouse.click(tab.x, tab.y);
+    await page.waitForFunction((id) => window.__rig.cardAngle(id) === 0, id, { timeout: 10000 }).catch(() => {}); await sleep(200);
+    tab = await page.evaluate((id) => window.__rig.cardScreen(id, 'tab'), id);
+    const end = await page.evaluate((id) => window.__rig.cableEnd(`${id}.q2`), id);
+    const front = await page.evaluate((id) => !window.__rig.cardFlip[id], id);
+    check(front && end && Math.hypot(end.x - tab.x, end.y - tab.y) < 40 && (await page.evaluate(() => window.__rig.cables())).includes(`lfo>${id}.q2`),
+      `turned back to the front, the LFO's cable to Q 2 (on the back) ends at the tab (${end ? Math.round(Math.hypot(end.x - tab.x, end.y - tab.y)) : '?'} px away)`);
+    await page.screenshot({ path: path.join(shots, 'shot-card-back.png') });
+    await page.evaluate((id) => window.__rig.chain.remove(id), id); await sleep(700);
+  }
+
+  console.log('11. A full chain');
   for (let i = 0; i < 8; i++) await page.evaluate(() => window.__rig.chain.add('gate'));
   await sleep(1000); c = await C();
   const extra = await page.evaluate(() => window.__rig.chain.add('gate'));

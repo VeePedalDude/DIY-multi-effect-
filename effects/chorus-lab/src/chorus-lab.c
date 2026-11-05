@@ -230,6 +230,7 @@ typedef struct {
    uint32_t xfade_pos, xfade_len;
 
    float fb_l, fb_r;         /* feedback signal from previous sample */
+   double rnd_coef;          /* random-LFO smoothing coefficient (depends on sr only) */
    double dc_x[2], dc_y[2], dc_r;
 } chorus_t;
 
@@ -506,7 +507,8 @@ static void engine_tick(chorus_t *c, int vo, const frame_params_t *fp,
             }
          }
       }
-      const double sm_coef = 1.0 - exp(-CL_TWO_PI * 8.0 / sr);
+      const double sm_coef = c->rnd_coef;
+      const double rnd_t = vo == V_RANDOM ? 0.5 - 0.5 * cos(M_PI * e->rnd_phase) : 0.0;
       /* Ensemble: voice LFOs are 120 deg apart, so derive all three from one
        * sin/cos pair per oscillator by angle addition. */
       double es[3] = {0.0, 0.0, 0.0};
@@ -525,8 +527,7 @@ static void engine_tick(chorus_t *c, int vo, const frame_params_t *fp,
          } else if (vo == V_TRI) {
             l = tri(e->phase + (double)v / 3.0);
          } else {
-            double t = 0.5 - 0.5 * cos(M_PI * e->rnd_phase);
-            double target = e->rnd_prev[v] + (e->rnd_next[v] - e->rnd_prev[v]) * t;
+            double target = e->rnd_prev[v] + (e->rnd_next[v] - e->rnd_prev[v]) * rnd_t;
             e->rnd_smooth[v] += (target - e->rnd_smooth[v]) * sm_coef;
             l = e->rnd_smooth[v];
          }
@@ -721,6 +722,7 @@ static bool cl_activate(const clap_plugin_t *p, double sample_rate, uint32_t min
    c->sm_dry.coef = c->sm_wet.coef = c->sm_gain.coef = coef;
    c->xfade_len = (uint32_t)lrint(XFADE_MS * 0.001 * sample_rate);
    c->dc_r = 1.0 - CL_TWO_PI * 20.0 / sample_rate;
+   c->rnd_coef = 1.0 - exp(-CL_TWO_PI * 8.0 / sample_rate);
 
    for (int i = 0; i < P_COUNT; ++i)
       c->value[i] = u2d(atomic_load_explicit(&c->shared_value[i], memory_order_relaxed));

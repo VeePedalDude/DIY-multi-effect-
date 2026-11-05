@@ -172,6 +172,7 @@ body.panel-hidden .ptoggle{right:16px}
 body.panel-hidden .matrix{right:16px}
 @media (prefers-reduced-motion: reduce){.panel{transition:none}}
 .btn.mini{min-height:30px;padding:0 10px;font-size:11px}
+#driverBtn{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* the strobe tuner: a face-down mini card in the top bar, and the card turned sideways it flips into */
 .tunerMini{width:64px;height:44px;padding:0;border:0;border-radius:7px;background:transparent;transition:transform .15s}
 .tunerMini canvas{width:64px;height:44px;display:block}
@@ -238,6 +239,7 @@ body.panel-hidden .matrix{right:16px}
     <button id="vViz" aria-pressed="false" title="Visualizer (V): every modulation source as a ring">Visualizer</button>
   </div>
   <button class="btn" id="overview">Overview</button>
+  <button class="btn" id="driverBtn" hidden aria-controls="drawer" title="Audio driver and buffer size (opens Settings, Audio)">Driver</button>
   <button class="tunerMini" id="tunerBtn" aria-label="Tuner (T)" title="Tuner (T)" aria-expanded="false" aria-controls="tuner"><canvas id="tunerMini" width="128" height="88" aria-hidden="true"></canvas></button>
   <span class="spacer"></span>
   <div class="readouts">
@@ -346,6 +348,7 @@ body.panel-hidden .matrix{right:16px}
       <label><input type="radio" name="src" value="riff"><span>Built-in test riff<small>A synthesized guitar loop, so you can try everything without plugging in.</small></span></label>
     </div>
     <p class="warn">Use headphones or the 2i2's outputs. Laptop mic plus laptop speakers will howl. Master starts at -12 dB.</p>
+    <p class="note" id="startHostNote" hidden>The audio driver (ASIO or Windows audio) and buffer size: the <b>Driver</b> button at the top, once started. The host remembers your choice.</p>
     <p class="err-box" id="startErr" hidden></p>
     <button class="btn primary" id="startBtn" style="min-height:52px;font-size:16px">Start audio</button>
   </div>

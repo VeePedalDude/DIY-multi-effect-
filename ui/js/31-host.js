@@ -92,6 +92,15 @@ function hostDeviceMenus() {
   if (d.asioOn) buf.append(opt('0', `driver's setting (${d.frames})`, !d.fixed));
   [32, 64, 128, 256, 512, 1024].forEach((n) => buf.append(opt(String(n), `${n} samples (${(1000 * n / ((host.info && host.info.rate) || 48000)).toFixed(1)} ms)`, (d.fixed || !d.asioOn) && n === d.frames)));
   $('hostPanel').hidden = !d.asioOn;
+  const name = d.asioOn && d.asio[d.drv] ? 'ASIO · ' + d.asio[d.drv].name : (d.system === 'WASAPI' ? 'Windows audio' : d.system);
+  $('driverBtn').textContent = `Driver: ${name} · ${d.frames}`;
+  // Started on the system path while an ASIO driver is installed (an interface's own driver is usually far
+  // quicker): open the menu once, so the choice is in front of the player rather than in the drawer.
+  if (!d.asioOn && d.asio.some((a) => !a.wrapper) && !host.offered) { host.offered = true; openDriverMenu(); logLine('rig-host: running on Windows audio; an ASIO driver is installed. Pick it in Driver for lower latency.'); }
+}
+function openDriverMenu() {
+  const dr = $('drawer'); dr.hidden = false; $('settingsBtn').setAttribute('aria-expanded', 'true');
+  $('hostDevRow').scrollIntoView({ block: 'nearest' }); $('hostDev').focus();
 }
 function hostSwitch(line) {
   ['hostDev', 'inSel', 'outSel', 'hostBuf'].forEach((id) => { $(id).disabled = true; });
@@ -107,6 +116,8 @@ function wireHost() {
   $('srcSel').querySelector('option[value="file"]').disabled = true;
   $('hostInfo').hidden = false; $('latTest').hidden = false;
   ['hostDevRow', 'hostBufRow'].forEach((id) => { $(id).hidden = false; });
+  $('driverBtn').hidden = false; $('startHostNote').hidden = false;
+  $('driverBtn').onclick = openDriverMenu;
   $('hostDev').onchange = () => {
     const v = $('hostDev').value;
     if (v === 'device') { ['inSelRow', 'outSelRow'].forEach((id) => { $(id).hidden = false; }); hostSwitch(`host_device device ${$('inSel').value || -1} ${$('outSel').value || -1}`); }

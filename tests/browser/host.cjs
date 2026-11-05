@@ -123,8 +123,11 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   check(/rig-host/.test(await page.textContent('#engineState')) && (await V('window.__rig.meters.outPk')) > 0.005, 'connected again, and playing');
 
   console.log('6. The Driver menu: every device, a buffer size, switching while it plays, remembered');
-  await page.click('#settingsBtn'); await sleep(300);
   await page.waitForFunction(() => window.__rig.host.devices && document.querySelectorAll('#hostDev option').length > 0, null, { timeout: 10000 });
+  const btn = await page.evaluate(() => { const b = document.getElementById('driverBtn'); return { shown: !b.hidden && b.offsetWidth > 0, text: b.textContent }; });
+  await page.click('#driverBtn'); await sleep(300);
+  const opened = await page.evaluate(() => !document.getElementById('drawer').hidden && document.activeElement === document.getElementById('hostDev'));
+  check(btn.shown && /^Driver: .+ · \d+$/.test(btn.text) && opened, `the top bar's “${btn.text}” button opens the Driver menu`);
   const menu = await page.evaluate(() => ({ dev: [...document.querySelectorAll('#hostDev option')].map((o) => [o.textContent, o.selected]), shown: !document.getElementById('hostDevRow').hidden && !document.getElementById('hostBufRow').hidden, panel: !document.getElementById('hostPanel').hidden, d: window.__rig.host.devices }));
   check(menu.shown && menu.dev.some(([t, s]) => s && (asio ? /^ASIO · RIG Test ASIO/.test(t) : /choose input and output/.test(t))) && menu.panel === asio,
     `Driver menu: ${menu.dev.map(([t, s]) => (s ? '[' : '') + t + (s ? ']' : '')).join(' | ')}; Buffer menu shown${asio ? ', Driver settings button' : ''}`);

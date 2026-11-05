@@ -178,6 +178,8 @@ typedef struct {
    int dt_act[2];           /* detune: active tap per voice */
    uint32_t dt_xf[2];       /* detune: splice crossfade position */
    int dt_init;
+   double dt_cents;         /* detune: cents the cached slopes were computed for */
+   double dt_slope[2];      /* detune: cached delay slope per voice (0 when cents == 0) */
    double clk_phase[2];     /* lo-fi clocks */
    float hold[2];
    svf_t tone[2];
@@ -546,9 +548,13 @@ static void engine_tick(chorus_t *c, int vo, const frame_params_t *fp,
          }
          e->dt_init = 1;
       }
+      if (cents != e->dt_cents) {
+         e->dt_cents = cents;
+         for (int v = 0; v < 2; ++v)
+            e->dt_slope[v] = 1.0 - pow(2.0, (v == 0 ? cents : -cents) / 1200.0);
+      }
       for (int v = 0; v < 2; ++v) {
-         const double ratio = pow(2.0, (v == 0 ? cents : -cents) / 1200.0);
-         const double slope = 1.0 - ratio; /* delay change per sample (<0: pitch up) */
+         const double slope = e->dt_slope[v]; /* delay change per sample (<0: pitch up) */
          const int a = e->dt_act[v], b = a ^ 1;
          float vl, vr;
          if (e->dt_xf[v] < xlen) {

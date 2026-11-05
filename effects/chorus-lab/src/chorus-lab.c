@@ -180,6 +180,8 @@ typedef struct {
    int dt_init;
    double dt_cents;         /* detune: cents the cached slopes were computed for */
    double dt_slope[2];      /* detune: cached delay slope per voice (0 when cents == 0) */
+   double pan_w;            /* width the cached pan gains belong to (-1 = none) */
+   float pan_l[MAX_VOICES], pan_r[MAX_VOICES];
    double clk_phase[2];     /* lo-fi clocks */
    float hold[2];
    svf_t tone[2];
@@ -311,6 +313,7 @@ static void engine_reset(engine_t *e, int index) {
    }
    e->g = 0.5f;
    e->k = 1.41421356f;
+   e->pan_w = -1.0;
 }
 
 static void reset_dsp(chorus_t *c) {
@@ -488,6 +491,11 @@ static void engine_tick(chorus_t *c, int vo, const frame_params_t *fp,
       static const double pans_ens[3] = {-0.8, 0.0, 0.8};
       static const double pans_tri[3] = {-1.0, 0.0, 1.0};
       const double *pans = vo == V_ENSEMBLE ? pans_ens : pans_tri;
+      if (width != e->pan_w) {
+         e->pan_w = width;
+         for (int v = 0; v < 3; ++v)
+            pan_gains(pans[v] * width, &e->pan_l[v], &e->pan_r[v]);
+      }
       if (vo == V_RANDOM) {
          e->rnd_phase += inc;
          if (e->rnd_phase >= 1.0) {
@@ -515,10 +523,8 @@ static void engine_tick(chorus_t *c, int vo, const frame_params_t *fp,
          }
          double d = base + span * l;
          float tl = tap(c, 0, d), tr = tap(c, 1, d);
-         float gl, gr;
-         pan_gains(pans[v] * width, &gl, &gr);
-         L += tl * gl;
-         R += tr * gr;
+         L += tl * e->pan_l[v];
+         R += tr * e->pan_r[v];
          sl += tl;
          sr_ += tr;
       }
@@ -547,6 +553,11 @@ static void engine_tick(chorus_t *c, int vo, const frame_params_t *fp,
             e->dt_xf[v] = xlen;
          }
          e->dt_init = 1;
+      }
+      if (width != e->pan_w) {
+         e->pan_w = width;
+         pan_gains(-width, &e->pan_l[0], &e->pan_r[0]);
+         pan_gains(width, &e->pan_l[1], &e->pan_r[1]);
       }
       if (cents != e->dt_cents) {
          e->dt_cents = cents;
@@ -579,10 +590,8 @@ static void engine_tick(chorus_t *c, int vo, const frame_params_t *fp,
          }
          e->dt_d[v][0] += slope;
          e->dt_d[v][1] += slope;
-         float gl, gr;
-         pan_gains((v == 0 ? -1.0 : 1.0) * width, &gl, &gr);
-         L += vl * gl;
-         R += vr * gr;
+         L += vl * e->pan_l[v];
+         R += vr * e->pan_r[v];
          sl += vl;
          sr_ += vr;
       }

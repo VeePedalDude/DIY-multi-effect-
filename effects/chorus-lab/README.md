@@ -33,6 +33,10 @@ All voicings share one stereo delay line. Switching voicing crossfades the old a
 
 Param ids are fixed. Voicing base delays at Time 100 %: Classic 7 ms, Dimension 6 ms, Ensemble 8 ms, Tri 10 ms, Vibrato 5 ms, Detune 4 ms + 25 ms window, Lo-Fi 9 ms, Random 9 ms.
 
+## CPU
+
+Mean 0.59 % of one core across the eight voicings (worst: Ensemble, 0.76 %), measured at 48 kHz with 64-frame blocks and feedback at 30 %, on an Intel Xeon @ 2.80 GHz cloud VM. That's down from 0.84 % mean (1.36 % worst) before the optimisation loop on `loop/chorus-lab`, with output bit-identical to the baseline on every judge render. Expect roughly 2–3× these figures on the 2015 iMac (not measured).
+
 ## Building
 
 ```

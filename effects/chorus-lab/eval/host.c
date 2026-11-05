@@ -317,7 +317,8 @@ static int cmd_state(void) {
    inst_t a, b;
    new_inst(&a);
    new_inst(&b);
-   apply_params(&a, "0=5,1=3.21,2=77,3=64,4=40,5=-33,6=25,7=150,8=-6.5");
+   apply_params(&a, "0=5,1=3.21,2=77,3=64,4=40,5=-33,6=25,7=150,8=-6.5,"
+                    "9=40,10=60,11=30,12=150,13=120,14=70,15=7");
    mstream_t m;
    if (!save(&a, &m, 0)) {
       printf("FAIL save\n");
@@ -392,8 +393,11 @@ static int cmd_state(void) {
       {"inf depth", 12 + 8 * 2, 0x7ff0000000000000ull, 0},
       {"mix 500", 12 + 8 * 3, 0x407f400000000000ull, 0},
       {"voicing 2.5", 12, 0x4004000000000000ull, 0},
-      {"version 2", 4, 2, 1},
+      {"version 3", 4, 3, 1},
+      {"version 0", 4, 0, 1},
+      {"version 1 with v2 count", 4, 1, 1},
       {"count 8", 8, 8, 1},
+      {"count 9 (v1 count in a v2 blob)", 8, 9, 1},
    };
    for (size_t k = 0; k < sizeof bad / sizeof bad[0]; ++k) {
       uint8_t *d = malloc(m.n);
@@ -418,6 +422,33 @@ static int cmd_state(void) {
    printf("garbage blobs tried: %d, accepted: %d; failed loads left values untouched: %s\n",
           tried, accepted, untouched ? "yes" : "NO");
    fails += accepted + !untouched;
+   /* Chorus Lab 1.0 (state v1, 9 params) must still load; v1.1 params take defaults. */
+   {
+      size_t n1 = 12 + 8 * 9 + 4;
+      uint8_t v1[12 + 8 * 9 + 4];
+      memcpy(v1, m.d, 12 + 8 * 9);
+      v1[4] = 1; v1[5] = v1[6] = v1[7] = 0;
+      v1[8] = 9; v1[9] = v1[10] = v1[11] = 0;
+      uint32_t h = fnv(v1, n1 - 4);
+      for (int i = 0; i < 4; ++i)
+         v1[n1 - 4 + i] = (uint8_t)(h >> (8 * i));
+      inst_t c1;
+      new_inst(&c1);
+      int ok = 1;
+      for (size_t ch = 1; ch <= 17; ch += 16)
+         ok &= load(&c1, v1, n1, ch);
+      for (uint32_t id = 0; id < c1.params->count(c1.p); ++id) {
+         double va, vc, vf;
+         a.params->get_value(a.p, id, &va);
+         c1.params->get_value(c1.p, id, &vc);
+         fresh.params->get_value(fresh.p, id, &vf);
+         if (id < 9 ? vc != va : vc != vf)
+            ok = 0;
+      }
+      printf("v1 state (Chorus Lab 1.0) loads, new params at defaults: %s\n", ok ? "yes" : "NO");
+      fails += !ok;
+      c1.p->destroy(c1.p);
+   }
    a.p->destroy(a.p);
    b.p->destroy(b.p);
    fresh.p->destroy(fresh.p);

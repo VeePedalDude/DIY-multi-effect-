@@ -22,6 +22,13 @@
  *   Detune, Lo-Fi (clocked), Random.
  * Voicing changes crossfade between the old and new engine (equal power,
  * smoothstep shaped, 30 ms). All other params are smoothed (5 ms).
+ *
+ * v1.1 tone stages (all bypassed at their default, so v1.0 presets are unchanged):
+ *   input:  Drive (asymmetric preamp, dry + wet)
+ *   wet in: pre-emphasis -> 2:1 compressor -> BBD-style clip -> delay line
+ *   wet out: 1:2 expander -> de-emphasis -> Low Cut -> Lush (allpass diffusion)
+ *   feedback loop: Shift (pitch shifter, -12..+12 semitones)
+ *   output: Mono Bass (lows below the crossover summed to mono)
  */
 
 #include <clap/clap.h>
@@ -59,7 +66,14 @@ enum {
    P_WIDTH = 6,
    P_TIME = 7,
    P_LEVEL = 8,
-   P_COUNT = 9
+   P_DRIVE = 9,
+   P_COMPANDER = 10,
+   P_EMPHASIS = 11,
+   P_LOWCUT = 12,
+   P_MONOBASS = 13,
+   P_LUSH = 14,
+   P_SHIFT = 15,
+   P_COUNT = 16
 };
 
 enum {
@@ -84,6 +98,7 @@ typedef struct {
    const char *name;
    double min, max, def;
    uint32_t flags;
+   const char *module; /* CLAP module path (panel group) */
 } param_desc_t;
 
 #define PF_MOD (CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_MODULATABLE)
@@ -91,16 +106,35 @@ typedef struct {
 static const param_desc_t k_params[P_COUNT] = {
    /* Voicing is discrete: switching topology is crossfaded, not modulatable. */
    {P_VOICING, "Voicing", 0.0, (double)(V_COUNT - 1), 0.0,
-    CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM},
-   {P_RATE, "Rate", 0.05, 10.0, 0.8, PF_MOD},
-   {P_DEPTH, "Depth", 0.0, 100.0, 50.0, PF_MOD},
-   {P_MIX, "Mix", 0.0, 100.0, 50.0, PF_MOD},
-   {P_TONE, "Tone", 0.0, 100.0, 70.0, PF_MOD},
-   {P_FEEDBACK, "Feedback", -90.0, 90.0, 0.0, PF_MOD},
-   {P_WIDTH, "Width", 0.0, 100.0, 100.0, PF_MOD},
-   {P_TIME, "Time", 50.0, 200.0, 100.0, PF_MOD},
-   {P_LEVEL, "Level", -24.0, 12.0, 0.0, PF_MOD},
+    CLAP_PARAM_IS_AUTOMATABLE | CLAP_PARAM_IS_STEPPED | CLAP_PARAM_IS_ENUM, "Main"},
+   {P_RATE, "Rate", 0.05, 10.0, 0.8, PF_MOD, "Main"},
+   {P_DEPTH, "Depth", 0.0, 100.0, 50.0, PF_MOD, "Main"},
+   {P_MIX, "Mix", 0.0, 100.0, 50.0, PF_MOD, "Main"},
+   {P_TONE, "Tone", 0.0, 100.0, 70.0, PF_MOD, "Main"},
+   {P_FEEDBACK, "Feedback", -90.0, 90.0, 0.0, PF_MOD, "Feedback"},
+   {P_WIDTH, "Width", 0.0, 100.0, 100.0, PF_MOD, "Space"},
+   {P_TIME, "Time", 50.0, 200.0, 100.0, PF_MOD, "Space"},
+   {P_LEVEL, "Level", -24.0, 12.0, 0.0, PF_MOD, "Main"},
+   {P_DRIVE, "Drive", 0.0, 100.0, 0.0, PF_MOD, "Character"},
+   {P_COMPANDER, "Compander", 0.0, 100.0, 0.0, PF_MOD, "Character"},
+   {P_EMPHASIS, "Emphasis", 0.0, 100.0, 0.0, PF_MOD, "Character"},
+   {P_LOWCUT, "Low Cut", 20.0, 800.0, 20.0, PF_MOD, "Low End"},
+   {P_MONOBASS, "Mono Bass", 20.0, 400.0, 20.0, PF_MOD, "Low End"},
+   {P_LUSH, "Lush", 0.0, 100.0, 0.0, PF_MOD, "Space"},
+   {P_SHIFT, "Shift", -12.0, 12.0, 0.0, PF_MOD, "Feedback"},
 };
+
+/* Order the host lists params in (CLAP param index). Ids never change; only the
+ * order does: most-used controls first, then grouped by panel. */
+static const clap_id k_order[P_COUNT] = {
+   P_VOICING, P_RATE,      P_DEPTH,    P_MIX,      P_TONE, P_LEVEL, /* Main      */
+   P_DRIVE,   P_COMPANDER, P_EMPHASIS,                              /* Character */
+   P_LUSH,    P_WIDTH,     P_TIME,                                  /* Space     */
+   P_FEEDBACK, P_SHIFT,                                             /* Feedback  */
+   P_LOWCUT,  P_MONOBASS,                                           /* Low End   */
+};
+
+#define OFF_HZ 20.5 /* Low Cut / Mono Bass at or below this are bypassed */
 
 static double clampd(double v, double lo, double hi) {
    return v < lo ? lo : (v > hi ? hi : v);
@@ -129,6 +163,13 @@ static const voicing_shape_t k_shape[V_COUNT] = {
 
 #define MAX_VOICES 3
 #define MAX_DELAY_MS 120.0 /* > worst case (detune: (4 + 25) * 2 + slack) */
+#define SHIFT_WIN_MS 50.0  /* feedback pitch-shifter window */
+#define N_ALLPASS 4        /* Lush: allpass stages per channel */
+static const double k_ap_ms[2][N_ALLPASS] = {{3.7, 6.1, 9.3, 13.9}, {4.3, 6.7, 10.1, 15.1}};
+#define EMPH_HZ 1800.0     /* pre/de-emphasis shelf corner */
+#define COMP_REF 0.1       /* compander unity level (about -20 dBFS) */
+#define COMP_FLOOR 1e-4    /* compander envelope floor (-80 dBFS) */
+#define COMP_TAU_MS 10.0   /* compander rectifier time constant (NE570-like) */
 #define XFADE_MS 30.0
 #define SMOOTH_MS 5.0
 #define COEF_INTERVAL 16 /* filter coefficients refresh on a global sample grid */
@@ -152,6 +193,19 @@ static inline float svf_lp(svf_t *s, float x, float g, float k) {
    s->ic1 = 2.0f * v1 - s->ic1;
    s->ic2 = 2.0f * v2 - s->ic2;
    return v2;
+}
+
+/* Same TPT SVF, returning the 2-pole highpass. */
+static inline float svf_hp(svf_t *s, float x, float g, float k) {
+   float a1 = 1.0f / (1.0f + g * (g + k));
+   float a2 = g * a1;
+   float a3 = g * a2;
+   float v3 = x - s->ic2;
+   float v1 = a1 * s->ic1 + a2 * v3;
+   float v2 = s->ic2 + a2 * s->ic1 + a3 * v3;
+   s->ic1 = 2.0f * v1 - s->ic1;
+   s->ic2 = 2.0f * v2 - s->ic2;
+   return x - k * v1 - v2;
 }
 
 static inline uint32_t xorshift32(uint32_t *s) {
@@ -194,7 +248,13 @@ typedef struct {
 } smoother_t;
 
 static inline double smooth_tick(smoother_t *s) {
-   s->cur += (s->target - s->cur) * s->coef;
+   if (s->cur != s->target) {
+      double d = s->target - s->cur;
+      if (fabs(d) <= 1e-9 * fabs(s->target) + 1e-18)
+         s->cur = s->target; /* settle exactly instead of stalling a rounding step short */
+      else
+         s->cur += d * s->coef;
+   }
    return s->cur;
 }
 
@@ -232,6 +292,30 @@ typedef struct {
    float fb_l, fb_r;         /* feedback signal from previous sample */
    double rnd_coef;          /* random-LFO smoothing coefficient (depends on sr only) */
    double dc_x[2], dc_y[2], dc_r;
+
+   /* v1.1 tone stages */
+   double drv_g, drv_c, drv_t, drv_norm;   /* drive shaper, refreshed on the coef grid */
+   double drv_dcx[2], drv_dcy[2], drv_dcr; /* DC blocker after the asymmetric shaper */
+   double emph_G;                          /* one-pole TPT coefficient at EMPH_HZ */
+   double pre_s[2], de_s[2];               /* pre/de-emphasis one-pole states */
+   double env_c[2], env_e[2], env_coef;    /* compressor / expander rectifier envelopes */
+   int comp_warm, emph_warm;               /* stage state is tracking (engaged or engaging) */
+   int lowcut_warm, monob_warm, lush_warm;
+   float lush_in, lush_in_step;            /* diffuser input fade-in after engaging */
+   int sh_warm;                            /* shifter is recording (engaged or engaging) */
+   int v11_active;                         /* any v1.1 stage engaged, engaging or settling */
+   float sh_in;                            /* shifter input fade-in after engaging */
+   double gc[2], gc_step[2], ge[2], ge_step[2]; /* compander gains, ramped across the grid */
+   svf_t lowcut[2], monob[2];
+   float lowcut_g, monob_g;
+   float *ap_buf;                          /* Lush allpass delay memory (one block) */
+   uint32_t ap_len[2][N_ALLPASS], ap_off[2][N_ALLPASS], ap_idx[2][N_ALLPASS];
+   float *sh_buf[2];                       /* feedback pitch-shifter delay memory */
+   uint32_t sh_mask, sh_w;
+   double sh_slope, sh_st, sh_win;         /* delay change per sample, cached shift, window */
+   double sh_d[2];                         /* two read taps (delay, samples) */
+   int sh_act;                             /* active tap */
+   uint32_t sh_xf, sh_xlen;                /* splice crossfade position / length */
 } chorus_t;
 
 static uint64_t d2u(double d) {
@@ -289,8 +373,18 @@ static void update_target(chorus_t *c, int id) {
       break;
    default:
       c->sm[id].target = v;
+      if (id >= P_DRIVE)
+         c->v11_active = 1; /* the full path re-evaluates; it drops back when all are off */
       break;
    }
+}
+
+/* All v1.1 params at their (off) defaults with smoothing settled. */
+static int v11_settled_off(const chorus_t *c) {
+   for (int id = P_DRIVE; id < P_COUNT; ++id)
+      if (c->sm[id].cur != k_params[id].def || c->sm[id].target != k_params[id].def)
+         return 0;
+   return 1;
 }
 
 static void snap_smoothers(chorus_t *c) {
@@ -331,6 +425,43 @@ static void reset_dsp(chorus_t *c) {
    c->xfade_pos = c->xfade_len;
    c->fb_l = c->fb_r = 0.0f;
    c->dc_x[0] = c->dc_x[1] = c->dc_y[0] = c->dc_y[1] = 0.0;
+   for (int ch = 0; ch < 2; ++ch) {
+      c->drv_dcx[ch] = c->drv_dcy[ch] = 0.0;
+      c->pre_s[ch] = c->de_s[ch] = 0.0;
+      c->env_c[ch] = c->env_e[ch] = 0.0;
+      c->gc[ch] = c->ge[ch] = 1.0;
+      c->gc_step[ch] = c->ge_step[ch] = 0.0;
+   }
+   memset(c->lowcut, 0, sizeof c->lowcut);
+   memset(c->monob, 0, sizeof c->monob);
+   c->comp_warm = c->emph_warm = 0;
+   c->lowcut_warm = c->monob_warm = c->lush_warm = 0;
+   c->lush_in = 0.0f;
+   c->sh_warm = 0;
+   c->sh_in = 0.0f;
+   c->drv_g = 1.0;
+   c->drv_c = c->drv_t = 0.0;
+   c->drv_norm = 1.0;
+   c->lowcut_g = c->monob_g = 0.0f;
+   if (c->ap_buf) {
+      uint32_t tot = 0;
+      for (int ch = 0; ch < 2; ++ch)
+         for (int i = 0; i < N_ALLPASS; ++i) {
+            tot += c->ap_len[ch][i];
+            c->ap_idx[ch][i] = 0;
+         }
+      memset(c->ap_buf, 0, sizeof(float) * tot);
+   }
+   if (c->sh_buf[0]) {
+      memset(c->sh_buf[0], 0, sizeof(float) * (c->sh_mask + 1));
+      memset(c->sh_buf[1], 0, sizeof(float) * (c->sh_mask + 1));
+   }
+   c->sh_w = 0;
+   c->sh_slope = 0.0;
+   c->sh_st = 0.0;
+   c->sh_d[0] = c->sh_d[1] = 0.5 * c->sh_win;
+   c->sh_act = 0;
+   c->sh_xf = c->sh_xlen;
    snap_smoothers(c);
 }
 
@@ -361,10 +492,9 @@ static inline float tap(const chorus_t *c, int ch, double delay) {
  * active tap whose recent history best matches the active tap's, so the crossfade
  * joins two in-phase copies instead of cancelling. Fixed cost, no allocation. */
 #define SPLICE_CORR_LEN 192
-static double find_splice(const chorus_t *c, double d_from, int lo, int hi, int dir) {
-   const uint32_t m = c->line_mask;
-   const float *bl = c->line[0], *br = c->line[1];
-   int64_t a0 = (int64_t)c->w - (int64_t)lrint(d_from);
+static double find_splice_ring(const float *bl, const float *br, uint32_t m, uint32_t w,
+                               double d_from, int lo, int hi, int dir) {
+   int64_t a0 = (int64_t)w - (int64_t)lrint(d_from);
    double best = -1e300;
    int best_off = hi;
    const int step = (hi - lo) / 300 + 1; /* bound the search to ~300 candidates at any rate */
@@ -386,6 +516,10 @@ static double find_splice(const chorus_t *c, double d_from, int lo, int hi, int 
    return d_from + (double)dir * (double)best_off;
 }
 
+static double find_splice(const chorus_t *c, double d_from, int lo, int hi, int dir) {
+   return find_splice_ring(c->line[0], c->line[1], c->line_mask, c->w, d_from, lo, hi, dir);
+}
+
 static inline double tri(double ph) {
    ph -= floor(ph);
    return ph < 0.5 ? 4.0 * ph - 1.0 : 3.0 - 4.0 * ph;
@@ -398,6 +532,29 @@ static inline double fast_tanh(double x) {
    double x2 = x * x;
    return x * (135135.0 + x2 * (17325.0 + x2 * (378.0 + x2))) /
           (135135.0 + x2 * (62370.0 + x2 * (3150.0 + 28.0 * x2)));
+}
+
+/* Hermite read from an arbitrary power-of-two ring (delay >= 2 samples). */
+static inline float ring_tap(const float *b, uint32_t mask, uint32_t w, double delay) {
+   double pos = (double)w - delay;
+   double fl = floor(pos);
+   float f = (float)(pos - fl);
+   int64_t i = (int64_t)fl;
+   float xm1 = b[(uint32_t)(i - 1) & mask], x0 = b[(uint32_t)i & mask];
+   float x1 = b[(uint32_t)(i + 1) & mask], x2 = b[(uint32_t)(i + 2) & mask];
+   float c1 = 0.5f * (x1 - xm1);
+   float c2 = xm1 - 2.5f * x0 + 2.0f * x1 - 0.5f * x2;
+   float c3 = 0.5f * (x2 - xm1) + 1.5f * (x0 - x1);
+   return ((c3 * f + c2) * f + c1) * f + x0;
+}
+
+/* Float version of the same rational, for the emphasis clip stage. */
+static inline float fast_tanhf(float x) {
+   if (x > 3.0f || x < -3.0f)
+      return tanhf(x);
+   float x2 = x * x;
+   return x * (135135.0f + x2 * (17325.0f + x2 * (378.0f + x2))) /
+          (135135.0f + x2 * (62370.0f + x2 * (3150.0f + 28.0f * x2)));
 }
 
 static inline double smoothstep(double t) { return t * t * (3.0 - 2.0 * t); }
@@ -694,7 +851,12 @@ static bool cl_init(const clap_plugin_t *p) {
 static void free_lines(chorus_t *c) {
    free(c->line[0]);
    free(c->line[1]);
+   free(c->ap_buf);
+   free(c->sh_buf[0]);
+   free(c->sh_buf[1]);
    c->line[0] = c->line[1] = NULL;
+   c->ap_buf = NULL;
+   c->sh_buf[0] = c->sh_buf[1] = NULL;
 }
 
 static void cl_destroy(const clap_plugin_t *p) {
@@ -724,6 +886,39 @@ static bool cl_activate(const clap_plugin_t *p, double sample_rate, uint32_t min
    }
    c->line_size = size;
    c->line_mask = size - 1;
+
+   /* Lush allpasses */
+   uint32_t tot = 0;
+   for (int ch = 0; ch < 2; ++ch)
+      for (int i = 0; i < N_ALLPASS; ++i) {
+         uint32_t len = (uint32_t)lrint(k_ap_ms[ch][i] * 0.001 * sample_rate);
+         if (len < 1)
+            len = 1;
+         c->ap_len[ch][i] = len;
+         c->ap_off[ch][i] = tot;
+         tot += len;
+      }
+   c->ap_buf = (float *)calloc(tot, sizeof(float));
+   /* Feedback pitch shifter */
+   uint32_t sneed = (uint32_t)ceil(1.5 * SHIFT_WIN_MS * 0.001 * sample_rate) + 8, ssize = 1;
+   while (ssize < sneed)
+      ssize <<= 1;
+   c->sh_buf[0] = (float *)calloc(ssize, sizeof(float));
+   c->sh_buf[1] = (float *)calloc(ssize, sizeof(float));
+   if (!c->ap_buf || !c->sh_buf[0] || !c->sh_buf[1]) {
+      free_lines(c);
+      return false;
+   }
+   c->sh_mask = ssize - 1;
+   c->sh_win = SHIFT_WIN_MS * 0.001 * sample_rate;
+   c->sh_xlen = (uint32_t)(0.010 * sample_rate) + 1;
+   {
+      double g = tan(M_PI * EMPH_HZ / sample_rate);
+      c->emph_G = g / (1.0 + g);
+   }
+   c->env_coef = 1.0 - exp(-1.0 / (COMP_TAU_MS * 0.001 * sample_rate));
+   c->drv_dcr = 1.0 - CL_TWO_PI * 10.0 / sample_rate;
+   c->lush_in_step = (float)(1.0 / (0.005 * sample_rate));
 
    double coef = 1.0 - exp(-1.0 / (SMOOTH_MS * 0.001 * sample_rate));
    for (int i = 0; i < P_COUNT; ++i)
@@ -758,6 +953,34 @@ static void cl_reset(const clap_plugin_t *p) {
    chorus_t *c = (chorus_t *)p->plugin_data;
    memset(c->mod, 0, sizeof c->mod);
    reset_dsp(c);
+}
+
+/* Current voicing engine (plus the outgoing one during a voicing crossfade).
+ * Writes the wet pair and stores the feedback source for the next sample. */
+static inline void run_engines(chorus_t *c, const frame_params_t *fp, float *outl, float *outr) {
+   float wl, wrr, fl, fr;
+   engine_tick(c, c->voicing_cur, fp, &wl, &wrr, &fl, &fr);
+   if (c->xfade_pos < c->xfade_len) {
+      float ol, orr, ofl, ofr;
+      engine_tick(c, c->voicing_prev, fp, &ol, &orr, &ofl, &ofr);
+      double t = smoothstep((double)(c->xfade_pos + 1) / (double)c->xfade_len);
+      float gn = (float)sin(t * (M_PI / 2.0)), go = (float)cos(t * (M_PI / 2.0));
+      wl = wl * gn + ol * go;
+      wrr = wrr * gn + orr * go;
+      fl = fl * gn + ofl * go;
+      fr = fr * gn + ofr * go;
+      if (++c->xfade_pos >= c->xfade_len && c->voicing_pending != c->voicing_cur) {
+         int nv = c->voicing_pending;
+         c->voicing_prev = c->voicing_cur;
+         c->voicing_cur = nv;
+         c->xfade_pos = 0;
+         engine_restart(&c->eng[nv]);
+      }
+   }
+   c->fb_l = fl;
+   c->fb_r = fr;
+   *outl = wl;
+   *outr = wrr;
 }
 
 static clap_process_status cl_process(const clap_plugin_t *p, const clap_process_t *proc) {
@@ -816,42 +1039,297 @@ static clap_process_status cl_process(const clap_plugin_t *p, const clap_process
       double wet = smooth_tick(&c->sm_wet);
       double gain = smooth_tick(&c->sm_gain);
 
-      /* Write input + feedback (DC-blocked, soft-limited). */
+      if (!c->v11_active) {
+         /* Every v1.1 stage is off and settled: the v1.0 signal path, unchanged. */
+         double fsrc[2] = {c->fb_l, c->fb_r};
+         float wr_in[2] = {xl, xr};
+         for (int ch = 0; ch < 2; ++ch) {
+            double y = fsrc[ch] - c->dc_x[ch] + c->dc_r * c->dc_y[ch];
+            c->dc_x[ch] = fsrc[ch];
+            c->dc_y[ch] = y;
+            c->line[ch][c->w] = wr_in[ch] + (float)(fb * fast_tanh(y));
+         }
+         float wl, wrr;
+         run_engines(c, &fp, &wl, &wrr);
+         if (outL)
+            outL[n] = (float)((dry * xl + wet * wl) * gain);
+         if (outR)
+            outR[n] = (float)((dry * xr + wet * wrr) * gain);
+         c->w = (c->w + 1) & c->line_mask;
+         ++c->sample_count;
+         continue;
+      }
+
+      const double drive = smooth_tick(&c->sm[P_DRIVE]) / 100.0;
+      const double comp = smooth_tick(&c->sm[P_COMPANDER]) / 100.0;
+      const double emph = smooth_tick(&c->sm[P_EMPHASIS]) / 100.0;
+      const double lowcut = smooth_tick(&c->sm[P_LOWCUT]);
+      const double monob = smooth_tick(&c->sm[P_MONOBASS]);
+      const double lush = smooth_tick(&c->sm[P_LUSH]) / 100.0;
+      const double shift = smooth_tick(&c->sm[P_SHIFT]);
+
+      /* Coefficients for the new stages, on the same global 16-sample grid. */
+      if ((c->sample_count % COEF_INTERVAL) == 0) {
+         if (drive > 0.0) {
+            c->drv_g = 1.0 + 24.0 * drive * drive;         /* up to +28 dB into the shaper */
+            c->drv_c = 0.3 * drive;                        /* asymmetry -> even harmonics */
+            c->drv_t = fast_tanh(c->drv_c); /* same function as the shaper: silence stays 0 */
+            double slope = c->drv_g * (1.0 - c->drv_t * c->drv_t);
+            c->drv_norm = pow(c->drv_g, 0.35) / slope;     /* gentle makeup as it clips */
+         }
+         for (int ch = 0; ch < 2 && (comp > 0.0 || c->sm[P_COMPANDER].target > 0.0); ++ch) {
+            double a = comp;
+            double ec = c->env_c[ch] > COMP_FLOOR ? c->env_c[ch] : COMP_FLOOR;
+            double ee = c->env_e[ch] > COMP_FLOOR ? c->env_e[ch] : COMP_FLOOR;
+            /* compressor: ratio 1/(1-a/2); expander restores it: exponent a/(2-a) */
+            double tc = a > 0.0 ? pow(COMP_REF / ec, 0.5 * a) : 1.0;
+            double te = a > 0.0 ? pow(ee / COMP_REF, a / (2.0 - a)) : 1.0;
+            if (tc > 31.6)
+               tc = 31.6;
+            c->gc_step[ch] = (tc - c->gc[ch]) / COEF_INTERVAL;
+            c->ge_step[ch] = (te - c->ge[ch]) / COEF_INTERVAL;
+         }
+         if (lowcut > OFF_HZ)
+            c->lowcut_g = (float)tan(M_PI * (lowcut < 0.45 * c->sr ? lowcut : 0.45 * c->sr) / c->sr);
+         if (monob > OFF_HZ)
+            c->monob_g = (float)tan(M_PI * (monob < 0.45 * c->sr ? monob : 0.45 * c->sr) / c->sr);
+         if (shift != c->sh_st) {
+            c->sh_st = shift;
+            c->sh_slope = 1.0 - pow(2.0, shift / 12.0); /* delay change per sample (<0: up) */
+         }
+      }
+
+      /* Input drive (dry and wet). */
+      if (drive > 0.0) {
+         float in2[2] = {xl, xr};
+         const double dmix = drive < 0.2 ? drive / 0.2 : 1.0; /* fade the shaper in */
+         for (int ch = 0; ch < 2; ++ch) {
+            double sh = (fast_tanh(c->drv_g * in2[ch] + c->drv_c) - c->drv_t) * c->drv_norm;
+            sh = in2[ch] + dmix * (sh - in2[ch]);
+            double y = sh - c->drv_dcx[ch] + c->drv_dcr * c->drv_dcy[ch];
+            c->drv_dcx[ch] = sh;
+            c->drv_dcy[ch] = y;
+            in2[ch] = (float)y;
+         }
+         xl = in2[0];
+         xr = in2[1];
+      } else if (c->drv_dcx[0] != 0.0 || c->drv_dcx[1] != 0.0) {
+         c->drv_dcx[0] = c->drv_dcy[0] = c->drv_dcx[1] = c->drv_dcy[1] = 0.0;
+      }
+
+      /* Feedback: DC-blocked source, optionally pitch shifted, soft-limited. */
       double fsrc[2] = {c->fb_l, c->fb_r};
-      float wr_in[2] = {xl, xr};
+      double fy[2];
+      const int sh_on = shift != 0.0 || c->sm[P_SHIFT].target != 0.0;
+      if (sh_on && !c->sh_warm) {
+         /* start recording from silence with a short fade-in (no onset step) */
+         memset(c->sh_buf[0], 0, sizeof(float) * (c->sh_mask + 1));
+         memset(c->sh_buf[1], 0, sizeof(float) * (c->sh_mask + 1));
+         c->sh_in = 0.0f;
+         c->sh_d[0] = c->sh_d[1] = 0.5 * c->sh_win;
+         c->sh_act = 0;
+         c->sh_xf = c->sh_xlen;
+      }
+      c->sh_warm = sh_on;
+      if (sh_on && c->sh_in < 1.0f) {
+         c->sh_in += c->lush_in_step;
+         if (c->sh_in > 1.0f)
+            c->sh_in = 1.0f;
+      }
       for (int ch = 0; ch < 2; ++ch) {
          double y = fsrc[ch] - c->dc_x[ch] + c->dc_r * c->dc_y[ch];
          c->dc_x[ch] = fsrc[ch];
          c->dc_y[ch] = y;
-         c->line[ch][c->w] = wr_in[ch] + (float)(fb * fast_tanh(y));
+         fy[ch] = y;
+         if (sh_on)
+            c->sh_buf[ch][c->sh_w] = (float)y * c->sh_in;
       }
-
-      float wl, wrr, fl, fr;
-      engine_tick(c, c->voicing_cur, &fp, &wl, &wrr, &fl, &fr);
-      if (c->xfade_pos < c->xfade_len) {
-         float ol, orr, ofl, ofr;
-         engine_tick(c, c->voicing_prev, &fp, &ol, &orr, &ofl, &ofr);
-         double t = smoothstep((double)(c->xfade_pos + 1) / (double)c->xfade_len);
-         float gn = (float)sin(t * (M_PI / 2.0)), go = (float)cos(t * (M_PI / 2.0));
-         wl = wl * gn + ol * go;
-         wrr = wrr * gn + orr * go;
-         fl = fl * gn + ofl * go;
-         fr = fr * gn + ofr * go;
-         if (++c->xfade_pos >= c->xfade_len && c->voicing_pending != c->voicing_cur) {
-            int nv = c->voicing_pending;
-            c->voicing_prev = c->voicing_cur;
-            c->voicing_cur = nv;
-            c->xfade_pos = 0;
-               engine_restart(&c->eng[nv]);
+      double sw = fabs(shift) * 2.0;
+      if (sw > 0.0) {
+         /* Two taps moving at a constant slope (exact ratio); at the window edge the
+          * idle tap jumps to a correlation-matched point and takes over (10 ms fade),
+          * so the splice never cancels (same method as the Detune voicing). */
+         if (sw > 1.0)
+            sw = 1.0;
+         const int a = c->sh_act, b = a ^ 1;
+         const double lo_edge = 2.0, hi_edge = c->sh_win;
+         float sh[2];
+         if (c->sh_xf < c->sh_xlen) {
+            double t = smoothstep((double)(c->sh_xf + 1) / (double)c->sh_xlen);
+            for (int ch = 0; ch < 2; ++ch)
+               sh[ch] = (float)(1.0 - t) * ring_tap(c->sh_buf[ch], c->sh_mask, c->sh_w, c->sh_d[b]) +
+                        (float)t * ring_tap(c->sh_buf[ch], c->sh_mask, c->sh_w, c->sh_d[a]);
+            ++c->sh_xf;
+         } else {
+            for (int ch = 0; ch < 2; ++ch)
+               sh[ch] = ring_tap(c->sh_buf[ch], c->sh_mask, c->sh_w, c->sh_d[a]);
+            const double travel = fabs(c->sh_slope) * (double)c->sh_xlen;
+            const int search = (int)(0.5 * (hi_edge - lo_edge));
+            if (c->sh_slope < 0.0 && c->sh_d[a] - travel <= lo_edge + 1.0) {
+               int hi = (int)(hi_edge - c->sh_d[a]), lo = hi - search;
+               c->sh_d[b] = find_splice_ring(c->sh_buf[0], c->sh_buf[1], c->sh_mask, c->sh_w,
+                                             c->sh_d[a], lo, hi, 1);
+               c->sh_act = b;
+               c->sh_xf = 0;
+            } else if (c->sh_slope > 0.0 && c->sh_d[a] + travel >= hi_edge) {
+               int hi = (int)(c->sh_d[a] - lo_edge - travel - 1.0), lo = hi - search;
+               if (lo < 1)
+                  lo = 1;
+               c->sh_d[b] = find_splice_ring(c->sh_buf[0], c->sh_buf[1], c->sh_mask, c->sh_w,
+                                             c->sh_d[a], lo, hi, -1);
+               c->sh_act = b;
+               c->sh_xf = 0;
+            }
+         }
+         for (int ch = 0; ch < 2; ++ch)
+            fy[ch] += sw * ((double)sh[ch] - fy[ch]);
+         c->sh_d[0] += c->sh_slope;
+         c->sh_d[1] += c->sh_slope;
+         /* keep both taps inside the ring whatever the shift does */
+         for (int t = 0; t < 2; ++t) {
+            if (c->sh_d[t] < 2.0)
+               c->sh_d[t] = 2.0;
+            if (c->sh_d[t] > (double)c->sh_mask - 4.0)
+               c->sh_d[t] = (double)c->sh_mask - 4.0;
          }
       }
-      c->fb_l = fl;
-      c->fb_r = fr;
+      if (sh_on)
+         c->sh_w = (c->sh_w + 1) & c->sh_mask;
 
+      /* Wet input chain: pre-emphasis -> compressor -> BBD clip, then into the line. */
+      float wr_in[2] = {xl, xr};
+      const double ek = 5.0 * emph; /* shelf boost: 1 + ek (+15.6 dB at Emphasis 100 %) */
+      /* Stage state only runs while the stage is engaged or about to be (its target is
+       * non-zero); it starts from the current signal so switching on is seamless. */
+      const int emph_on = emph > 0.0 || c->sm[P_EMPHASIS].target > 0.0;
+      const int comp_on = comp > 0.0 || c->sm[P_COMPANDER].target > 0.0;
+      if (emph_on && !c->emph_warm) {
+         c->pre_s[0] = xl;
+         c->pre_s[1] = xr;
+         c->de_s[0] = c->de_s[1] = 0.0; /* set from the wet below on this sample */
+      }
+      if (comp_on && !c->comp_warm) {
+         c->env_c[0] = c->env_c[1] = c->env_e[0] = c->env_e[1] = COMP_REF;
+         c->gc[0] = c->gc[1] = c->ge[0] = c->ge[1] = 1.0;
+         c->gc_step[0] = c->gc_step[1] = c->ge_step[0] = c->ge_step[1] = 0.0;
+      }
+      for (int ch = 0; ch < 2; ++ch) {
+         double x = wr_in[ch];
+         if (emph_on) {
+            double v = (x - c->pre_s[ch]) * c->emph_G;
+            double lp = v + c->pre_s[ch];
+            c->pre_s[ch] = lp + v;
+            x = x + ek * (x - lp);
+         }
+         if (comp_on) {
+            c->env_c[ch] += (fabs(x) - c->env_c[ch]) * c->env_coef;
+            x *= c->gc[ch];
+         }
+         if (emph > 0.0) {
+            /* clip strength grows from zero, so a tiny setting is near-transparent */
+            float sat = (float)(2.5 * emph);
+            x = (double)(fast_tanhf((float)x * sat) / sat);
+         }
+         wr_in[ch] = (float)x;
+         c->line[ch][c->w] = wr_in[ch] + (float)(fb * fast_tanh(fy[ch]));
+      }
+
+      float wl, wrr;
+      run_engines(c, &fp, &wl, &wrr);
+
+      /* Wet output chain: expander -> de-emphasis -> Low Cut -> Lush. */
+      float wo[2] = {wl, wrr};
+      for (int ch = 0; ch < 2; ++ch) {
+         double y = wo[ch];
+         if (comp_on) {
+            c->env_e[ch] += (fabs(y) - c->env_e[ch]) * c->env_coef;
+            y *= c->ge[ch];
+            c->gc[ch] += c->gc_step[ch];
+            c->ge[ch] += c->ge_step[ch];
+         }
+         if (emph_on) {
+            /* exact inverse of the pre-emphasis shelf (zero-delay solve) */
+            double G = c->emph_G;
+            if (!c->emph_warm)
+               c->de_s[ch] = y;
+            y = (y + ek * (1.0 - G) * c->de_s[ch]) / (1.0 + ek - ek * G);
+            double v = (y - c->de_s[ch]) * G;
+            c->de_s[ch] = 2.0 * v + c->de_s[ch];
+         }
+         if (lowcut > OFF_HZ) {
+            if (!c->lowcut_warm)
+               memset(&c->lowcut[ch], 0, sizeof c->lowcut[ch]);
+            y = svf_hp(&c->lowcut[ch], (float)y, c->lowcut_g, 1.41421356f);
+         }
+         wo[ch] = (float)y;
+      }
+      c->emph_warm = emph_on;
+      c->comp_warm = comp_on;
+      c->lowcut_warm = lowcut > OFF_HZ;
+      if (lush > 0.0 && !c->lush_warm) {
+         /* start the diffuser from silence, not from audio left from its last use */
+         uint32_t tot = 0;
+         for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < N_ALLPASS; ++i) {
+               tot += c->ap_len[ch][i];
+               c->ap_idx[ch][i] = 0;
+            }
+         memset(c->ap_buf, 0, sizeof(float) * tot);
+         c->lush_in = 0.0f;
+      }
+      c->lush_warm = lush > 0.0;
+      if (lush > 0.0) {
+         const float g = (float)(0.5 + 0.2 * lush);
+         /* fade the diffuser input in, so starting its delay lines on a playing
+          * signal doesn't produce an onset step at each stage's delay */
+         float fin = c->lush_in;
+         if (fin < 1.0f) {
+            fin += c->lush_in_step;
+            if (fin > 1.0f)
+               fin = 1.0f;
+            c->lush_in = fin;
+         }
+         for (int ch = 0; ch < 2; ++ch) {
+            float x = wo[ch] * fin;
+            for (int i = 0; i < N_ALLPASS; ++i) {
+               float *b = c->ap_buf + c->ap_off[ch][i];
+               uint32_t k = c->ap_idx[ch][i];
+               float dv = b[k];
+               float yv = dv - g * x;
+               b[k] = x + g * yv;
+               if (++k >= c->ap_len[ch][i])
+                  k = 0;
+               c->ap_idx[ch][i] = k;
+               x = yv;
+            }
+            wo[ch] += (float)lush * (x - wo[ch]);
+         }
+      }
+      wl = wo[0];
+      wrr = wo[1];
+
+      double ol_ = (dry * xl + wet * wl) * gain;
+      double or_ = (dry * xr + wet * wrr) * gain;
+      if (monob > OFF_HZ) {
+         /* Mid untouched; side high-passed (Linkwitz-Riley 4th order), so the lows
+          * below the crossover end up mono and mono input passes unchanged. */
+         if (!c->monob_warm)
+            memset(c->monob, 0, sizeof c->monob);
+         double mid = 0.5 * (ol_ + or_);
+         float side = (float)(0.5 * (ol_ - or_));
+         side = svf_hp(&c->monob[0], side, c->monob_g, 1.41421356f);
+         side = svf_hp(&c->monob[1], side, c->monob_g, 1.41421356f);
+         ol_ = mid + side;
+         or_ = mid - side;
+      }
+      c->monob_warm = monob > OFF_HZ;
       if (outL)
-         outL[n] = (float)((dry * xl + wet * wl) * gain);
+         outL[n] = (float)ol_;
       if (outR)
-         outR[n] = (float)((dry * xr + wet * wrr) * gain);
+         outR[n] = (float)or_;
+      if (!(c->emph_warm | c->comp_warm | c->lowcut_warm | c->monob_warm | c->lush_warm | c->sh_warm) &&
+          drive == 0.0 && c->drv_dcx[0] == 0.0 && c->drv_dcx[1] == 0.0 && v11_settled_off(c))
+         c->v11_active = 0; /* back to the v1.0 path from the next sample */
 
       c->w = (c->w + 1) & c->line_mask;
       ++c->sample_count;
@@ -908,13 +1386,13 @@ static bool pr_get_info(const clap_plugin_t *p, uint32_t index, clap_param_info_
    (void)p;
    if (index >= P_COUNT)
       return false;
-   const param_desc_t *d = &k_params[index];
+   const param_desc_t *d = &k_params[k_order[index]];
    memset(info, 0, sizeof *info);
    info->id = d->id;
    info->flags = d->flags;
    info->cookie = NULL;
    snprintf(info->name, sizeof info->name, "%s", d->name);
-   snprintf(info->module, sizeof info->module, "%s", "");
+   snprintf(info->module, sizeof info->module, "%s", d->module);
    info->min_value = d->min;
    info->max_value = d->max;
    info->default_value = d->def;
@@ -946,6 +1424,16 @@ static bool pr_value_to_text(const clap_plugin_t *p, clap_id id, double v, char 
    case P_LEVEL:
       snprintf(buf, size, "%.2f dB", v);
       break;
+   case P_LOWCUT:
+   case P_MONOBASS:
+      if (v <= OFF_HZ)
+         snprintf(buf, size, "Off");
+      else
+         snprintf(buf, size, "%.1f Hz", v);
+      break;
+   case P_SHIFT:
+      snprintf(buf, size, "%+.2f st", v);
+      break;
    default:
       snprintf(buf, size, "%.2f %%", v);
       break;
@@ -976,6 +1464,10 @@ static bool pr_text_to_value(const clap_plugin_t *p, clap_id id, const char *tex
             return true;
          }
    }
+   if ((id == P_LOWCUT || id == P_MONOBASS) && ieq(text, "Off")) {
+      *out = 20.0;
+      return true;
+   }
    char *end = NULL;
    double v = strtod(text, &end);
    if (end == text || !isfinite(v))
@@ -984,7 +1476,11 @@ static bool pr_text_to_value(const clap_plugin_t *p, clap_id id, const char *tex
       ++end;
    /* Allow only the expected unit suffix (or none). */
    if (*end) {
-      const char *unit = id == P_RATE ? "Hz" : id == P_LEVEL ? "dB" : id == P_VOICING ? "" : "%";
+      const char *unit = (id == P_RATE || id == P_LOWCUT || id == P_MONOBASS) ? "Hz"
+                         : id == P_LEVEL                                      ? "dB"
+                         : id == P_SHIFT                                      ? "st"
+                         : id == P_VOICING                                    ? ""
+                                                                              : "%";
       if (!ieq(end, unit))
          return false;
    }
@@ -1022,10 +1518,16 @@ static uint32_t tl_get(const clap_plugin_t *p) {
    int vo = (int)lrint(clampd(u2d(atomic_load_explicit(&c->shared_value[P_VOICING], memory_order_relaxed)), 0.0, V_COUNT - 1));
    /* Longest feedback loop of the selected voicing (upper bound, Depth = 100 %). */
    double loop_s = (k_shape[vo].base_ms + k_shape[vo].span_ms) * time * 0.001;
+   double shift = u2d(atomic_load_explicit(&c->shared_value[P_SHIFT], memory_order_relaxed));
+   double lush = u2d(atomic_load_explicit(&c->shared_value[P_LUSH], memory_order_relaxed));
+   if (shift != 0.0)
+      loop_s += (SHIFT_WIN_MS + 1.0) * 0.001; /* shifter adds up to one window per pass */
    double passes = 1.0;
    if (fb > 0.001)
       passes += 3.0 / -log10(fb > 0.9 ? 0.9 : fb); /* loop gain <= fb, to -60 dB */
    double tail = (loop_s * passes + 2.0 * XFADE_MS * 0.001) * sr;
+   if (lush > 0.0)
+      tail += 0.25 * sr; /* allpass ring-out */
    return (uint32_t)ceil(tail);
 }
 
@@ -1034,11 +1536,13 @@ static const clap_plugin_tail_t s_tail = {tl_get};
 /* ------------------------------------------------------------------ */
 /* Extension: state                                                    */
 /*   "RCLB" | u32 version | u32 count | count x u64 (double bits) | u32 fnv1a */
-/*   all little-endian                                                 */
+/*   all little-endian. v2 = 16 params (current); v1 = 9 params (Chorus Lab  */
+/*   1.0), loaded with the v1.1 controls at their defaults (off).        */
 /* ------------------------------------------------------------------ */
 
 #define STATE_MAGIC 0x424C4352u /* "RCLB" little-endian */
-#define STATE_VERSION 1u
+#define STATE_VERSION 2u
+#define STATE_V1_COUNT 9
 #define STATE_BYTES (4 + 4 + 4 + 8 * P_COUNT + 4)
 
 static uint32_t fnv1a(const uint8_t *d, size_t n) {
@@ -1083,23 +1587,37 @@ static bool st_save(const clap_plugin_t *p, const clap_ostream_t *s) {
    return true;
 }
 
-static bool st_load(const clap_plugin_t *p, const clap_istream_t *s) {
-   chorus_t *c = (chorus_t *)p->plugin_data;
-   uint8_t buf[STATE_BYTES];
+static bool read_exact(const clap_istream_t *s, uint8_t *buf, size_t n) {
    size_t done = 0;
-   while (done < sizeof buf) {
-      int64_t r = s->read(s, buf + done, sizeof buf - done);
+   while (done < n) {
+      int64_t r = s->read(s, buf + done, n - done);
       if (r <= 0)
          return false; /* truncated or error */
       done += (size_t)r;
    }
-   if (get_u32(buf) != STATE_MAGIC || get_u32(buf + 4) != STATE_VERSION ||
-       get_u32(buf + 8) != P_COUNT)
+   return true;
+}
+
+static bool st_load(const clap_plugin_t *p, const clap_istream_t *s) {
+   chorus_t *c = (chorus_t *)p->plugin_data;
+   uint8_t buf[STATE_BYTES];
+   if (!read_exact(s, buf, 12))
       return false;
-   if (get_u32(buf + STATE_BYTES - 4) != fnv1a(buf, STATE_BYTES - 4))
+   uint32_t version = get_u32(buf + 4), count = get_u32(buf + 8);
+   if (get_u32(buf) != STATE_MAGIC)
+      return false;
+   if (!((version == STATE_VERSION && count == P_COUNT) ||
+         (version == 1u && count == STATE_V1_COUNT)))
+      return false;
+   size_t total = 12 + 8 * (size_t)count + 4;
+   if (!read_exact(s, buf + 12, total - 12))
+      return false;
+   if (get_u32(buf + total - 4) != fnv1a(buf, total - 4))
       return false;
    double vals[P_COUNT];
-   for (int i = 0; i < P_COUNT; ++i) {
+   for (int i = 0; i < P_COUNT; ++i)
+      vals[i] = k_params[i].def; /* params missing from older versions */
+   for (uint32_t i = 0; i < count; ++i) {
       uint64_t u = 0;
       for (int k = 0; k < 8; ++k)
          u |= (uint64_t)buf[12 + 8 * i + k] << (8 * k);
@@ -1151,7 +1669,7 @@ static const clap_plugin_descriptor_t s_desc = {
    .url = "https://github.com/VeePedalDude/DIY-multi-effect-",
    .manual_url = "",
    .support_url = "",
-   .version = "1.0.0",
+   .version = "1.1.0",
    .description = "Stereo chorus with eight selectable voicings",
    .features = s_features,
 };

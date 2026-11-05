@@ -75,7 +75,7 @@ if [ $RC -eq 0 ] && ! echo "$TOUT" | grep -q "ThreadSanitizer"; then pass "Threa
 # 5. Signal gate, fidelity, report, objective
 GOUT=$(python3 "$EVAL/gate.py" "$B/host" "$B/linux/chorus-lab.clap" "$B/work/rel" 2>&1)
 echo "$GOUT" >>"$LOG"
-echo "$GOUT" | grep -E "^(CHECK|FIDELITY|REPORT)"
+echo "$GOUT" | grep -E "^(CHECK|FIDELITY|FEATURE|REPORT)"
 echo "$GOUT" | grep -q "^GATE=PASS" || FAIL=1
 OBJ=$(echo "$GOUT" | sed -n 's/^OBJECTIVE=//p')
 [ -n "$OBJ" ] || { OBJ=nan; FAIL=1; echo "CHECK FAIL gate.py did not finish : $(echo "$GOUT" | tail -3)"; }

@@ -1,5 +1,7 @@
 # Chorus Lab judge (locked)
 
+v1.1: the gate now covers the seven v1.1 controls (extremes, modulation, buffer size with every stage on, state v2 with v1 loading), checks each feature with a measurement, and checks that switching each one on and off doesn't click. `ref/` is unchanged. With the v1.1 controls off, the output must still null against the v1.0 renders.
+
 `./eval.sh` builds the effect and prints `CHECK` lines, `FIDELITY`/`REPORT` lines, then `GATE=PASS|FAIL` and `OBJECTIVE=<n>`.
 
 - OBJECTIVE: mean over the 8 voicings of the median (11 runs × 20 s of audio) CPU % of one core, 48 kHz, 64-frame blocks, feedback 30 %, other params default. Lower is better. Pinned to core 1 when available.

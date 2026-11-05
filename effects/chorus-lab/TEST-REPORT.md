@@ -1,4 +1,41 @@
-# Chorus Lab v1.0.0 — test report
+# Chorus Lab — test report
+
+## v1.1.0 (character stages)
+
+Same machine (Intel Xeon @ 2.80 GHz, 2-core cloud VM). Full judge: `eval/eval.sh` → GATE=PASS, 23 of 23 checks.
+
+| Check | Result |
+|---|---|
+| Builds | gcc and mingw, `-Wall -Wextra -Wpedantic`: 0 warnings |
+| clap-validator | 33 passed, 0 failed, 0 warnings (the known `process-audio-denormals` timing flake still appears on some runs) |
+| ASan+UBSan, TSan | no errors, leaks or races |
+| Buffer-size invariance | bit-identical at 32, 37, 64, 128, 256, 333, 512 frames, with the v1.1 stages off and with all of them on, 532 events |
+| State v2 | 144 bytes; 17-byte reads; 21,305 garbage blobs rejected; Chorus Lab 1.0 (v1) presets load with the new controls off |
+| v1.0 compatibility | new controls off: output bit-identical to all 18 v1.0 reference renders |
+| Drive | guitar level +2.4 dB at 50 %, +0.6 dB at 100 %; THD+N (1 kHz, −12 dBFS) 0 % → 36 %; 2nd harmonic −26.6 dB |
+| Compander | steady tones at −10/−30/−50 dBFS: wet level change 0.00 dB (complementary); guitar envelope deviation p5/p95 −2.2/−0.1 dB (breathing) |
+| Emphasis | −50 dBFS response vs off at 200 Hz–10 kHz: 0.00 dB; −20 dBFS THD+N 3 kHz 8.7 % vs 200 Hz 0.41 % |
+| Low Cut 200 Hz | wet −3 dB at 200 Hz; 100 Hz −12.3 dB; 50 Hz −24.1 dB |
+| Mono Bass 150 Hz | side (L−R) at 60 Hz −32.1 dB, at 1 kHz 0.00 dB; mono input passes bit-identical |
+| Lush | wet impulse 90 % energy spread 0 → 66.5 ms; L/R correlation +1.00 → +0.04 |
+| Shift | feedback 70 %, 220 Hz in: +12 st partial −6 dB, −12 st −3 dB, +7 st −3 dB (re fundamental; absent when off) |
+| Switching controls on/off mid-chord | worst >6 kHz excess +3.8 dB (Emphasis adding its own grit); no clicks |
+| CPU, new stages off | 0.584 % vs v1.0 0.579 % (4 interleaved rounds); inside the noise |
+| CPU, all new stages on | 1.31 % mean, 1.50 % worst (Tri-Chorus) |
+
+Fixed during v1.1 testing:
+- Shift: the first shifter cancelled itself (sidebands at 420/460 Hz instead of 440 Hz). It now uses correlation-matched splices, like Detune.
+- Mono Bass: the first version only cut side lows by 1.6 dB. It now high-passes the side (LR4): −32 dB at 60 Hz.
+- Drive and Emphasis switched on with a jump (a full-strength clip at the first notch of the knob). Both now fade in from zero.
+- Lush made an onset burst when switched on (+10 dB above 6 kHz); its input now fades in over 5 ms.
+- With the new stages off, CPU was 9 % above v1.0; a fast path brought it back level.
+
+Known limitations (v1.1):
+- Shift on dense chords still has some splice texture, inherent to a time-domain shifter.
+- The compander has no noise source, so it can't pump a noise floor the way a real BBD does. Silence-in must give silence-out.
+- Windows binary compiles clean but hasn't been run in a host.
+
+## v1.0.0
 
 Machine: cloud Linux VM, Intel Xeon @ 2.80 GHz (2 cores), gcc 13.3, 48 kHz unless noted. Not measured on the iMacs.
 

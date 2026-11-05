@@ -507,12 +507,21 @@ static void engine_tick(chorus_t *c, int vo, const frame_params_t *fp,
          }
       }
       const double sm_coef = 1.0 - exp(-CL_TWO_PI * 8.0 / sr);
+      /* Ensemble: voice LFOs are 120 deg apart, so derive all three from one
+       * sin/cos pair per oscillator by angle addition. */
+      double es[3] = {0.0, 0.0, 0.0};
+      if (vo == V_ENSEMBLE) {
+         const double c120 = -0.5, s120 = 0.86602540378443864676;
+         double sa = sin(CL_TWO_PI * e->phase), ca = cos(CL_TWO_PI * e->phase);
+         double sb = sin(CL_TWO_PI * e->fast_phase), cb = cos(CL_TWO_PI * e->fast_phase);
+         es[0] = 0.85 * sa + 0.15 * sb;
+         es[1] = 0.85 * (sa * c120 + ca * s120) + 0.15 * (sb * c120 + cb * s120);
+         es[2] = 0.85 * (sa * c120 - ca * s120) + 0.15 * (sb * c120 - cb * s120);
+      }
       for (int v = 0; v < 3; ++v) {
          double l;
          if (vo == V_ENSEMBLE) {
-            double off = (double)v / 3.0;
-            l = 0.85 * sin(CL_TWO_PI * (e->phase + off)) +
-                0.15 * sin(CL_TWO_PI * (e->fast_phase + off));
+            l = es[v];
          } else if (vo == V_TRI) {
             l = tri(e->phase + (double)v / 3.0);
          } else {

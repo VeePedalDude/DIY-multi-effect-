@@ -23,6 +23,20 @@ You don't write any CLAP or plugin code: `sdk/rigfx.h` wraps your struct automat
 
 ---
 
+## How to work
+
+These are the repo's working rules (`CLAUDE.md`, after
+[andrej-karpathy-skills](https://github.com/forrestchang/andrej-karpathy-skills), MIT):
+
+1. **Think before coding.** State your assumptions. If the effect's description could mean two
+   things, say which one you built. Ask only when you can't build it correctly without an answer.
+2. **Simplicity first.** Build exactly the knobs and behaviour asked for. Nothing speculative, no
+   options nobody requested. If 200 lines could be 50, rewrite it.
+3. **Surgical changes.** When revising a plugin, change only what the revision needs. Never rename a
+   knob symbol or the id (presets store them).
+4. **Goal-driven.** Turn each claim into a measurement (section 6). Then loop until the numbers show
+   it, and report them.
+
 ## 1. The contract: an effect
 
 Your header includes `"module.h"` (the build puts `engine/core/` on the include path). It defines one

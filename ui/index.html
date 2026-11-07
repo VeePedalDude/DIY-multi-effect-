@@ -47,6 +47,8 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .preset .name{display:flex;flex-direction:column;gap:2px;min-width:150px}
 .preset .name b{font-size:19px;font-weight:600}
 .edited{color:var(--warn);font-weight:500}
+.pick-load{display:flex;flex-direction:column;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.pick-load .note{font-size:12px}
 /* the pedalboard (70-presets.js) */
 .board{position:absolute;left:16px;bottom:10px;width:440px;display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid var(--line2);border-radius:14px;background:var(--raise)}
 .bscene{display:flex;align-items:center;gap:6px}
@@ -315,6 +317,7 @@ body.panel-hidden .ptoggle{right:16px}
     <div class="row"><button class="btn" id="libChoose">Choose folder…</button><button class="btn" id="libReconnect" hidden>Reconnect folder</button><button class="btn" id="libRescan">Rescan</button></div>
     <div class="row"><button class="btn" id="libImport">Import files…</button><button class="btn" id="libImportDir">Import a folder…</button></div>
     <input type="file" id="libFiles" multiple hidden>
+    <input type="file" id="pluginFile" accept=".rigfx,.clap" multiple hidden>
     <p class="note" id="libCounts"></p>
     <p class="note">Drop .wav IRs, .nam captures, .rig.json presets or .rigskin skins onto a module or anywhere on the stage.</p>
   </section>

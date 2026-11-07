@@ -1,7 +1,9 @@
 # Plugins: effects and sources as files
 
 A plugin is an effect or a modulation source that comes as one file, a `.rigfx` bundle, instead of being
-compiled into the rig. Put it in the library's `plugins/` folder (or drop it on the page). It shows up in
+compiled into the rig. Load it with **Load effect file (.rigfx)…** at the bottom of the **Add an effect**
+panel (**Load source file…** in **Add a source**): it is copied into the library's `plugins/` folder,
+loaded, and added in one step. Dropping it on the page, or putting it in `plugins/` yourself, also works. It shows up in
 the **Add an effect** / **Add a source** panels, patching, the protocol and presets like a built-in.
 The rig isn't rebuilt.
 
@@ -112,6 +114,7 @@ milliseconds for the examples).
 - `tests/browser/plugins.cjs` runs both bundles' `.wclap` in Chromium's audio worklet:
   - imported and listed before Start;
   - played, metered and patched;
-  - saved in a preset, then restored after a reload.
+  - saved in a preset, then restored after a reload;
+  - on a fresh rig, the Add panels' Load … file buttons put each in the library and the chain or rack.
 - `tests/browser/host.cjs` section 7 gives the rig-host a bundle over the socket. Natively that loads
   the Linux `.clap`; with `RIG_HOST_BIN="wine dist/rig-host.exe"`, the Windows one.

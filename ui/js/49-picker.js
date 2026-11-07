@@ -51,7 +51,9 @@ function pickerHtml(kind) {
   return `<label class="pick-search"><span class="sr-only">Search ${P.noun}s</span><input type="search" data-pick-q="${kind}" placeholder="Search every ${P.noun}…" value="${pickEsc(st.q)}" autocomplete="off"></label>
   <div data-pick-chips="${kind}">${chipsHtml('pick:' + kind, pickItems(kind), 12)}</div>
   <div class="tabs" role="tablist" aria-label="Kinds of ${P.noun}" data-pick-tabs="${kind}">${pickerTabsHtml(kind)}</div>
-  <div class="types" role="tabpanel" id="pick-${kind}" aria-labelledby="tab-${kind}-${tab}" data-pick-list="${kind}">${pickerListHtml(kind)}</div>`;
+  <div class="types" role="tabpanel" id="pick-${kind}" aria-labelledby="tab-${kind}-${tab}" data-pick-list="${kind}">${pickerListHtml(kind)}</div>
+  <div class="pick-load"><button class="btn" data-pick-load="${kind}">Load ${P.noun} file (.rigfx)…</button>
+    <span class="note" data-pick-note="${kind}">${pickEsc(st.note || `${P.noun === 'effect' ? 'An' : 'A'} ${P.noun} someone made as a file (a plugin): it’s kept in your library and added here.`)}</span></div>`;
 }
 // Redraw tabs and list in place (the search box keeps focus while you type).
 function pickerRefresh(kind) {
@@ -67,8 +69,27 @@ function pickSetTab(kind, tab, focus) {
   pickerRefresh(kind);
   if (focus) { const b = document.getElementById(`tab-${kind}-${tab}`); if (b) b.focus(); }
 }
+// "Load … file": choose a .rigfx, and it's in the library, loaded, and in the chain (or rack) at once.
+async function pickLoadFiles(kind, files) {
+  const st = pickGet(kind), say = (t) => { st.note = t; const n = document.querySelector(`[data-pick-note="${kind}"]`); if (n) n.textContent = t; };
+  for (const f of files) {
+    say(`Loading ${f.name}…`);
+    const r = await pluginFromFile(f);
+    if (!r.type) { say(r.note); flashHint(r.note); continue; }
+    const want = kind === 'fx' ? 'effect' : 'source';
+    if (r.kind !== want) { say(r.kind === 'source' ? `${r.name} is a modulation source: it’s in Add a source now.` : `${r.name} is an effect: it’s in Add an effect now.`); continue; }
+    say(`${r.name} loaded; it’s in this list from now on.`);
+    if (PICKERS[kind].full()) { say(`${r.name} loaded; the ${kind === 'fx' ? 'chain' : 'rack'} is full, so remove something to add it.`); continue; }
+    if (kind === 'fx') { const m = addModule(r.type); if (m) { state.focus = m.id; update(); flyTo(m); } }
+    else { const s = addSource(r.type); if (s) focusSource(s); }
+  }
+}
 function wirePicker() {
+  const input = $('pluginFile');
+  input.addEventListener('change', async () => { const files = [...input.files], kind = input.dataset.kind; input.value = ''; if (files.length) await pickLoadFiles(kind, files); });
   panel.addEventListener('click', (e) => {
+    const ld = e.target.closest('[data-pick-load]');
+    if (ld) { input.dataset.kind = ld.dataset.pickLoad; input.click(); return; }
     const b = e.target.closest('[data-pick-tab]'); if (!b) return;
     const [kind, tab] = b.dataset.pickTab.split(':'); pickSetTab(kind, tab);
   });

@@ -84,3 +84,27 @@ async function loadLibraryPlugins() {
     } catch (err) { logLine(`plugin ${e.name}: ${err.message}`, true); }
   }
 }
+
+// The add panels' "Load … file" button (49-picker.js): put the file in the library, load it into the
+// engine (as importing does), and find the type it added. { type, kind: 'effect' | 'source', name } or
+// { note } saying what went wrong.
+async function pluginFromFile(f) {
+  if (!/\.(rigfx|clap)$/i.test(f.name)) return { note: `${f.name} isn’t an effect or source file (.rigfx, or .clap for the rig-host)` };
+  const [r] = await importFiles([f], null);
+  if (!r || r.status === 'skipped') return { note: `${f.name}: ${r ? r.reason : 'couldn’t be read'}` };
+  let res = plugins.results[r.name];
+  if (!res || res.status < 0) {                                  // already in the library but not loaded (or loaded before the engine was)
+    if (!rig.node) return { note: `${r.name} is in the library; it loads when you press Start` };
+    res = await loadPlugin(r.name, new Uint8Array(await (await library.core.file('plugins', r.name)).arrayBuffer()));
+  }
+  if (!res || res.status < 0) return { note: `${r.name}: not loaded: ${res ? res.note : 'no answer from the engine'}` };
+  for (let i = 0; i < 40; i++) {                                 // its type arrives with the engine's next description
+    const fx = Object.keys(MTYPES).find((t) => MTYPES[t].plugin && MTYPES[t].plugin.file === r.name);
+    if (fx) return { type: fx, kind: 'effect', name: MTYPES[fx].name };
+    const sr = Object.keys(TYPES).find((t) => TYPES[t].plugin && TYPES[t].plugin.file === r.name);
+    if (sr) return { type: sr, kind: 'source', name: TYPES[sr].name };
+    await new Promise((ok) => setTimeout(ok, 50));
+  }
+  return { note: `${r.name} loaded, but the engine didn’t list it` };
+}
+rig.pluginFromFile = pluginFromFile;

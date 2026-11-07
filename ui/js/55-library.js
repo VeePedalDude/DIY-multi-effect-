@@ -112,7 +112,7 @@ function wireLibrary() {
   $('libChoose').onclick = chooseLibraryFolder;
   $('libReconnect').onclick = reconnectLibraryFolder;
   $('libRescan').onclick = async () => { await refreshLibrary(); logLine('library rescanned'); };
-  $('libImport').onclick = () => { $('libFiles').dataset.target = ''; $('libFiles').click(); };
+  $('libImport').onclick = () => { $('libFiles').dataset.target = ''; $('libFiles').accept = ''; $('libFiles').click(); };   // every kind (a module's Import narrows it)
   $('libImportDir').onclick = importFolderTree;
   $('libFiles').onchange = async (e) => {
     const files = [...e.target.files], target = MODS.find((m) => m.id === e.target.dataset.target) || null;

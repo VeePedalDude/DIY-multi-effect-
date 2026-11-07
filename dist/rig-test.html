@@ -47,6 +47,8 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .preset .name{display:flex;flex-direction:column;gap:2px;min-width:150px}
 .preset .name b{font-size:19px;font-weight:600}
 .edited{color:var(--warn);font-weight:500}
+.pick-load{display:flex;flex-direction:column;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.pick-load .note{font-size:12px}
 /* the pedalboard (70-presets.js) */
 .board{position:absolute;left:16px;bottom:10px;width:440px;display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid var(--line2);border-radius:14px;background:var(--raise)}
 .bscene{display:flex;align-items:center;gap:6px}
@@ -315,6 +317,7 @@ body.panel-hidden .ptoggle{right:16px}
     <div class="row"><button class="btn" id="libChoose">Choose folder…</button><button class="btn" id="libReconnect" hidden>Reconnect folder</button><button class="btn" id="libRescan">Rescan</button></div>
     <div class="row"><button class="btn" id="libImport">Import files…</button><button class="btn" id="libImportDir">Import a folder…</button></div>
     <input type="file" id="libFiles" multiple hidden>
+    <input type="file" id="pluginFile" accept=".rigfx,.clap" multiple hidden>
     <p class="note" id="libCounts"></p>
     <p class="note">Drop .wav IRs, .nam captures, .rig.json presets or .rigskin skins onto a module or anywhere on the stage.</p>
   </section>
@@ -2404,7 +2407,9 @@ function pickerHtml(kind) {
   return `<label class="pick-search"><span class="sr-only">Search ${P.noun}s</span><input type="search" data-pick-q="${kind}" placeholder="Search every ${P.noun}…" value="${pickEsc(st.q)}" autocomplete="off"></label>
   <div data-pick-chips="${kind}">${chipsHtml('pick:' + kind, pickItems(kind), 12)}</div>
   <div class="tabs" role="tablist" aria-label="Kinds of ${P.noun}" data-pick-tabs="${kind}">${pickerTabsHtml(kind)}</div>
-  <div class="types" role="tabpanel" id="pick-${kind}" aria-labelledby="tab-${kind}-${tab}" data-pick-list="${kind}">${pickerListHtml(kind)}</div>`;
+  <div class="types" role="tabpanel" id="pick-${kind}" aria-labelledby="tab-${kind}-${tab}" data-pick-list="${kind}">${pickerListHtml(kind)}</div>
+  <div class="pick-load"><button class="btn" data-pick-load="${kind}">Load ${P.noun} file (.rigfx)…</button>
+    <span class="note" data-pick-note="${kind}">${pickEsc(st.note || `${P.noun === 'effect' ? 'An' : 'A'} ${P.noun} someone made as a file (a plugin): it’s kept in your library and added here.`)}</span></div>`;
 }
 // Redraw tabs and list in place (the search box keeps focus while you type).
 function pickerRefresh(kind) {
@@ -2420,8 +2425,27 @@ function pickSetTab(kind, tab, focus) {
   pickerRefresh(kind);
   if (focus) { const b = document.getElementById(`tab-${kind}-${tab}`); if (b) b.focus(); }
 }
+// "Load … file": choose a .rigfx, and it's in the library, loaded, and in the chain (or rack) at once.
+async function pickLoadFiles(kind, files) {
+  const st = pickGet(kind), say = (t) => { st.note = t; const n = document.querySelector(`[data-pick-note="${kind}"]`); if (n) n.textContent = t; };
+  for (const f of files) {
+    say(`Loading ${f.name}…`);
+    const r = await pluginFromFile(f);
+    if (!r.type) { say(r.note); flashHint(r.note); continue; }
+    const want = kind === 'fx' ? 'effect' : 'source';
+    if (r.kind !== want) { say(r.kind === 'source' ? `${r.name} is a modulation source: it’s in Add a source now.` : `${r.name} is an effect: it’s in Add an effect now.`); continue; }
+    say(`${r.name} loaded; it’s in this list from now on.`);
+    if (PICKERS[kind].full()) { say(`${r.name} loaded; the ${kind === 'fx' ? 'chain' : 'rack'} is full, so remove something to add it.`); continue; }
+    if (kind === 'fx') { const m = addModule(r.type); if (m) { state.focus = m.id; update(); flyTo(m); } }
+    else { const s = addSource(r.type); if (s) focusSource(s); }
+  }
+}
 function wirePicker() {
+  const input = $('pluginFile');
+  input.addEventListener('change', async () => { const files = [...input.files], kind = input.dataset.kind; input.value = ''; if (files.length) await pickLoadFiles(kind, files); });
   panel.addEventListener('click', (e) => {
+    const ld = e.target.closest('[data-pick-load]');
+    if (ld) { input.dataset.kind = ld.dataset.pickLoad; input.click(); return; }
     const b = e.target.closest('[data-pick-tab]'); if (!b) return;
     const [kind, tab] = b.dataset.pickTab.split(':'); pickSetTab(kind, tab);
   });
@@ -3836,7 +3860,7 @@ function wireLibrary() {
   $('libChoose').onclick = chooseLibraryFolder;
   $('libReconnect').onclick = reconnectLibraryFolder;
   $('libRescan').onclick = async () => { await refreshLibrary(); logLine('library rescanned'); };
-  $('libImport').onclick = () => { $('libFiles').dataset.target = ''; $('libFiles').click(); };
+  $('libImport').onclick = () => { $('libFiles').dataset.target = ''; $('libFiles').accept = ''; $('libFiles').click(); };   // every kind (a module's Import narrows it)
   $('libImportDir').onclick = importFolderTree;
   $('libFiles').onchange = async (e) => {
     const files = [...e.target.files], target = MODS.find((m) => m.id === e.target.dataset.target) || null;
@@ -4784,6 +4808,30 @@ async function loadLibraryPlugins() {
     } catch (err) { logLine(`plugin ${e.name}: ${err.message}`, true); }
   }
 }
+
+// The add panels' "Load … file" button (49-picker.js): put the file in the library, load it into the
+// engine (as importing does), and find the type it added. { type, kind: 'effect' | 'source', name } or
+// { note } saying what went wrong.
+async function pluginFromFile(f) {
+  if (!/\.(rigfx|clap)$/i.test(f.name)) return { note: `${f.name} isn’t an effect or source file (.rigfx, or .clap for the rig-host)` };
+  const [r] = await importFiles([f], null);
+  if (!r || r.status === 'skipped') return { note: `${f.name}: ${r ? r.reason : 'couldn’t be read'}` };
+  let res = plugins.results[r.name];
+  if (!res || res.status < 0) {                                  // already in the library but not loaded (or loaded before the engine was)
+    if (!rig.node) return { note: `${r.name} is in the library; it loads when you press Start` };
+    res = await loadPlugin(r.name, new Uint8Array(await (await library.core.file('plugins', r.name)).arrayBuffer()));
+  }
+  if (!res || res.status < 0) return { note: `${r.name}: not loaded: ${res ? res.note : 'no answer from the engine'}` };
+  for (let i = 0; i < 40; i++) {                                 // its type arrives with the engine's next description
+    const fx = Object.keys(MTYPES).find((t) => MTYPES[t].plugin && MTYPES[t].plugin.file === r.name);
+    if (fx) return { type: fx, kind: 'effect', name: MTYPES[fx].name };
+    const sr = Object.keys(TYPES).find((t) => TYPES[t].plugin && TYPES[t].plugin.file === r.name);
+    if (sr) return { type: sr, kind: 'source', name: TYPES[sr].name };
+    await new Promise((ok) => setTimeout(ok, 50));
+  }
+  return { note: `${r.name} loaded, but the engine didn’t list it` };
+}
+rig.pluginFromFile = pluginFromFile;
 
 // ===== ui/js/62-tags.js =====
 // 62-tags.js - tags, favorites and notes for the library's files (NAM captures, IRs, presets, plugins)

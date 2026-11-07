@@ -39,8 +39,9 @@ setup. Details, options and troubleshooting: [hosts/rig-host/README.md](hosts/ri
 ## Plugins, tags and favorites
 
 Effects and modulation sources can come as files: a `.rigfx` bundle holds a CLAP plugin for Windows and
-Linux (the rig-host runs those at full speed) and a WebCLAP build for the browser. Drop one on the page
-or put it in the library's `plugins/` folder, and it joins the Add panels, patching and presets
+Linux (the rig-host runs those at full speed) and a WebCLAP build for the browser. Press **Load effect
+file (.rigfx)…** at the bottom of the Add an effect panel (or **Load source file…** in Add a source),
+drop one on the page, or put it in the library's `plugins/` folder, and it joins the Add panels, patching and presets
 without rebuilding anything. Write one exactly like a built-in effect or source and build it with
 `python3 tools/build_plugin.py plugins/<id>`. Two examples ship in `dist/plugins/`. The rig-host also
 runs other makers' CLAP effects. See [docs/PLUGINS.md](docs/PLUGINS.md).

@@ -13,7 +13,7 @@ const b64 = (f) => fs.readFileSync(path.join(root, f)).toString('base64');
 (async () => {
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
   const context = await browser.newContext({ viewport: { width: 1600, height: 900 } });
-  const page = await context.newPage(), errors = [];
+  let page = await context.newPage(); const errors = [];
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await context.route('**/cdnjs.cloudflare.com/**three.min.js', (r) => r.fulfill({ body: fs.readFileSync(process.env.THREE_JS), contentType: 'text/javascript' }));
@@ -78,6 +78,48 @@ const b64 = (f) => fs.readFileSync(path.join(root, f)).toString('base64');
   await boot(); await start();
   const back = await page.evaluate(async (json) => { const r = await window.__rig.loadPresetJson(json); await new Promise((r) => setTimeout(r, 800)); return { chain: window.__rig.engineChain.map((e) => e.id), rack: (window.__rig.engineRack || []).map((s) => s.id), note: document.getElementById('boardNote').textContent, err: r && r.error, results: Object.keys(window.__rig.plugins.results), lib: (window.__rig.library.entries.plugins || []).map((e) => e.name) }; }, json);
   check(back.chain.includes('trem') && back.rack.includes('rand'), `after a reload: chain ${back.chain.join(' ')}; rack ${back.rack.join(' ')}`);
+
+  console.log('6. Load effect file… in Add an effect (a fresh rig, nothing in its library): one step to the chain');
+  const ctx2 = await browser.newContext({ viewport: { width: 1600, height: 900 } }), page1 = page;
+  page = await ctx2.newPage();
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await ctx2.route('**/cdnjs.cloudflare.com/**three.min.js', (r) => r.fulfill({ body: fs.readFileSync(process.env.THREE_JS), contentType: 'text/javascript' }));
+  await ctx2.route('**/fonts.googleapis.com/**', (r) => r.fulfill({ body: '', contentType: 'text/css' }));
+  await boot(); await start();
+  const plus = await V(() => window.__rig.fxAddScreen());
+  await page.mouse.click(plus.x, plus.y); await sleep(500);
+  check(await page.isVisible('[data-pick-load="fx"]'), `the Add an effect panel has a ${JSON.stringify(await page.textContent('[data-pick-load="fx"]').catch(() => '?'))} button`);
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-pick-load="fx"]')]);
+  const acc = await V(() => document.getElementById('pluginFile').accept);
+  await chooser.setFiles(path.join(root, 'dist/plugins/trem.rigfx'));
+  await page.waitForFunction(() => window.__rig.engineChain.some((e) => e.id === 'trem'), null, { timeout: 10000 }).catch(() => {});
+  const one = await V(() => ({ chain: window.__rig.engineChain.map((e) => e.id), lib: (window.__rig.library.entries.plugins || []).map((e) => e.name), focus: window.__rig.state ? window.__rig.state.focus : null }));
+  check(acc === '.rigfx,.clap' && one.chain.includes('trem') && one.lib.includes('trem.rigfx'), `picked trem.rigfx (chooser shows ${acc}): in the library (${one.lib.join(', ')}) and in the chain (${one.chain.join(' ')})`);
+  await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-plugin-load.png') });
+
+  console.log('7. Load source file… in Add a source; an effect picked there says where it went');
+  const splus = await V(() => window.__rig.addScreen());
+  await page.mouse.click(splus.x, splus.y); await sleep(500);
+  const [ch2] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-pick-load="src"]')]);
+  await ch2.setFiles(path.join(root, 'dist/plugins/rand.rigfx'));
+  await page.waitForFunction(() => (window.__rig.engineRack || []).some((s) => s.id === 'rand'), null, { timeout: 10000 }).catch(() => {});
+  check((await V(() => (window.__rig.engineRack || []).map((s) => s.id))).includes('rand'), 'picked rand.rigfx: RANDOM is in the rack');
+  await page.mouse.click(splus.x, splus.y); await sleep(500);
+  const [ch3] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-pick-load="src"]')]);
+  await ch3.setFiles(path.join(root, 'dist/plugins/trem.rigfx'));
+  await sleep(1500);
+  const note = await page.textContent('[data-pick-note="src"]').catch(() => '');
+  check(/is an effect: it’s in Add an effect/.test(note), `an effect file in Add a source: “${note}”`);
+
+  console.log('8. Library → Import files… shows every kind again after a module\'s own Import… narrowed it');
+  await V(() => { const i = document.getElementById('libFiles'); i.accept = '.nam'; });
+  await page.click('#settingsBtn').catch(() => {}); await sleep(200);
+  const [ch4] = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }).catch(() => null), page.evaluate(() => document.getElementById('libImport').click())]);
+  const acc2 = await V(() => document.getElementById('libFiles').accept);
+  check(ch4 && acc2 === '', `the library's chooser accepts any file (accept="${acc2}")`);
+  if (ch4) await ch4.setFiles([]);
+  void page1;
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-plugins.png') });

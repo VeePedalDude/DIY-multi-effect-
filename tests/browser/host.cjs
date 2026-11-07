@@ -19,8 +19,11 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   const audio = process.env.RIG_HOST_AUDIO ? process.env.RIG_HOST_AUDIO.trim().split(/\s+/) : ['--backend', 'null', '--sim-loopback', String(LOOP)];
   const cfg = path.join(require('os').tmpdir(), `rig-host-test-${PORT}.cfg`);       // where the Driver menu's choice is remembered
   const cfgArg = /wine/.test(bin[0]) ? require('child_process').execSync(`winepath -w ${cfg}`).toString().trim() : cfg;
-  const args = [...bin.slice(1), ...audio, '--riff', '--port', String(PORT), '--no-browser', '--config', cfgArg];
-  const proc = spawn(bin[0], args, { cwd: root, env: { ...process.env, WINEDEBUG: '-all' } });
+  const libDir = path.join(require('os').tmpdir(), `rig-host-lib-${PORT}`);            // stands in for Documents/RIG01
+  fs.rmSync(libDir, { recursive: true, force: true });
+  const libArg = /wine/.test(bin[0]) ? require('child_process').execSync(`winepath -w ${libDir}`).toString().trim() : libDir;
+  const args = [...bin.slice(1), ...audio, '--riff', '--port', String(PORT), '--no-browser', '--config', cfgArg, '--library', libArg];
+  const proc = spawn(bin[0], args, { cwd: root, env: { ...process.env, WINEDEBUG: '-all', LANG: process.env.LANG || 'C.UTF-8' } });   // Wine reads Linux file names in this locale
   let out = ''; proc.stdout.on('data', (d) => { out += d; }); proc.stderr.on('data', (d) => { out += d; });
   for (let i = 0; i < 200 && !/page:/.test(out); i++) await sleep(100);
   check(/page:\s+http:\/\/127\.0\.0\.1:\d+\//.test(out), `${path.basename(bin[bin.length - 1])} started: ${(out.match(/audio:[^\n]*/) || ['?'])[0].trim()}`);
@@ -168,6 +171,46 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   await page.evaluate(() => { window.__rig.cmd('param_set trem depth 1'); window.__rig.cmd('param_set trem rate 0.4'); });
   const g = await page.evaluate(async () => { let lo = 9, hi = -9, pk = 0; const t0 = performance.now(); while (performance.now() - t0 < 2000) { const v = window.__rig.modMeter('trem', 'gain'); if (v !== undefined) { lo = Math.min(lo, v); hi = Math.max(hi, v); } pk = Math.max(pk, window.__rig.meters.outPk || 0); await new Promise((r) => setTimeout(r, 20)); } return [lo, hi, pk]; });
   check(g[0] < 0.2 && g[1] > 0.8 && g[2] > 0.003, `TREMOLO in the host's chain at DEPTH 100%: its gain swings ${g[0].toFixed(2)}..${g[1].toFixed(2)}, and the rig plays on (output peak ${g[2].toFixed(3)})`);
+
+  console.log('8. The library is a real folder (Documents/RIG01 by default): one folder per kind of file');
+  const ls = (d) => { try { return fs.readdirSync(path.join(libDir, d)).filter((n) => !n.endsWith('.part')); } catch (e) { return null; } };
+  check(['NAM', 'IR', 'Effects', 'Mod Sources', 'Skins', 'Presets'].every((d) => ls(d)), `the host made ${fs.readdirSync(libDir).sort().join(', ')}`);
+  check(ls('Effects').includes('trem.rigfx') && await V("window.__rig.library.backend") === 'host', 'the page\'s library is that folder: TREMOLO, imported above, is in Effects');
+  const randB64 = fs.readFileSync(path.join(root, 'dist/plugins/rand.rigfx')).toString('base64');
+  await page.evaluate(async (b) => window.__rig.importFiles([new File([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))], 'rand.rigfx')]), randB64);
+  check(ls('Mod Sources').includes('rand.rigfx') && !ls('Effects').includes('rand.rigfx'), 'a source plugin goes in Mod Sources (by its manifest)');
+  const wav = Buffer.alloc(44 + 960 * 2); wav.write('RIFF', 0); wav.writeUInt32LE(36 + 960 * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(48000, 24); wav.writeUInt32LE(96000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(960 * 2, 40); wav.writeInt16LE(30000, 44);
+  const odd = 'Cab ünïcode – 4x12.wav';
+  fs.writeFileSync(path.join(libDir, 'IR', odd), wav);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await sleep(1500);
+  const irs = await V("(window.__rig.library.entries.ir || []).map((e) => e.name + ':' + (e.meta ? e.meta.sampleRate : '?'))");
+  check(irs.includes(odd + ':48000'), `a file put in IR by hand shows up on coming back to the page, name intact (${irs.join(', ')})`);
+  await page.fill('#presetName', 'Folder test'); await page.click('#presetSave'); await sleep(1500);
+  const pres = ls('Presets');
+  check(pres.includes('board.json') && pres.some((n) => n.endsWith('.rig.json')), `Save writes the pedalboard and its preset to Presets: ${pres.join(', ')}`);
+  const irBack = await page.evaluate(async (n) => { const f = await window.__rig.library.core.file('ir', n); return new Uint8Array(await f.arrayBuffer()).length; }, odd);
+  check(irBack === wav.length, `the page reads the file's bytes back (${irBack} of ${wav.length})`);
+  await page.evaluate(async (n) => { await window.__rig.library.core.remove('ir', n); }, odd);
+  check(!ls('IR').includes(odd), 'removing it from the library deletes the file');
+
+  console.log('9. Only the rig page can use the library: other sites and other host names are refused');
+  const http = require('http');
+  const req = (headers, method = 'GET', p = '/lib/list') => new Promise((res) => { const r = http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers }, (x) => { let b = ''; x.on('data', (d) => { b += d; }); x.on('end', () => res([x.statusCode, b])); }); r.on('error', (e) => res([0, e.message])); r.end(method === 'PUT' ? 'x' : undefined); });
+  const ok = await req({ 'X-Rig': '1' }), noHdr = await req({}), evil = await req({ 'X-Rig': '1', Origin: 'http://evil.example' }), rebind = await req({ 'X-Rig': '1', Host: `evil.example:${PORT}` });
+  const put = await req({ 'Content-Type': 'text/plain', Origin: 'http://evil.example' }, 'PUT', '/lib/f/plugins%2Fx.clap'), dots = await req({ 'X-Rig': '1' }, 'PUT', '/lib/f/nam%2F..%2F..%2Fx.nam');
+  check(ok[0] === 200 && noHdr[0] === 403 && evil[0] === 403 && rebind[0] === 403 && put[0] === 403 && dots[0] === 400 && !fs.existsSync(path.join(libDir, 'Effects', 'x.clap')),
+    `the page's own request ${ok[0]}; no header ${noHdr[0]}; another site ${evil[0]}; another host name ${rebind[0]}; another site writing a plugin ${put[0]}; a path with .. ${dots[0]}`);
+
+  console.log('10. Anything this browser kept before is copied into the folder, once');
+  await page.evaluate(async () => {
+    const db = await new Promise((r) => { const q = indexedDB.open('rig01-library', 1); q.onsuccess = () => r(q.result); });
+    const nam = JSON.stringify({ version: '0.5.4', architecture: 'Linear', config: { receptive_field: 2, bias: false }, weights: [1, 0], metadata: { name: 'Old Capture' } });
+    await new Promise((r) => { const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').put({ blob: new Blob([nam]), lastModified: Date.now() }, 'nam/old capture.nam'); tx.oncomplete = r; });
+    localStorage.removeItem('rig01.lib.brought');
+  });
+  await page.reload(); await page.waitForFunction(() => window.__rig && window.__rig.library && window.__rig.library.backend === 'host', null, { timeout: 20000 }); await sleep(800);
+  check(ls('NAM').includes('old capture.nam') && ls('Effects').includes('trem.rigfx'), `after a reload: the browser's old capture is in NAM (${ls('NAM').join(', ')}), and everything else is still there`);
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

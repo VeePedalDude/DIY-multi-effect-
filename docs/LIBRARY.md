@@ -2,7 +2,28 @@
 
 ## The folder
 
-The library is a normal folder you choose. In the rig: menu → **Library → Choose folder…**.
+**With the rig-host** (the program you run on Windows or Linux), the library is made for you: the first
+time it runs it creates `RIG01` in your Documents folder (`--library DIR` puts it elsewhere), and the page
+uses it with nothing to choose or allow:
+
+```
+Documents/RIG01/
+  NAM/           Neural Amp Modeler captures (.nam)
+  IR/            cabinet impulse responses (.wav)
+  Effects/       effect plugins (.rigfx bundles, or plain .clap)
+  Mod Sources/   modulation source plugins (.rigfx); one imported through the rig goes here by its manifest
+  Skins/         looks for the page (.rigskin)
+  Presets/       the pedalboard (board.json) and its presets (.rig.json)
+  library.json   your tags, favorites and notes (below)
+```
+
+Put files in these folders from Explorer; they show up when you come back to the page (or press
+**Rescan**), and a new plugin is loaded straight away. **Open folder** in the Library panel opens it.
+Anything this browser had stored before is copied in the first time. The page reads and writes the folder
+through the rig-host (`hosts/rig-host/library.h`, `/lib/...`), which answers only its own page: requests
+from other web sites, or to another host name, are refused.
+
+**In the test page** (`rig-test.html` opened straight in Chrome), the library is a normal folder you choose. In the rig: menu → **Library → Choose folder…**.
 Pick or create something like `Documents/RIG Library`. The rig creates one subfolder per file kind:
 
 ```

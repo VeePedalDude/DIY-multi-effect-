@@ -17,6 +17,10 @@ const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets', 
 
 async function initLibrary() {
   library.kinds = libraryKinds();
+  if (HOST) {                                   // the rig-host's folder in Documents: no choosing, no permission prompts
+    try { const root = await hostLibraryRoot(); await bringBrowserLibrary(root); library.hostSig = hostLibSig(await root.lib.list()); return useLibraryRoot(root, 'host'); }
+    catch (e) { logLine(`library: the rig-host's folder isn't available (${e.message}); using browser storage`, true); }
+  }
   const saved = await savedFolderHandle();
   if (saved) {
     let perm = 'prompt';
@@ -27,6 +31,27 @@ async function initLibrary() {
   }
   try { await useLibraryRoot(new KvDir(idbStore(await idbOpen()), '', 'browser storage'), 'browser'); }
   catch (e) { await useLibraryRoot(new KvDir(memStore(), '', 'memory'), 'memory'); }
+}
+// Once, the first time the rig-host's folder is used: anything imported into this browser's storage before
+// (NAMs, IRs, plugins, skins, presets and the pedalboard, tags) is copied into it. Duplicates are skipped.
+async function bringBrowserLibrary(root) {
+  try { if (localStorage.getItem('rig01.lib.brought')) return; } catch (e) { return; }
+  let old; try { old = new KvDir(idbStore(await idbOpen()), '', 'browser storage'); } catch (e) { return; }
+  const from = new LibraryCore(old, library.kinds), to = new LibraryCore(root, library.kinds);
+  let copied = 0;
+  for (const k in library.kinds) for (const e of await from.list(k).catch(() => [])) {
+    const r = await to.importFile(await from.file(k, e.name), k).catch(() => null); if (r && (r.status === 'added' || r.status === 'renamed')) copied++;
+  }
+  for (const [kind, name] of [['presets', 'board.json'], ['', 'library.json']]) {   // only if the folder has none yet
+    try {
+      const src = kind ? await (await old.getDirectoryHandle(kind)).getFileHandle(name) : await old.getFileHandle(name);
+      const dst = kind ? await root.getDirectoryHandle(kind) : root;
+      if (await dst.getFileHandle(name).then(() => true, () => false)) continue;
+      const w = await (await dst.getFileHandle(name, { create: true })).createWritable(); await w.write(await (await src.getFile()).arrayBuffer()); await w.close(); copied++;
+    } catch (e) { /* nothing there */ }
+  }
+  if (copied) logLine(`library: copied ${copied} file(s) from this browser into ${root.name}`);
+  try { localStorage.setItem('rig01.lib.brought', '1'); } catch (e) { /* asks again next time; duplicates are skipped */ }
 }
 async function useLibraryRoot(root, backend) {
   library.core = new LibraryCore(root, library.kinds); library.backend = backend; library.rootName = root.name;
@@ -41,10 +66,12 @@ async function refreshLibrary() {
   }
   const where = {
     folder: `Folder “${library.rootName}”. Files you put in its ir, nam, presets, skins and plugins folders show up after Rescan.`,
+    host: `Folder ${library.rootName}. Put files in its NAM, IR, Effects, Mod Sources, Skins and Presets folders: they show up when you come back to this page.`,
     browser: 'Stored in this browser. Choose a folder to keep the library as normal files you can open, back up and share.',
     memory: 'Temporary: this page can’t store files where it’s open, so imports are lost on reload.',
   }[library.backend];
   $('libWhere').textContent = library.pendingFolder && library.backend !== 'folder' ? `Your folder “${library.pendingFolder.name}” needs permission again. Until then: ${where}` : where;
+  $('libChoose').hidden = library.backend === 'host'; $('libOpen').hidden = library.backend !== 'host';
   $('libCounts').textContent = Object.keys(library.kinds).map((k) => `${(library.entries[k] || []).length} ${kindLabel(k)}`).join(' · ');
   await knowLibraryPlugins();
   await loadTagIndex();                                       // library.json: tags, favorites, notes (62-tags.js)
@@ -52,6 +79,19 @@ async function refreshLibrary() {
   refreshPresetList();
   renderSkinList();
   renderPanel();
+}
+// Back on the page after adding files in Explorer: read the folder again if anything changed, and hand
+// any new plugin to the engine so it can be added straight away.
+const hostLibSig = (l) => l.files.map((f) => `${f.k}:${f.s}:${f.m}`).join('|');
+async function rescanHostLibrary() {
+  if (library.backend !== 'host') return;
+  let now; try { library.core.root.lib.changed(); now = hostLibSig(await library.core.root.lib.list()); } catch (e) { return; }
+  if (now === library.hostSig) return;
+  const had = new Set((library.entries.plugins || []).map((e) => e.name));
+  library.hostSig = now; await refreshLibrary();
+  if (rig.node) for (const e of library.entries.plugins || []) if (!had.has(e.name)) {
+    try { await loadPlugin(e.name, new Uint8Array(await (await library.core.file('plugins', e.name)).arrayBuffer())); } catch (err) { logLine(`plugin ${e.name}: ${err.message}`, true); }
+  }
 }
 async function chooseLibraryFolder() {
   if (!window.showDirectoryPicker) { logLine('This browser can’t open a folder. Use Chrome or Edge on a desktop.', true); return; }
@@ -110,8 +150,10 @@ function flashHint(text) { const el = $('dropHint'); el.textContent = text; el.h
 
 function wireLibrary() {
   $('libChoose').onclick = chooseLibraryFolder;
+  $('libOpen').onclick = () => hostLibReq('POST', 'open').catch((e) => logLine(e.message, true));
+  addEventListener('focus', rescanHostLibrary);
   $('libReconnect').onclick = reconnectLibraryFolder;
-  $('libRescan').onclick = async () => { await refreshLibrary(); logLine('library rescanned'); };
+  $('libRescan').onclick = async () => { if (library.backend === 'host') { library.hostSig = null; await rescanHostLibrary(); } else await refreshLibrary(); logLine('library rescanned'); };
   $('libImport').onclick = () => { $('libFiles').dataset.target = ''; $('libFiles').accept = ''; $('libFiles').click(); };   // every kind (a module's Import narrows it)
   $('libImportDir').onclick = importFolderTree;
   $('libFiles').onchange = async (e) => {
@@ -124,7 +166,7 @@ function wireLibrary() {
 function renderPluginList() {
   const el = $('libPlugins'); if (!el) return;
   const list = library.entries.plugins || [];
-  if (!list.length) { el.innerHTML = 'No plugins yet: put <span class="mono">.rigfx</span> bundles in the library\u2019s <span class="mono">plugins</span> folder (docs/PLUGINS.md).'; return; }
+  if (!list.length) { el.innerHTML = `No plugins yet: put <span class="mono">.rigfx</span> bundles in the library\u2019s ${library.backend === 'host' ? '<span class="mono">Effects</span> or <span class="mono">Mod Sources</span> folder' : '<span class="mono">plugins</span> folder'}, or use Load effect file in Add an effect (docs/PLUGINS.md).`; return; }
   const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   el.innerHTML = list.map((e) => {
     const m = e.meta || {}, r = plugins.results[e.name];

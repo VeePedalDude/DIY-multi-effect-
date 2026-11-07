@@ -41,6 +41,7 @@
 #include "spsc.h"
 #include "riff.h"
 #include "zip.h"
+#include "library.h"
 #ifndef _WIN32
 #include <sys/stat.h>
 #endif
@@ -68,7 +69,7 @@ static const char* RIG_HOST_VERSION = "0.1";
 
 // ------------------------------------------------------------------ options
 struct Opts {
-  std::string backend, in, out, page, listen = "127.0.0.1", asio, config;
+  std::string backend, in, out, page, listen = "127.0.0.1", asio, config, library;
   int frames = 64, periods = 2, rate = 0, port = 8000, simLoop = 0, simStall = 0;
   bool shared = false, list = false, riff = false, browser = true, latencyTest = false, framesSet = false;
 };
@@ -94,6 +95,7 @@ static void usage() {
          "  --no-browser         don't open the page in the browser\n"
          "  --config FILE        where the device chosen in the page is remembered (default: rig-host.cfg\n"
          "                       next to the program)\n"
+         "  --library DIR        the library folder (default: RIG01 in your Documents; made on first run)\n"
          "  --sim-loopback N     (testing, with --backend null) feed the output back to the input N samples later\n"
          "  --sim-stall MS       (testing) stall the audio thread 20 ms every MS ms, to test the dropout handling\n",
          RIG_HOST_VERSION);
@@ -109,7 +111,7 @@ static bool parseOpts(int argc, char** argv, Opts& o) {
     else if (a == "--listen") o.listen = next(); else if (a == "--page") o.page = next();
     else if (a == "--no-browser") o.browser = false; else if (a == "--sim-loopback") o.simLoop = atoi(next().c_str());
     else if (a == "--sim-stall") o.simStall = atoi(next().c_str());
-    else if (a == "--asio") o.asio = next(); else if (a == "--config") o.config = next();
+    else if (a == "--asio") o.asio = next(); else if (a == "--config") o.config = next(); else if (a == "--library") o.library = next();
     else if (a == "--help" || a == "-h" || a == "/?") { usage(); exit(0); }
     else { fprintf(stderr, "unknown option %s (--help lists them)\n", a.c_str()); return false; }
   }
@@ -756,6 +758,31 @@ static int run(int argc, char** argv) {
   sock_t ls = net::listenOn(h.o.listen.c_str(), h.o.port);
   if (ls == SOCK_BAD) { fprintf(stderr, "can't listen on %s:%d (another rig-host running? try --port)\n", h.o.listen.c_str(), h.o.port); return 1; }
   char url[96]; snprintf(url, sizeof url, "http://%s:%d/", h.o.listen == "0.0.0.0" ? "127.0.0.1" : h.o.listen.c_str(), h.o.port);
+  lib::Library library{ h.o.library.empty() ? lib::defaultRoot() : h.o.library };
+  while (library.root.size() > 1 && (library.root.back() == '/' || library.root.back() == '\\')) library.root.pop_back();
+  const bool libOk = library.ensure();
+  printf("  library: %s%s\n", library.root.c_str(), libOk ? "" : " (can't create it: the page keeps its library in the browser)"); fflush(stdout);
+  // The page's library requests. Only this page may make them: a custom header (other sites can't send one
+  // without a CORS preflight, which is never answered), and its own address (no DNS rebinding).
+  char hostA[64], hostB[64]; snprintf(hostA, sizeof hostA, "127.0.0.1:%d", h.o.port); snprintf(hostB, sizeof hostB, "localhost:%d", h.o.port);
+  const bool loopback = h.o.listen == "127.0.0.1" || h.o.listen == "localhost";
+  auto libHttp = [&](const std::string& method, const std::string& path, const std::string& body, const std::string& hdr) -> std::string {
+    auto resp = [](int code, const std::string& b, const std::string& extra = "") {
+      const char* what = code == 200 ? "OK" : code == 400 ? "Bad Request" : code == 403 ? "Forbidden" : code == 404 ? "Not Found" : "Internal Server Error";
+      return "HTTP/1.1 " + std::to_string(code) + " " + what + "\r\nContent-Type: application/octet-stream\r\nCache-Control: no-store\r\n" + extra +
+             "Content-Length: " + std::to_string(b.size()) + "\r\nConnection: close\r\n\r\n" + b;
+    };
+    const std::string hostH = net::header(hdr, "host"), origin = net::header(hdr, "origin");
+    if (net::header(hdr, "x-rig") != "1" || (loopback && hostH != hostA && hostH != hostB) || (!origin.empty() && origin != "http://" + hostH)) return resp(403, "not from the rig page");
+    if (!libOk) return resp(500, "no library folder");
+    if (method == "GET" && path == "/lib/list") return resp(200, library.list());
+    if (method == "POST" && path == "/lib/open") { lib::reveal(library.root); return resp(200, ""); }
+    if (path.rfind("/lib/f/", 0) != 0) return resp(404, "");
+    const std::string key = net::pctDecode(path.substr(7));
+    if (method == "GET") { std::string out; double mt = 0; const int st = library.get(key, out, mt); if (st) return resp(st, ""); char x[48]; snprintf(x, sizeof x, "X-Mtime: %.0f\r\n", mt); return resp(200, out, x); }
+    const int st = method == "PUT" ? library.put(key, body) : method == "DELETE" ? library.del(key) : 400;
+    return resp(st ? st : 200, "");
+  };
   printf("  page:    %s\n  Ctrl+C to stop.\n", url); fflush(stdout);
 #ifdef _WIN32
   if (h.o.browser) ShellExecuteA(nullptr, "open", url, nullptr, nullptr, SW_SHOWNORMAL);
@@ -813,7 +840,7 @@ static int run(int argc, char** argv) {
         if (!drop) {
           c.in.append(buf, (size_t)k);
           if (!c.ws) {
-            const int st = net::httpHandle(c, page);
+            const int st = net::httpHandle(c, page, libHttp);
             if (st == 1) drop = true;
             else if (st == 2) {                                // a page connected: who we are, the engine's description, then a snapshot
               net::wsSend(c, hostInfo(h, a));

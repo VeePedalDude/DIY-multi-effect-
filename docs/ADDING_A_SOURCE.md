@@ -4,7 +4,7 @@ A source turns anything (tempo, your picking, physics, a sensor) into one number
 per block (128 samples, about every 2.7 ms). Sources live in the **modulation rack**
 (`engine/mod_rack.h`): what you write is a source *type*. The rack can hold several instances of it
 (`lfo`, `lfo2`...), each with its own knobs, and any instance's knobs can be moved by another source
-(cross-modulation). You get all of that, plus the panel, the matrix, presets, scenes and the text
+(cross-modulation). You get all of that, plus the panel, the Visualizer, presets and the text
 protocol, from the description alone.
 
 Three steps: one new file in the right folder, a test, and the docs table. There is no list to edit:
@@ -132,7 +132,7 @@ A skin can give the type a colour (`sources.rand` in `docs/SKINS.md`); otherwise
 fallback colour.
 
 Run `./build.sh`. The new source appears in the "+ ADD" panel, can be added any number of times, has
-its own panel, appears in the matrix as a row and its knobs as columns, can move and be moved by
+its own panel and a ring in the Visualizer, can move and be moved by
 every other source, and saves in presets.
 
 ## Changing an existing source

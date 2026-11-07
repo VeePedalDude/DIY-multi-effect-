@@ -57,9 +57,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   v = await page.evaluate(async () => { const xs = []; for (let i = 0; i < 40; i++) { xs.push(window.__rig.eff('tess', 'fold')); await new Promise((r) => setTimeout(r, 50)); } xs.sort((a, b) => a - b); return (xs[0] + xs[xs.length - 1]) / 2; });
   check(r.status === 0 && Math.abs(v - 0.6) < 0.12, `instance by id: param_set tess fold 0.6 -> resp ${r.status}, engine centre ${v.toFixed(3)} (heart-modulated)`);
 
-  console.log('3. UI: patch CONTROLLER -> CAB MIX in the matrix, then sweep the controller');
-  await page.click('#vMatrix');
-  await page.click('button.cell[data-pid="cab.mix"][data-sid="ctrl"]');
+  console.log('3. UI: patch CONTROLLER -> CAB MIX from the cab\'s panel, then sweep the controller');
+  const focus0 = await page.evaluate(() => window.__rig.state.focus);
+  await page.evaluate(() => { window.__rig.state.focus = 'cab'; }); await page.click('#vViz'); await sleep(200); await page.click('#vStage'); await sleep(300);   // its panel, without moving the camera
+  await page.selectOption('[data-patch="cab.mix"]', 'ctrl'); await sleep(300);
   const setSlider = (v) => page.evaluate((v) => window.__rig.inputs.set('ctrl', v), v);   // as a bound control would
   // a meter packet made at least 0.3 s (audio time) after now: a busy headless page can hand them over late
   const fresh = async () => { const t0 = await page.evaluate(() => window.__rig.ctx.currentTime); await page.waitForFunction((t0) => window.__rig.meters.t > t0 + 0.3, t0, { timeout: 10000 }); };
@@ -70,7 +71,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   v = await page.evaluate(() => window.__rig.eff('cab', 'mix'));
   check(v > 0.99, `controller +1 -> cab mix ${v.toFixed(3)} (expect 1.00, clamped)`);
   await page.screenshot({ path: path.join(shots, 'shot-matrix.png') });
-  await page.click('#vStage');
+  await page.evaluate((f) => { window.__rig.state.focus = f; }, focus0); await page.click('#vViz'); await sleep(200); await page.click('#vStage'); await sleep(300);   // back to the module the next steps use
 
   console.log('4. UI: bypass the delay from the focus panel, check modulation is moving');
   await page.click('#panel [data-act="bypass"]');

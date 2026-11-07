@@ -2,7 +2,7 @@
 
 A plugin is an effect or a modulation source that comes as one file, a `.rigfx` bundle, instead of being
 compiled into the rig. Put it in the library's `plugins/` folder (or drop it on the page). It shows up in
-the **Add an effect** / **Add a source** panels, the matrix, the protocol and presets like a built-in.
+the **Add an effect** / **Add a source** panels, patching, the protocol and presets like a built-in.
 The rig isn't rebuilt.
 
 Plugins are [CLAP](https://github.com/free-audio/clap) plugins, the open plugin standard, and

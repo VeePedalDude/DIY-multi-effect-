@@ -40,7 +40,7 @@ setup. Details, options and troubleshooting: [hosts/rig-host/README.md](hosts/ri
 
 Effects and modulation sources can come as files: a `.rigfx` bundle holds a CLAP plugin for Windows and
 Linux (the rig-host runs those at full speed) and a WebCLAP build for the browser. Drop one on the page
-or put it in the library's `plugins/` folder, and it joins the Add panels, the matrix and presets
+or put it in the library's `plugins/` folder, and it joins the Add panels, patching and presets
 without rebuilding anything. Write one exactly like a built-in effect or source and build it with
 `python3 tools/build_plugin.py plugins/<id>`. Two examples ship in `dist/plugins/`. The rig-host also
 runs other makers' CLAP effects. See [docs/PLUGINS.md](docs/PLUGINS.md).
@@ -120,13 +120,13 @@ dist/          rig-test.html (built, committed)
 | add an effect | new `engine/modules/<id>.h` + one line in its `registry.h` ([guide](docs/ADDING_A_MODULE.md)) |
 | add a modulation source | new `engine/sources/<id>.h` + one line in its `registry.h` ([guide](docs/ADDING_A_SOURCE.md)) |
 | give an effect a custom face display | new `ui/screens/<id>.js` |
-| change the stage, panel, matrix | the matching `ui/js/` file |
+| change the stage, panel, Visualizer | the matching `ui/js/` file |
 | test an effect | new `tests/native/test_<id>.cpp` |
 | let an effect take files (IRs, captures) | declare a file slot in its description ([guide](docs/ADDING_A_MODULE.md#optional-a-file-slot-irs-captures-samples)) |
 
 The engine describes itself (every parameter's range, unit, curve and default), and the
 protocol and UI are built from that description. A new effect therefore shows up with knobs,
-a panel, matrix columns and protocol commands without touching the UI. This was verified by
+a panel, patch targets and protocol commands without touching the UI. This was verified by
 adding a three-knob tremolo with only its own file and one registry line.
 
 ## Build and test
@@ -215,13 +215,18 @@ modulation source in the rack: one ring each, innermost first, in the source's c
 - **Links:** a source moving another source's knob shows as a dashed link through the middle.
 - **The core** in the centre swells with how busy the rack is.
 - **Click a ring** to edit that source in the panel; **V** goes back.
+- **The keyboard** along the bottom (E2 to E6) lights the notes you play, with the chord's name above it
+  (C, Am7, D5, C/E...). Notes still ringing from the last chord, or an overtone, are left out of the name
+  when the rest makes a chord. It uses Poly Voice's note finder on the dry input, whatever is in the
+  chain, and only while the Visualizer is up (about 1.4% of one core). A note lights in about 25 ms and
+  goes out about 20 ms after it stops.
 
 The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins colour it (the `viz` section).
 
 ### The effect chain
 
 - **Add, remove and reorder effects while it plays.** The **+ ADD EFFECT** card at the end of the
-  row (or **+ Add effect** in the Mod Matrix) opens a tab per kind of effect: Dynamics, Amps & drive,
+  row opens a tab per kind of effect: Dynamics, Amps & drive,
   Cabs & IRs, Filter & EQ, Synth filters, Modulation, Pitch, Delay, Reverb, Utility, Experimental. A search box
   looks across all of them, and the panel remembers the last tab. Sources get the same: Time &
   tempo, Your playing, Physics & chaos, Outside world. Up to 12 in all, in any
@@ -235,19 +240,18 @@ The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins
   - A move dips the sound for 10 ms either side of the swap, inside the chain too, so a delay
     doesn't record the jump and play it back later.
 - Presets save the chain, in order. Older presets load as the five original modules.
-- Every instance is a patch target for every source, has its own card, file slot and matrix columns,
+- Every instance is a patch target for every source, has its own card, file slot and panel,
   and is addressed by its id in the protocol (`param_set holo2 feedback 0.8`, `fx_move holo2 0`).
 
 ### The modulation rack
 
-- **Add and remove sources while it plays.** The **+ ADD** orb at the end of the source row (or
-  **+ Add source** in the Mod Matrix) lists every kind of source. Add as many as you like, up to 16
+- **Add and remove sources while it plays.** The **+ ADD** orb at the end of the source row lists
+  every kind of source. Add as many as you like, up to 16
   in all; several of one kind is fine (LFO, LFO 2, LFO 3). A source's panel has **Duplicate** (same
   settings) and **Remove** (asks twice; its patches go with it).
 - **Cross-modulation.** A source's knobs can be moved by another source, or by itself:
   - **Moved by** on any of its knobs, in its panel.
   - Carry a cable from one orb and click another orb, then pick the knob.
-  - The matrix's **Source knobs** columns.
 
   An envelope can speed up an LFO while you dig in; an orbit can wander an LFO's shape; two LFOs can
   chase each other. The knob shows its setting and where modulation has it right now (`8.0 beats → 3.2 beats`).
@@ -314,11 +318,11 @@ The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins
   one open, empty ones saying which folder to use, Filter & EQ and Synth filters in their order),
   search across tabs, arrow keys and the remembered tab, and add each EQ and synth filter live to
   check its face draws. They add a second HOLOGRAM from the “+” card, set its knob, move it to the
-  front with ◀, patch the LFO to it, duplicate the cab, remove the amp, check the matrix, reload a
+  front with ◀, patch the LFO to it, duplicate the cab, remove the amp, patch the new cab from its panel, reload a
   preset's chain in order, fill the chain to 12 and check Overview fits it.
   The 14/14 rack checks add an LFO from the “+” orb, set its knob, patch the envelope to its rate
-  from the panel and an orbit to its shape by carrying a cable orb to orb, patch from the matrix's
-  source-knob columns, duplicate and remove, fill the rack to 16, and reload a preset's rack.
+  from the panel and an orbit to its shape by carrying a cable orb to orb, patch a source knob from its
+  panel's Moved by, duplicate and remove, fill the rack to 16, and reload a preset's rack.
   The 19/19 tuner checks play a steady A2 6 cents sharp into the fake microphone: the mini card opens
   the sideways card, the note and cents read right, the output mutes, the bands turn at the right rate,
   the A4 reference, collapsing with T, Off, the Classic skin and a reload.

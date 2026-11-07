@@ -1,5 +1,5 @@
-// 50-hud.js - focus panel, mod matrix, hint line, view switch, bottom bar and settings drawer.
-const panel = $('panel'), matrix = $('matrix'), hint = $('hint');
+// 50-hud.js - focus panel, hint line, view switch, bottom bar and settings drawer.
+const panel = $('panel'), hint = $('hint');
 // PHASE and DIV of one patch, under its depth, when the source taps (an LFO): this destination's own
 // offset and multiple of the source's cycle.
 function tapRowHtml(pid, color) {
@@ -52,23 +52,6 @@ function renderAddFxPanel() {
 }
 let panelPending = false;
 function renderPanelSoon() { if (panelPending) return; panelPending = true; requestAnimationFrame(() => { panelPending = false; renderPanel(); }); }
-function renderMatrix() {
-  // columns: every module knob, then every source knob (cross-modulation); rows: the rack
-  const cols = []; MODS.forEach((m) => m.params.forEach((p) => cols.push(p)));
-  const nMod = cols.length; SRC.forEach((s) => s.params.forEach((q) => cols.push(q)));
-  let h = `<div class="row" style="justify-content:space-between;margin-bottom:12px"><span class="eyebrow">Source → target · rack ${SRC.length}/${DESC.maxSources} · chain ${MODS.length}/${DESC.maxModules}</span><span class="row"><button class="btn mini" data-matrix-addfx ${chainFull() ? 'disabled' : ''}>+ Add effect</button><button class="btn mini" data-matrix-add ${rackFull() ? 'disabled' : ''}>+ Add source</button></span></div><div style="overflow-x:auto"><table><thead>`;
-  h += `<tr><th></th><th scope="colgroup" colspan="${nMod}" class="grp">Module knobs</th>${cols.length > nMod ? `<th scope="colgroup" colspan="${cols.length - nMod}" class="grp">Source knobs · cross-modulation</th>` : ''}</tr><tr><th></th>`;
-  cols.forEach((p) => h += `<th scope="col"><small${p.src ? ` style="color:${p.src.color}"` : ''}>${p.mod ? p.mod.name : p.src.name}</small>${p.label}</th>`);
-  h += `</tr></thead><tbody>`;
-  SRC.forEach((s) => {
-    h += `<tr><th scope="row"><button class="linkbtn" data-edit-src="${s.id}" title="Edit ${s.name}"><b style="color:${s.color}">${s.name}</b></button><small>${s.sub}${s.params.length ? ` · ${s.params.length} knob${s.params.length > 1 ? 's' : ''}` : ''}</small></th>`;
-    cols.forEach((p) => { const on = state.conns[p.id] === s.id;
-      h += `<td><button class="cell" data-pid="${p.id}" data-sid="${s.id}" aria-pressed="${on}" aria-label="${s.name} to ${p.mod ? p.mod.name : p.src.name} ${p.label}${on ? ', patched' : ''}" style="${on ? `background:${s.color};border-color:${s.color};box-shadow:0 0 16px ${s.color}88` : ''}"></button></td>`; });
-    h += `</tr>`;
-  });
-  h += `</tbody></table></div><p class="note" style="margin-top:14px">Each knob takes one source; new patches swing ±${Math.round(DEPTH * 100)}%. Click a dot to patch or unpatch, or a source's name to edit it and its depths. Source knobs are cross-modulation: one source moving another (or itself).</p>`;
-  matrix.innerHTML = h;
-}
 function setHint() {
   if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it, or another source's orb to move one of its knobs · Esc to drop`; return; }
   if (state.view === 'viz') { hint.className = 'hint'; hint.textContent = 'Visualizer: a ring for each modulation source, newest value at the top, fading round the circle · dashed links: one source moving another · click a ring to edit it · V back to the stage'; return; }
@@ -89,11 +72,11 @@ function updatePanelToggle() {
   b.title = panelHidden ? `Show the ${name} panel (P)` : 'Hide the panel (P)';
   b.setAttribute('aria-label', b.title);
 }
-function update() { renderPanel(); updatePanelToggle(); if (state.view === 'matrix') renderMatrix(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); drawAddLabel(); drawAddCard(); }
+function update() { renderPanel(); updatePanelToggle(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); drawAddLabel(); drawAddCard(); }
 function setView(v) {
   state.view = v; state.carrying = null;
-  $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vMatrix').setAttribute('aria-pressed', v === 'matrix'); $('vViz').setAttribute('aria-pressed', v === 'viz');
-  matrix.hidden = v !== 'matrix'; vizShow(v === 'viz'); update();
+  $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vViz').setAttribute('aria-pressed', v === 'viz');
+  vizShow(v === 'viz'); update();
 }
 
 function wireHud() {
@@ -111,17 +94,15 @@ function wireHud() {
     if (b.dataset.act === 'bypass' || b.dataset.act === 'unplug') update();
   });
   panel.addEventListener('click', (e) => { const a = e.target.closest('[data-addfx-type]'); if (a) { const m = addModule(a.dataset.addfxType); if (m) { state.focus = m.id; update(); flyTo(m); } } });
-  matrix.addEventListener('click', (e) => { if (e.target.closest('[data-matrix-addfx]')) { state.focus = 'addfx'; update(); } });
   panel.addEventListener('input', (e) => { const pid = e.target.dataset && e.target.dataset.pid; if (pid) { const p = PARAMS[pid]; setParam(p, p.snap(Number(e.target.value))); } });
   panel.addEventListener('change', (e) => { const pid = e.target.dataset && e.target.dataset.patch; if (pid && e.target.value) { connect(pid, e.target.value); update(); } });
-  matrix.addEventListener('click', (e) => { const b = e.target.closest('.cell'); if (!b) return; const { pid, sid } = b.dataset; connect(pid, state.conns[pid] === sid ? null : sid); update(); });
   $('panelToggle').onclick = () => setPanelHidden(!panelHidden);
   window.addEventListener('keydown', (e) => {
     if (e.target.closest && e.target.closest('input,textarea,select')) return;
     if ((e.key === 'p' || e.key === 'P') && !e.ctrlKey && !e.metaKey && !e.altKey) setPanelHidden(!panelHidden);
   });
   document.body.classList.toggle('panel-hidden', panelHidden);
-  $('vStage').onclick = () => setView('stage'); $('vMatrix').onclick = () => setView('matrix'); $('vViz').onclick = () => setView('viz'); $('overview').onclick = overview;
+  $('vStage').onclick = () => setView('stage'); $('vViz').onclick = () => setView('viz'); $('overview').onclick = overview;
   $('settingsBtn').onclick = () => { const d = $('drawer'); d.hidden = !d.hidden; $('settingsBtn').setAttribute('aria-expanded', String(!d.hidden)); };
 
   // bottom bar

@@ -139,7 +139,7 @@ screen('trem', (c, b, m, h) => {
 NOTES.trem = 'Shown in the focus panel.';
 ```
 
-Then run `./build.sh`. The new effect appears on the stage, in the panel, in the matrix, as a
+Then run `./build.sh`. The new effect appears on the stage, in the panel, as a
 patch target for every source, and in the protocol (`param_set trem depth 0.8`).
 
 `tests/native/test_conformance.cpp` (test 93) checks every registered module automatically: the

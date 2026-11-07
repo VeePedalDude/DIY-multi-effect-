@@ -249,7 +249,7 @@ Keep the total per instance to a few MB.
 
 ## 3. A modulation source instead (optional)
 
-A source makes one value in −1..1 per block. It moves knobs through the mod matrix. Include
+A source makes one value in −1..1 per block. It moves the knobs it's patched to. Include
 `"source.h"`. In `plugin.json`, use `"kind": "source"` and one of these categories: `time`, `playing`,
 `chaos`, `outside`.
 

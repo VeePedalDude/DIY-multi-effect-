@@ -2,9 +2,9 @@
 //  - A source's panel (state.focus 'src:<id>'): its knobs (src_set), a live trace, every knob it
 //    moves with its own depth, and on each of its own knobs which source moves it (cross-
 //    modulation). Duplicate and Remove act on the rack. Opened by clicking a source's orb or name on
-//    the stage, its row in the matrix, or its name in a module's panel.
+//    the stage, its ring in the Visualizer, or its name in a module's panel.
 //  - The add panel (state.focus 'add'): every kind of source the engine has, to add another.
-//    Opened from the "+" orb at the end of the source row, or the matrix.
+//    Opened from the "+" orb at the end of the source row.
 const srcFocus = () => (typeof state.focus === 'string' && state.focus.startsWith('src:') ? SRCMAP[state.focus.slice(4)] : null);
 function focusSource(s) { state.focus = 'src:' + s.id; update(); }
 const srcEsc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -141,9 +141,5 @@ function wireSourcePanel() {
       if (srcRemoveArmed !== s.id) { srcRemoveArmed = s.id; update(); setTimeout(() => { if (srcRemoveArmed === s.id) { srcRemoveArmed = null; update(); } }, 4000); return; }
       srcRemoveArmed = null; removeSource(s); update();
     }
-  });
-  matrix.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-edit-src]'); if (b) { focusSource(SRCMAP[b.dataset.editSrc]); return; }
-    if (e.target.closest('[data-matrix-add]')) { state.focus = 'add'; update(); }
   });
 }

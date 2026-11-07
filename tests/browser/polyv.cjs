@@ -36,7 +36,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(listed === 'polyv' && /polyv/.test(chain), `Synth voices: ${listed}; chain now ${chain}`);
 
   console.log('2. The riff in: voices sound, notes on the face');
-  await page.evaluate(() => { window.__rig.state.focus = 'polyv'; }); await page.click('#vMatrix'); await sleep(200); await page.click('#vStage'); await sleep(400);
+  await page.evaluate(() => { window.__rig.state.focus = 'polyv'; }); await page.click('#vViz'); await sleep(200); await page.click('#vStage'); await sleep(400);
   const names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'], nm = (n) => names[n % 12] + (Math.floor(n / 12) - 1);
   const after = await watch(5000);
   await page.evaluate(() => window.__rig.chain.move('polyv', 0)); await sleep(800);

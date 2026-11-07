@@ -102,6 +102,8 @@ EXPORT(rig_collect) void rig_collect() { E().collect(false); }
 // Tuner on the dry input: on/off, and whether the output is muted while it's on.
 EXPORT(rig_tuner) void rig_tuner(int on, int mute) { E().tuner.on = on != 0; E().tuner.mute = mute != 0; }
 EXPORT(rig_tuner_ref) void rig_tuner_ref(float a4) { E().tuner.a4 = rig::clampf(a4, 400.f, 480.f); }
+// The notes being played (the Visualizer's keyboard): on while it's up.
+EXPORT(rig_listen) void rig_listen(int on) { E().listen.on = on != 0; }
 EXPORT(rig_ext)    void rig_ext(int src, float v) { if (E().rack.used(src)) E().rack.ext(src, v); }
 EXPORT(rig_tempo)  void rig_tempo(float bpm) { E().bpm = rig::clampf(bpm, 30.f, 300.f); }
 EXPORT(rig_master) void rig_master(float db) { E().masterDb = rig::clampf(db, -60.f, 6.f); }
@@ -130,7 +132,7 @@ EXPORT(rig_asset_status) const char* rig_asset_status(int m) { return E().used(m
 //   param_set <inst> <symbol> <0..1>          bypass <inst> <0|1>
 //   mod_connect <inst> <symbol> <source> <depth> [phase] [div]     mod_disconnect <inst> <symbol>
 //   set_bpm <bpm>   master <dB>   ext <source> <value>   input_channel <0|1>
-//   tuner <0|1> [mute 0|1]   tuner_ref <A4 Hz, 400..480>
+//   tuner <0|1> [mute 0|1]   tuner_ref <A4 Hz, 400..480>   listen <0|1>
 //   src_add <type> [id]   src_remove <source>   src_set <source> <symbol> <0..1>
 //   src_mod <source> <symbol> <from source> <depth> [phase] [div]   src_unmod <source> <symbol>
 //   src_cfg <source> <symbol> <0..1>   src_cell <source> <row> <symbol> <0..1>
@@ -174,6 +176,7 @@ int exec(char* line) {
     if (!t[1] || (strcmp(t[1], "0") && strcmp(t[1], "1"))) return ERR_RANGE;
     rig_tuner(t[1][0] == '1', !(t[2] && !strcmp(t[2], "0"))); return 0;
   }
+  if (!strcmp(c, "listen")) { if (!t[1] || (strcmp(t[1], "0") && strcmp(t[1], "1"))) return ERR_RANGE; rig_listen(t[1][0] == '1'); return 0; }
   if (!strcmp(c, "tuner_ref")) { const double v = num(t[1]); if (!(v >= 400 && v <= 480)) return ERR_RANGE; rig_tuner_ref((float)v); return 0; }
   if (!strcmp(c, "fx_add")) {
     if (!t[1] || rig::moduleTypeIndex(t[1]) < 0) return ERR_INSTANCE;

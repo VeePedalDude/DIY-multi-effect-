@@ -1,6 +1,6 @@
 // tests/browser/chain.cjs - the effect chain in headless Chromium: adding a module from the "+" card,
 // its knobs, moving it with ◀ ▶, duplicating, patching a source to the new one, removing one, a full
-// chain, the matrix, and a preset that brings its chain back in order.
+// chain, patching the new modules, and a preset that brings its chain back in order.
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const path = require('path'), fs = require('fs');
 const root = path.resolve(__dirname, '../..');
@@ -30,7 +30,7 @@ const boardAdd = async (page) => { await page.click('#boardAdd'); await sleep(15
   const inStep = (c) => ids(c.ui) === ids(c.engine) && c.ui.every((m) => c.engine.some((e) => e.id === m.id && e.slot === m.slot));
   const fresh = async () => { const t0 = await page.evaluate(() => window.__rig.ctx.currentTime); await page.waitForFunction((t0) => window.__rig.meters.t > t0 + 0.3, t0, { timeout: 10000 }); };
   const outPeak = () => page.evaluate(async () => { let p = 0; const t0 = performance.now(); while (performance.now() - t0 < 1500) { p = Math.max(p, window.__rig.meters.outPk); await new Promise((r) => setTimeout(r, 25)); } return p; });
-  const open = async (id) => { await page.click('#vMatrix'); await sleep(200); await page.evaluate((id) => { window.__rig.state.focus = id; }, id); await page.click('#vStage'); await sleep(400); };
+  const open = async (id) => { await page.evaluate((id) => { window.__rig.state.focus = id; }, id); await page.click('#vViz'); await sleep(200); await page.click('#vStage'); await sleep(400); };
   const setSlider = (sel, v) => page.evaluate(([sel, v]) => { const el = document.querySelector(sel); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, [sel, v]);
 
   console.log('1. The default chain, and the "+" card');
@@ -75,7 +75,7 @@ const boardAdd = async (page) => { await page.click('#boardAdd'); await sleep(15
   const pk = await outPeak();
   check(ids(c.ui) === 'holo2 gate amp cab holo tess' && inStep(c) && await page.isDisabled('[data-act="fx-left"]') && pk > 0.01, `chain now ${ids(c.ui)} in the page and the engine; ◀ is disabled at the front; still playing (peak ${pk.toFixed(3)})`);
   await page.screenshot({ path: path.join(shots, 'shot-chain-stage.png') });
-  await page.evaluate(() => { window.__rig.state.focus = 'addfx'; }); await page.click('#vMatrix'); await page.click('#vStage'); await sleep(400);
+  await page.evaluate(() => { window.__rig.state.focus = 'addfx'; }); await page.click('#vViz'); await page.click('#vStage'); await sleep(400);
   check(await page.getAttribute('[data-pick-tab="fx:delay"]', 'aria-selected') === 'true', 'the add panel opens again on the tab used last (Delay)');
   await page.screenshot({ path: path.join(shots, 'shot-picker.png') });
   await open('holo2');
@@ -101,12 +101,11 @@ const boardAdd = async (page) => { await page.click('#boardAdd'); await sleep(15
   const pk2 = await outPeak();
   check(armed === 'Confirm remove' && ids(c.ui) === 'holo2 gate cab cab2 holo tess' && inStep(c) && !c.conns['amp.input'] && pk2 > 1e-4, `Remove asks once more; the amp and its patch leave page and engine; still playing, quieter without its gain (peak ${pk2.toFixed(4)})`);
 
-  console.log('7. The matrix has columns for the new modules');
-  await page.click('#vMatrix'); await sleep(400);
-  const heads = await page.evaluate(() => [...document.querySelectorAll('#matrix thead tr:last-child th[scope=col] small')].map((s) => s.textContent));
-  check(heads.includes('HOLOGRAM 2') && heads.includes('CAB IR 2') && !heads.includes('AMP') && await page.isVisible('[data-matrix-addfx]'), `columns follow the chain (${[...new Set(heads)].slice(0, 6).join(', ')}…)`);
+  console.log('7. The new modules are patch targets (no Mod Matrix: patching is on the stage and in the panels)');
+  await open('cab2');
+  const targets = await page.evaluate(() => [...document.querySelectorAll('#panel [data-patch="cab2.mix"] option')].map((o) => o.value));
+  check(targets.includes('lfo') && targets.includes('ctrl') && !(await page.$('#vMatrix')) && !(await page.$('#matrix')), `CAB IR 2's MIX can be patched from its panel (${targets.filter(Boolean).length} sources offered); the Mod Matrix view is gone`);
   await page.screenshot({ path: path.join(shots, 'shot-chain-matrix.png') });
-  await page.click('#vStage'); await sleep(300);
 
   console.log('8. A preset brings its chain back, in order');
   await boardSave(page, 'Chain Test');

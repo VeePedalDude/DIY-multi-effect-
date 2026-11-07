@@ -24,6 +24,22 @@ load a RIG effect too. The rig-host also runs other makers' CLAP effects: put a 
 with an audio input and output) in `plugins/`. Its first 8 automatable parameters become its knobs, in
 the plugin's own range. The browser runs `.rigfx` bundles only, since it can't run native code.
 
+## Updating and removing
+
+The library decides what's loaded, while the rig plays:
+
+- **A newer version** (a file with the same plugin id, imported or put in the folder over the old one)
+  replaces it: an import takes the old file's place rather than sitting beside it as `x (2).rigfx`, the
+  engine swaps the type (`engine/plugins.h`), and every copy already in the chain or rack is rebuilt on
+  the new version with the same id and place, its knobs (by name), bypass and patches kept. The old
+  code is retired, not unloaded: until the rig restarts, each replaced version still takes one of the
+  32 plugin effect (or source) places.
+- **A file removed** from the library takes its effect or source out of the add panels and the engine's
+  list (`plugin_remove`); copies already in the rig keep playing until you take them out.
+- **The same file again** (a page reload on the rig-host, whose engine keeps running) is kept as it
+  is: "already loaded". The rig-host caches each native `.clap` under a name made from its bytes and
+  never writes over one that's there, since it may be loaded.
+
 ## Writing one
 
 Writing one in another chat or tool? [WRITING_A_PLUGIN_EFFECT.md](WRITING_A_PLUGIN_EFFECT.md) is a

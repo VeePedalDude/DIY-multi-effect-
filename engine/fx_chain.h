@@ -27,7 +27,8 @@ constexpr int MOD_ID_LEN = 16;            // id, including the terminating zero
 static_assert(MAXMOD <= 15, "the chain order packs a slot into 4 bits");
 
 // The types: the built-ins (the registry), then plugins loaded while the rig runs (core/plugin.h),
-// up to MAXPLUGINTYPES. A plugin type is added once and stays until the engine is rebuilt.
+// up to MAXPLUGINTYPES. A plugin type is added once; replacing or removing it retires it (plugins.h):
+// it can't be added or found by id, and isn't listed, but instances already running keep its code.
 constexpr int MAXPLUGINTYPES = 32;
 struct ModuleType {
   const ModuleDesc& (*descFn)(); Module* (*makeFn)(); const char* category; PluginInfo* plugin;
@@ -51,7 +52,8 @@ inline const Category* moduleCategories() { static const Category t[NMODCATS] = 
 #undef RIG_MCAT
 // What a fresh chain holds, in order (engine/modules/default_chain.txt).
 inline const char* const* defaultChain(int& n) { static const char* const ids[] = { RIG_DEFAULT_CHAIN }; n = (int)(sizeof ids / sizeof ids[0]); return ids; }
-inline int moduleTypeIndex(const char* type) { for (int t = 0; t < moduleTypeCount(); t++) if (!strcmp(moduleTypeDesc(t).id, type)) return t; return -1; }
+inline bool moduleTypeRetired(int t) { return moduleTypes()[t].plugin && moduleTypes()[t].plugin->retired; }
+inline int moduleTypeIndex(const char* type) { for (int t = 0; t < moduleTypeCount(); t++) if (!moduleTypeRetired(t) && !strcmp(moduleTypeDesc(t).id, type)) return t; return -1; }
 
 enum ChainError { CHAIN_BAD_TYPE = -1, CHAIN_FULL = -2, CHAIN_BAD_ID = -3, CHAIN_NO_SUCH = -4 };
 

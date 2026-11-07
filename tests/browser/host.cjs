@@ -212,6 +212,39 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   await page.reload(); await page.waitForFunction(() => window.__rig && window.__rig.library && window.__rig.library.backend === 'host', null, { timeout: 20000 }); await sleep(800);
   check(ls('NAM').includes('old capture.nam') && ls('Effects').includes('trem.rigfx'), `after a reload: the browser's old capture is in NAM (${ls('NAM').join(', ')}), and everything else is still there`);
 
+  console.log('11. Updating and removing plugin files by hand, with the rig playing');
+  const startHost = async () => { await page.check('input[name=src][value=riff]'); await page.click('#startBtn'); await page.waitForFunction(() => window.__rig.meters && window.__rig.engineChain, null, { timeout: 20000 }); await sleep(1500); };
+  await startHost();
+  // (the engine can still hold a "trem" from before the reload that the page doesn't show: a known rig-host
+  // reconnect issue, reported separately; cleared here so the page's own TREMOLO can take that id)
+  if (!(await V("window.__rig.chain.list().some((e) => e.id === 'trem')"))) { await V("window.__rig.cmd('fx_remove trem')"); await sleep(300); await V("window.__rig.chain.add('trem') && 1"); await sleep(800); }
+  await V("window.__rig.knob('trem.rate', 0.66)");
+  // A newer build: other native code (16 bytes added after each .clap's end, which loaders ignore), repacked.
+  const v2 = await page.evaluate(async (b64) => {
+    const { unzip, zipFiles } = window.__rig.skinTools, files = await unzip(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    const out = []; for (const [n, d] of files) { if (/\.clap$/.test(n)) { const x = new Uint8Array(d.length + 16); x.set(d); x.fill(7, d.length); out.push([n, x]); } else out.push([n, d]); }
+    const z = zipFiles(out); let s = ''; for (const c of z) s += String.fromCharCode(c); return btoa(s);
+  }, fs.readFileSync(path.join(root, 'dist/plugins/trem.rigfx')).toString('base64'));
+  fs.writeFileSync(path.join(libDir, 'Effects', 'trem.rigfx'), Buffer.from(v2, 'base64'));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForFunction(() => /TREMOLO: 1 in the rig now runs the new version/.test(document.getElementById('log').textContent), null, { timeout: 15000 }).catch(() => {});
+  const u = await page.evaluate(() => ({ log: document.getElementById('log').textContent, chain: window.__rig.engineChain.map((e) => e.id), rate: window.__rig.knob('trem.rate'), types: window.__rig.engineDesc.moduleTypes.filter((t) => t.type === 'trem').length }));
+  check(/trem \(TREMOLO\) replaced/.test(u.log) && /now runs the new version/.test(u.log), 'a newer trem.rigfx put in Effects: the host replaced the type and the TREMOLO in the chain moved onto it');
+  check(u.chain.includes('trem') && Math.abs(u.rate - 0.66) < 1e-6 && u.types === 1, `in the chain still (${u.chain.join(' ')}), RATE kept (${u.rate}), listed once`);
+  await page.reload(); await page.waitForFunction(() => window.__rig && window.__rig.ready, null, { timeout: 15000 }); await startHost();
+  await page.waitForFunction(() => /plugin trem\.rigfx: effect trem \(TREMOLO\) (already loaded|replaced|added)/.test(document.getElementById('log').textContent), null, { timeout: 15000 }).catch(() => {});
+  const rl = await page.evaluate(() => document.getElementById('log').textContent);
+  check(/trem \(TREMOLO\) already loaded/.test(rl) && !/trem \(TREMOLO\) replaced/.test(rl), 'a page reload keeps what the host has: “already loaded”, nothing replaced');
+  const sameClap = await page.evaluate(async (b64) => (await window.__rig.importFiles([new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'trem.rigfx')])).length, (() => { const b = fs.readFileSync(path.join(libDir, 'Effects', 'trem.rigfx')); let e = b.length - 22; while (b.readUInt32LE(e) !== 0x06054b50) e--; const t = Buffer.from('repacked'); const c = Buffer.from(b); c.writeUInt16LE(t.length, e + 20); return Buffer.concat([c.subarray(0, e + 22), t]).toString('base64'); })());
+  await page.waitForFunction(() => (document.getElementById('log').textContent.match(/trem \(TREMOLO\) already loaded/g) || []).length >= 2, null, { timeout: 10000 }).catch(() => {});
+  const rl2 = await page.evaluate(() => document.getElementById('log').textContent);
+  check(sameClap === 1 && (rl2.match(/trem \(TREMOLO\) already loaded/g) || []).length >= 2 && await V("window.__rig.host.up"), 'a bundle repacked around the same native code: “already loaded”, and the host plays on (it used to write over the loaded copy)');
+  fs.unlinkSync(path.join(libDir, 'Mod Sources', 'rand.rigfx'));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForFunction(() => !window.__rig.typesKnown().sources.includes('rand') && !window.__rig.engineDesc.sourceTypes.some((t) => t.type === 'rand'), null, { timeout: 10000 }).catch(() => {});
+  const gone = await page.evaluate(() => ({ known: window.__rig.typesKnown().sources, desc: window.__rig.engineDesc.sourceTypes.map((t) => t.type) }));
+  check(!gone.known.includes('rand') && !gone.desc.includes('rand'), `rand.rigfx deleted from Mod Sources: RANDOM is out of Add a source and the host's list (${gone.desc.join(' ')})`);
+
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();
   proc.kill('SIGINT'); await sleep(500);

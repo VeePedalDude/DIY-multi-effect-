@@ -121,6 +121,28 @@ const b64 = (f) => fs.readFileSync(path.join(root, f)).toString('base64');
   if (ch4) await ch4.setFiles([]);
   void page1;
 
+  console.log('9. A newer version (same id) replaces the old: its file, the type, and the copy in the chain, knobs kept');
+  const zipWithComment = (buf, text) => {               // the same bundle, other bytes: a zip comment
+    const b = Buffer.from(buf); let e = b.length - 22; while (e >= 0 && b.readUInt32LE(e) !== 0x06054b50) e--;
+    const t = Buffer.from(text); b.writeUInt16LE(t.length, e + 20); return Buffer.concat([b.subarray(0, e + 22), t]);
+  };
+  await page.evaluate(() => window.__rig.knob('trem.rate', 0.77));
+  const v2 = zipWithComment(fs.readFileSync(path.join(root, 'dist/plugins/trem.rigfx')), 'version 2');
+  await page.evaluate(async (b64) => window.__rig.importFiles([new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'trem.rigfx')]), v2.toString('base64'));
+  await page.waitForFunction(() => /now runs the new version/.test(document.getElementById('log').textContent), null, { timeout: 10000 }).catch(() => {});
+  const up = await V(() => ({ files: (window.__rig.library.entries.plugins || []).map((e) => e.name + ':' + e.size), log: document.getElementById('log').textContent, chain: window.__rig.engineChain.map((e) => e.id), rate: window.__rig.knob('trem.rate'),
+    list: window.__rig.typesKnown().modules.filter((t) => t === 'trem').length }));
+  check(up.files.filter((f) => f.startsWith('trem')).length === 1 && up.files.includes(`trem.rigfx:${v2.length}`), `the library keeps one file, the new one, under its name: ${up.files.join(', ')}`);
+  check(/trem \(TREMOLO\) replaced/.test(up.log) && /TREMOLO: 1 in the rig now runs the new version/.test(up.log), 'the engine replaced the type, and the TREMOLO in the chain was rebuilt on it');
+  check(up.chain.includes('trem') && Math.abs(up.rate - 0.77) < 1e-6 && up.list === 1, `same id and place in the chain (${up.chain.join(' ')}), RATE kept at ${up.rate}, listed once in Add an effect`);
+
+  console.log('10. A plugin taken out of the library leaves the add panels; the copy in the chain plays on');
+  await page.evaluate(async () => { await window.__rig.library.core.remove('plugins', 'rand.rigfx'); await window.__rig.refreshLibrary(); await window.__rig.plugins.sync; });
+  await sleep(500);
+  const gone = await V(() => ({ src: window.__rig.typesKnown().sources, rack: (window.__rig.engineRack || []).map((s) => s.id), log: document.getElementById('log').textContent, desc: window.__rig.engineDesc.sourceTypes.map((t) => t.type) }));
+  check(!gone.src.includes('rand') && gone.rack.includes('rand'), `RANDOM is out of Add a source (${gone.src.join(' ')}), the one in the rack stays (${gone.rack.join(' ')})`);
+  check(/plugin rand.rigfx removed: rand left the add panels/.test(gone.log) && !gone.desc.includes('rand'), 'the engine retired the type: its description no longer lists it');
+
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-plugins.png') });
   await browser.close();

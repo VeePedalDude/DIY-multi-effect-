@@ -17,26 +17,44 @@ namespace rig {
 inline std::deque<PluginInfo>& pluginInfos() { static std::deque<PluginInfo> d; return d; }   // never moved: types point into it
 inline std::string& pluginStatus() { static std::string s; return s; }
 
+// The plugin type called `id` (an effect or a source), or nullptr: built-ins and retired types aren't.
+inline PluginInfo* livePlugin(const char* id) {
+  const int m = moduleTypeIndex(id); if (m >= 0) return moduleTypes()[m].plugin;
+  const int s = sourceTypeIndex(id); return s >= 0 ? sourceTypes()[s].plugin : nullptr;
+}
+// Retires a plugin type (its file was removed): 0, or -1 if no plugin type has that id.
+inline int retirePlugin(const char* id) {
+  PluginInfo* p = livePlugin(id); if (!p) { pluginStatus() = std::string("no plugin type called \"") + id + "\""; return -1; }
+  p->retired = true; pluginStatus() = std::string(p->source ? "source " : "effect ") + p->id + " (" + p->name + ") removed"; return 0;
+}
 // Adds a described plugin as a type; returns its index in the module or source table, or an error.
+// A plugin type with the same id is replaced (retired: running instances keep its code); a built-in isn't.
 inline int commitPlugin(PluginInfo& p) {
   std::string& st = pluginStatus();
   for (int t = 0; t < moduleTypeCount(); t++) if (moduleTypes()[t].plugin == &p) return t;     // already added
   for (int t = 0; t < sourceTypeCount(); t++) if (sourceTypes()[t].plugin == &p) return t;
-  if (moduleTypeIndex(p.id.c_str()) >= 0 || sourceTypeIndex(p.id.c_str()) >= 0) { st = "a type called \"" + p.id + "\" is already loaded"; return -2; }
+  PluginInfo* old = livePlugin(p.id.c_str());
+  if (old && !p.origin.empty() && old->origin == p.origin) {     // the very same file again (a page reloaded): keep it
+    st = std::string(p.source ? "source " : "effect ") + p.id + " (" + p.name + ") already loaded";
+    return p.source ? sourceTypeIndex(p.id.c_str()) : moduleTypeIndex(p.id.c_str());
+  }
+  if (!old && (moduleTypeIndex(p.id.c_str()) >= 0 || sourceTypeIndex(p.id.c_str()) >= 0)) { st = "a built-in type is called \"" + p.id + "\""; return -2; }
+  if (p.source ? sourceTypeTable().n >= NSRCTYPES + MAXPLUGINSOURCES : moduleTypeTable().n >= NMODTYPES + MAXPLUGINTYPES) {
+    st = std::string("no room for more plugin ") + (p.source ? "sources" : "effects") + " (replaced ones count until the rig restarts)"; return -3;
+  }
   bool known = false;
   if (p.source) { for (int c = 0; c < NSRCCATS; c++) known = known || p.category == sourceCategories()[c].id; if (!known) p.category = "chaos"; }
   else { for (int c = 0; c < NMODCATS; c++) known = known || p.category == moduleCategories()[c].id; if (!known) p.category = "experimental"; }
   int t;
   if (p.source) {
     SourceTypeTable& tt = sourceTypeTable();
-    if (tt.n >= NSRCTYPES + MAXPLUGINSOURCES) { st = "no room for more plugin sources"; return -3; }
     tt.t[tt.n] = SourceType{nullptr, nullptr, p.keep(p.category), &p}; t = tt.n++;
   } else {
     ModuleTypeTable& tt = moduleTypeTable();
-    if (tt.n >= NMODTYPES + MAXPLUGINTYPES) { st = "no room for more plugin effects"; return -3; }
     tt.t[tt.n] = ModuleType{nullptr, nullptr, p.keep(p.category), &p}; t = tt.n++;
   }
-  st = std::string(p.source ? "source " : "effect ") + p.id + " (" + p.name + ") added";
+  if (old) old->retired = true;
+  st = std::string(p.source ? "source " : "effect ") + p.id + " (" + p.name + ") " + (old ? "replaced" : "added");
   return t;
 }
 
@@ -57,7 +75,7 @@ inline int openClapPlugin(const char* path, const char* file) {
   auto& d = pluginInfos(); d.emplace_back(); PluginInfo& p = d.back();
   auto* lib = new ClapLibrary(); std::string err;
   if (!lib->open(path, p, err)) { pluginStatus() = err; delete lib; d.pop_back(); return -1; }
-  p.file = file ? file : path;
+  p.file = file ? file : path; p.origin = path;
   pluginStatus() = "opened " + p.id;
   return (int)d.size() - 1;
 }

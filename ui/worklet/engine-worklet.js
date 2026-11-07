@@ -116,6 +116,7 @@ class RigEngine extends AudioWorkletProcessor {
     const status = X.rig_exec(), changed = X.rig_exec_changed();
     if (changed & 1) { this.readRack(); this.sendRack(); }
     if (changed & 2) { this.readChain(); this.sendChain(); }
+    if (status === 0 && str.startsWith('plugin_remove ')) { this.desc = JSON.parse(cString(X.memory, X.rig_describe())); this.port.postMessage({ type: 'describe', desc: this.desc }); }
     this.inCh = X.rig_input_channel();
     return status;
   }

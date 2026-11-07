@@ -1,6 +1,7 @@
 // engine/api/rig_api.cpp - flat C API. The browser (WebAssembly) and future hosts
 // (the Linux JACK host) talk to the engine only through these functions.
 #include "../engine.h"
+#include "../plugins.h"
 #include <new>
 
 #if defined(__wasm__)
@@ -176,6 +177,7 @@ int exec(char* line) {
     if (!t[1] || (strcmp(t[1], "0") && strcmp(t[1], "1"))) return ERR_RANGE;
     rig_tuner(t[1][0] == '1', !(t[2] && !strcmp(t[2], "0"))); return 0;
   }
+  if (!strcmp(c, "plugin_remove")) { if (!t[1]) return ERR_RANGE; const int r = rig::retirePlugin(t[1]); if (r < 0) return ERR_INSTANCE; E().describe(); return 0; }
   if (!strcmp(c, "listen")) { if (!t[1] || (strcmp(t[1], "0") && strcmp(t[1], "1"))) return ERR_RANGE; rig_listen(t[1][0] == '1'); return 0; }
   if (!strcmp(c, "tuner_ref")) { const double v = num(t[1]); if (!(v >= 400 && v <= 480)) return ERR_RANGE; rig_tuner_ref((float)v); return 0; }
   if (!strcmp(c, "fx_add")) {
@@ -242,7 +244,6 @@ EXPORT(rig_find_module) int rig_find_module() { g_cmd[sizeof g_cmd - 1] = 0; con
 // .wclap and read its description: it writes that JSON into rig_plugin_buf() and calls
 // rig_plugin_register(lib). Either way rig_plugin_status() says what happened, and describe() lists the
 // new type. Errors: -1 unusable, -2 id taken by another type, -3 no room for more plugin types.
-#include "../plugins.h"
 EXPORT(rig_plugin_status) const char* rig_plugin_status() { return rig::pluginStatus().c_str(); }
 #if defined(__wasm__)
 static std::vector<char> g_pluginJson;

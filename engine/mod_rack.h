@@ -55,7 +55,8 @@ struct SourceCategory { const char* id; const char* label; const char* blurb; };
 inline const SourceCategory* sourceCategories() { static const SourceCategory t[NSRCCATS] = { RIG_SOURCE_CATEGORIES(RIG_SCAT) }; return t; }
 #undef RIG_SCAT
 inline const char* const* defaultRack(int& n) { static const char* const ids[] = { RIG_DEFAULT_RACK }; n = (int)(sizeof ids / sizeof ids[0]); return ids; }
-inline int sourceTypeIndex(const char* type) { for (int t = 0; t < sourceTypeCount(); t++) if (!strcmp(sourceTypeDesc(t).id, type)) return t; return -1; }
+inline bool sourceTypeRetired(int t) { return sourceTypes()[t].plugin && sourceTypes()[t].plugin->retired; }
+inline int sourceTypeIndex(const char* type) { for (int t = 0; t < sourceTypeCount(); t++) if (!sourceTypeRetired(t) && !strcmp(sourceTypeDesc(t).id, type)) return t; return -1; }
 
 enum RackError { RACK_BAD_TYPE = -1, RACK_FULL = -2, RACK_BAD_ID = -3, RACK_NO_SUCH = -4 };
 

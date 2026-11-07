@@ -358,9 +358,11 @@ struct Engine {
     for (int c = 0; c < NMODCATS; c++) { if (c) j.ch(','); j.ch('{'); j.key("id"); j.str(moduleCategories()[c].id); j.ch(','); j.key("label"); j.str(moduleCategories()[c].label); j.ch(','); j.key("blurb"); j.str(moduleCategories()[c].blurb); j.ch('}'); }
     j.raw("],");
     j.key("moduleTypes"); j.ch('[');                         // every kind of effect the chain can hold
-    for (int t = 0; t < moduleTypeCount(); t++) {
+    for (int t = 0, first = 1; t < moduleTypeCount(); t++) {
+      if (moduleTypeRetired(t)) continue;
       const ModuleDesc& d = moduleTypeDesc(t); const PluginInfo* pl = moduleTypes()[t].plugin;
-      if (t) j.ch(',');
+      if (!first) j.ch(',');
+      first = 0;
       j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(pl ? pl->category.c_str() : moduleTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("kind"); j.str(d.kind); j.ch(',');
       if (pl) { j.key("plugin"); j.ch('{'); j.key("file"); j.str(pl->file.c_str()); j.ch(','); j.key("author"); j.str(pl->author.c_str()); j.ch(','); j.key("version"); j.str(pl->version.c_str()); j.ch(','); j.key("tags"); j.raw(pl->tags.c_str()); j.raw("},"); }
       j.key("params"); params(j, d.nparams, d.params);
@@ -385,9 +387,11 @@ struct Engine {
     for (int c = 0; c < NSRCCATS; c++) { if (c) j.ch(','); j.ch('{'); j.key("id"); j.str(sourceCategories()[c].id); j.ch(','); j.key("label"); j.str(sourceCategories()[c].label); j.ch(','); j.key("blurb"); j.str(sourceCategories()[c].blurb); j.ch('}'); }
     j.raw("],");
     j.key("sourceTypes"); j.ch('[');                         // every kind of source the rack can hold
-    for (int t = 0; t < sourceTypeCount(); t++) {
+    for (int t = 0, first = 1; t < sourceTypeCount(); t++) {
+      if (sourceTypeRetired(t)) continue;
       const SourceDesc& d = sourceTypeDesc(t); const PluginInfo* pl = sourceTypes()[t].plugin;
-      if (t) j.ch(',');
+      if (!first) j.ch(',');
+      first = 0;
       j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(pl ? pl->category.c_str() : sourceTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
       if (pl) { j.key("plugin"); j.ch('{'); j.key("file"); j.str(pl->file.c_str()); j.ch(','); j.key("author"); j.str(pl->author.c_str()); j.ch(','); j.key("version"); j.str(pl->version.c_str()); j.ch(','); j.key("tags"); j.raw(pl->tags.c_str()); j.raw("},"); }
       j.key("ext"); j.str(d.ext); j.ch(','); j.key("taps"); j.raw(d.taps ? "true" : "false"); j.ch(',');

@@ -31,6 +31,7 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `tuner <0\|1> [mute 0\|1]` | strobe tuner on the dry input; with mute (the default) the output fades out while it's on |
 | `tuner_ref <400..480>` | the tuner's A4 reference in Hz (default 440) |
 | `listen <0\|1>` | find the notes being played on the dry input (the Visualizer's keyboard; the page sends it while that view is up) |
+| `plugin_remove <id>` | retire a plugin type whose file was removed: it leaves the Add lists and can't be added; instances already in the rig keep running (loading a plugin with an id already taken by a plugin type replaces it the same way) |
 | `input_channel <0\|1>` | browser only: which interface input to use |
 | `asset_load <inst> <kind>/<file>` | load a library file into a module's slot (`asset_load cab ir/V30 SM57.wav`) |
 | `asset_clear <inst>` | back to the module's built-in (e.g. the built-in cab) |

@@ -3,6 +3,7 @@
 const library = { core: null, backend: '', rootName: '', kinds: {}, entries: {}, pendingFolder: null };
 rig.library = library;
 rig.importFiles = (files) => importFiles(files, null);        // tests and the console
+rig.refreshLibrary = () => refreshLibrary();
 
 function libraryKinds() {
   const k = {};
@@ -76,6 +77,7 @@ async function refreshLibrary() {
   await knowLibraryPlugins();
   await loadTagIndex();                                       // library.json: tags, favorites, notes (62-tags.js)
   renderPluginList();
+  syncPlugins();                                 // not awaited: loading can take a moment (61-plugins.js)
   refreshPresetList();
   renderSkinList();
   renderPanel();
@@ -87,11 +89,7 @@ async function rescanHostLibrary() {
   if (library.backend !== 'host') return;
   let now; try { library.core.root.lib.changed(); now = hostLibSig(await library.core.root.lib.list()); } catch (e) { return; }
   if (now === library.hostSig) return;
-  const had = new Set((library.entries.plugins || []).map((e) => e.name));
-  library.hostSig = now; await refreshLibrary();
-  if (rig.node) for (const e of library.entries.plugins || []) if (!had.has(e.name)) {
-    try { await loadPlugin(e.name, new Uint8Array(await (await library.core.file('plugins', e.name)).arrayBuffer())); } catch (err) { logLine(`plugin ${e.name}: ${err.message}`, true); }
-  }
+  library.hostSig = now; await refreshLibrary(); await syncPlugins();
 }
 async function chooseLibraryFolder() {
   if (!window.showDirectoryPicker) { logLine('This browser can’t open a folder. Use Chrome or Edge on a desktop.', true); return; }
@@ -119,10 +117,9 @@ async function importFiles(files, target) {
     try { results.push(await library.core.importFile(f, want)); } catch (e) { results.push({ status: 'skipped', name: f.name, reason: e.message }); }
   }
   results.forEach((r) => logLine(r.status === 'skipped' ? `skipped ${r.name}: ${r.reason}` : `${r.status === 'duplicate' ? 'already in library' : r.status === 'renamed' ? 'imported as' : 'imported'} ${r.kind}/${r.name}`, r.status === 'skipped'));
+  for (const r of results) if (r.kind === 'plugins' && (r.status === 'added' || r.status === 'renamed')) await replaceOlderPlugins(r);
   await refreshLibrary();
-  for (const r of results) if (r.kind === 'plugins' && (r.status === 'added' || r.status === 'renamed') && rig.node) {   // a new plugin is ready straight away
-    await loadPlugin(r.name, new Uint8Array(await (await library.core.file('plugins', r.name)).arrayBuffer()));
-  }
+  await syncPlugins();                           // a new plugin is ready straight away (and a newer version replaces the old)
   const skins = results.filter((r) => r.kind === 'skins' && r.status !== 'skipped');
   if (skins.length) await useSkin('lib:' + skins[skins.length - 1].name);   // a dropped skin is put on straight away
   const ok = results.filter((r) => r.status !== 'skipped');
@@ -130,6 +127,20 @@ async function importFiles(files, target) {
   const skipped = results.length - ok.length;
   flashHint(`${ok.length} file${ok.length === 1 ? '' : 's'} in library${skipped ? ` · ${skipped} skipped (see Engine log)` : ''}${target && ok.length ? ` · loaded into ${target.name}` : ''}`);
   return results;
+}
+// A plugin file is one effect or source: importing a newer one (same id) takes the old file's place,
+// under the old name if it had the same one, instead of sitting beside it as "x (2).rigfx".
+async function replaceOlderPlugins(r) {
+  const list = await library.core.list('plugins'), mine = list.find((e) => e.name === r.name), id = mine && libId(mine);
+  if (!id) return;
+  const older = list.filter((e) => e !== mine && libId(e) === id);
+  for (const e of older) await library.core.remove('plugins', e.name);
+  const base = r.name.replace(/ \(\d+\)(\.[^.]+)$/, '$1');
+  if (r.status === 'renamed' && base !== r.name && older.some((e) => e.name === base)) {
+    await library.core.write('plugins', base, new Uint8Array(await (await library.core.file('plugins', r.name)).arrayBuffer()));
+    await library.core.remove('plugins', r.name); r.name = base;
+  }
+  if (older.length) logLine(`plugin ${r.name}: replaces ${older.map((e) => e.name).join(', ')}`);
 }
 async function importFolderTree() {
   if (!window.showDirectoryPicker) { logLine('This browser can’t open a folder. Use Chrome or Edge on a desktop.', true); return; }

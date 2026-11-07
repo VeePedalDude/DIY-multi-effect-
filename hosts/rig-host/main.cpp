@@ -286,9 +286,13 @@ static int openPlugin(const Cmd& w, std::string& why) {
   else bytes.assign((const char*)w.data, (size_t)w.bytes);
   char h[16]; uint32_t x = 2166136261u; for (unsigned char c : bytes) x = (x ^ c) * 16777619u; snprintf(h, sizeof h, "%08x", x);
   const std::string path = dir + name + "-" + h + ".clap";       // by content: a changed file is a new path (a loaded library can't be overwritten)
-  FILE* f = fopen(path.c_str(), "wb");
-  if (!f || fwrite(bytes.data(), 1, bytes.size(), f) != bytes.size()) { if (f) fclose(f); why = "couldn't write " + path; return -1; }
-  fclose(f);
+  FILE* f = fopen(path.c_str(), "rb");                           // already there (the same bytes): never written over, it may be loaded
+  long have = -1; if (f) { fseek(f, 0, SEEK_END); have = ftell(f); fclose(f); }
+  if (have != (long)bytes.size()) {
+    f = fopen(path.c_str(), "wb");
+    if (!f || fwrite(bytes.data(), 1, bytes.size(), f) != bytes.size()) { if (f) fclose(f); why = "couldn't write " + path; return -1; }
+    fclose(f);
+  }
   const int hnd = rig_plugin_open(path.c_str(), w.ref);
   why = rig_plugin_status();
   return hnd;
@@ -320,7 +324,7 @@ struct Loader {
   bool take(int& st, int& mx, int& took, std::string& nt) { std::lock_guard<std::mutex> g(mu); if (!done) return false; done = false; st = status; mx = max; took = ms; nt = note; return true; }
   void quit() { { std::lock_guard<std::mutex> g(mu); stop = true; } cv.notify_one(); if (th.joinable()) th.join(); }
 };
-static bool structural(const char* line) { return !strncmp(line, "fx_add", 6) || !strncmp(line, "fx_remove", 9) || !strncmp(line, "fx_move", 7); }
+static bool structural(const char* line) { return !strncmp(line, "fx_add", 6) || !strncmp(line, "fx_remove", 9) || !strncmp(line, "fx_move", 7) || !strncmp(line, "plugin_remove", 13); }
 
 // ------------------------------------------------------------------ devices
 #ifdef _WIN32
@@ -921,6 +925,7 @@ static int run(int argc, char** argv) {
     }
     while (Reply* r = h.repq.front()) {                       // answers from the audio thread
       if (r->kind == K_CMD) sendTo(r->client, "{\"type\":\"resp\",\"id\":" + std::to_string(r->id) + ",\"line\":\"" + net::esc(r->line) + "\",\"status\":" + std::to_string(r->status) + "}");
+      if (r->kind == K_CMD && r->status == 0 && !strncmp(r->line, "plugin_remove", 13)) { descCache = rig_describe(); broadcast(std::string("{\"type\":\"describe\",\"raw\":") + descCache + "}"); }
       else if (r->kind == K_PCOMMIT && loadState == 3 && !loads.empty()) {   // the plugin's type is in: everyone gets the new description
         pluginReply(loads.front(), r->status, r->note);
         if (r->status >= 0) { descCache = rig_describe(); broadcast(std::string("{\"type\":\"describe\",\"raw\":") + descCache + "}"); }

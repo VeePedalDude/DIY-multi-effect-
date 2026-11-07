@@ -15,6 +15,7 @@ rig.modMeter = (modId, name) => { const m = MODS.find((x) => x.id === modId); re
 rig.srcParam = (id, sym) => { const s = SRCMAP[id], q = s && s.params.find((x) => x.sym === sym); return q ? q.real(q.v) : undefined; };
 rig.srcMeter = (id, name) => { const s = SRCMAP[id]; return s ? srcMeter(s, name) : undefined; };
 rig.state = state;
+rig.knob = (pid, v) => { const p = PARAMS[pid]; if (p && v !== undefined) setParam(p, v); return p ? p.v : undefined; };   // tests: a module knob's value (set it with v)
 rig.srcObj = (id) => SRCMAP[id];                 // a source instance as the page holds it (knobs, settings, table)
 rig.viewX = () => VIEWX;                         // the page's own copy of the engine (rig_view; tests replay patterns on it)
 rig.nanResets = () => meters ? meters.m[LAYOUT.nan] : 0;
@@ -39,7 +40,7 @@ function onEngineMsg(d) {
   if (d.type === 'chain') { onEngineChain(d.chain); rig.engineChain = d.chain; return; }
   if (d.type === 'describe') {
     const plugged = rig.engineDesc ? mergeTypes(d.desc) : 0;   // later describes: new plugin types (61-plugins.js)
-    rig.engineDesc = d.desc;
+    rig.engineDesc = d.desc; plugins.descSeq++; runUpgrades();
     if (!plugged) logLine(`engine: ${d.desc.modules.length} modules, ${d.desc.sources.length} sources @ ${d.desc.sr} Hz`);
     return;
   }

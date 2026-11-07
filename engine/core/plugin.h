@@ -41,6 +41,8 @@ struct PluginInfo {
   ModuleDesc mdesc{};
   SourceDesc sdesc{};
   PluginBackend* backend = nullptr;
+  std::string origin;                                    // the .clap it was opened from (rig-host names its copies by content)
+  bool retired = false;                                  // replaced by a newer file, or removed: hidden, never added again
   const char* keep(const std::string& s) { strs.push_back(s); return strs.back().c_str(); }
 };
 

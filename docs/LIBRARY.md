@@ -71,13 +71,21 @@ a click-free crossfade. The Linux host loads on a background thread instead.
 
 Click the preset name at the top left (**Preset ▾**). The presets window opens in the middle of the page:
 
-- **Save** writes over the preset that's loaded.
+- **Save** writes over the preset that's loaded. On a rig that has never been saved, it asks for a name
+  in the box below; type one and press Save again.
 - **Save as new** takes a name of its own (type it, then Enter). If a preset of that name already
   exists, in any capitals, the first click says so and a second click replaces it.
 - **The list:** click a preset to load it. **Rename** changes both the file and the name inside it.
   **Delete** asks for a second click.
 - **Edited:** after you turn something, the top bar says *edited*. Loading another preset then asks
   for a second click, so unsaved changes aren't lost by accident.
+
+**Picking up where you left off:** the rig comes back as you left it after a restart of the page, the
+browser or rig-host: the preset you were on, with any unsaved changes still marked *edited*. This is
+kept in the browser (one per page address), not in the library; only **Save** writes preset files.
+
+**A library folder** has to be allowed again after a browser restart. Pressing **Start** does that, so
+presets in the folder show up and saves go to it.
 
 Scenes A–D live inside the preset that's loaded: **Store**, then a letter, keeps the knobs and patches
 in that scene; **Save** keeps the scenes in the preset file.

@@ -4886,7 +4886,30 @@ function armed(key, message) {
 }
 function setCurrentPreset(file, name) {
   presetState.file = file; presetState.sig = presetSig();
-  $('presetName').textContent = name; updatePresetEdited();
+  $('presetName').textContent = name; updatePresetEdited(); saveSession();
+}
+// Where you left off: the preset that's loaded, and the rig as it is now (unsaved changes included), kept
+// in this browser so a restart (of the page, the browser or rig-host) comes back to it. The preset files
+// themselves stay the only saved copies; this is only the working state.
+const SESSION_KEY = 'rig01.session';
+let sessionSig = null;
+function saveSession() {
+  if (presetState.sig === null) return;
+  const name = $('presetName').textContent, now = presetSig(); if (now === sessionSig) return;
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ file: presetState.file, name, base: presetState.sig, rig: buildPreset(name) })); sessionSig = now; } catch (e) { /* storage full or blocked: nothing to restore next time */ }
+}
+async function restoreSession() {
+  let s = null; try { s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { return; }
+  if (!s || !s.rig) return;
+  const r = await applyPreset(s.rig, s.file || 'last session'); if (!r || r.error) return;
+  const file = s.file && presetEntry(s.file) ? presetEntry(s.file).name : null;
+  presetState.file = file; $('presetName').textContent = s.name || r.name || 'Untitled';
+  // edited is measured against the preset file; a rig never saved starts clean; one whose file has gone is unsaved
+  presetState.sig = file ? s.base : s.file ? '' : presetSig();
+  sessionSig = presetSig(); updatePresetEdited();
+  const ed = presetEdited();
+  logLine(`picked up where you left off: “${$('presetName').textContent}”${ed ? ', with unsaved changes' : ''}${s.file && !file ? ` (presets/${s.file} is no longer in the library)` : ''}`);
+  presetNote(`Picked up where you left off${ed ? ', with your unsaved changes' : ''}.`, false);
 }
 function updatePresetEdited() { const ed = presetEdited(); $('presetEdited').hidden = !ed; $('presetBtn').setAttribute('aria-label', `Presets: ${$('presetName').textContent}${ed ? ', edited' : ''}`); }
 
@@ -4897,7 +4920,8 @@ async function writePreset(file, name) {
 }
 // Save: over the preset that's loaded.
 async function savePreset() {
-  if (!library.core || !presetState.file) return;
+  if (!library.core) return;
+  if (!presetState.file) { savePresetAs(); return; }            // nothing saved yet: Save needs a name
   const e = presetEntry(presetState.file), name = e ? presetLabel(e) : $('presetName').textContent;
   try { await writePreset(presetState.file, name); presetNote(`Saved “${name}”`); }
   catch (err) { presetNote(`Couldn't save: ${err.message}`, true); }
@@ -4907,7 +4931,7 @@ async function savePreset() {
 async function savePresetAs() {
   if (!library.core) return;
   const name = $('presetInput').value.trim();
-  if (!name) { presetNote('Type a name for the new preset first.', true); $('presetInput').focus(); return; }
+  if (!name) { presetNote(presetState.file ? 'Type a name for the new preset first.' : 'Type a name for this preset below, then Save.', true); $('presetInput').focus(); return; }
   const file = safeFileName(name) + '.rig.json', had = presetEntry(file);
   if (had && !armed('new:' + file.toLowerCase(), `“${presetLabel(had)}” already exists. Click Save as new again to replace it.`)) return;
   try { await writePreset(had ? had.name : file, name); $('presetInput').value = ''; presetNote(`Saved “${name}”`); }
@@ -4916,6 +4940,17 @@ async function savePresetAs() {
 }
 async function loadPresetFile(file) {
   let json; try { json = JSON.parse(await (await library.core.file('presets', file)).text()); } catch (e) { presetNote(`Couldn't read ${file}: ${e.message}`, true); return null; }
+  const r = await applyPreset(json, file); if (!r || r.error) return r;
+  const name = r.name || file.replace(/\.rig\.json$/i, '');
+  setCurrentPreset(file, name);
+  r.warnings.forEach((w) => logLine('preset: ' + w, true));
+  presetNote(r.warnings.length ? `Loaded “${name}” with ${r.warnings.length} note${r.warnings.length > 1 ? 's' : ''}: ${r.warnings[0]}${r.warnings.length > 1 ? ' (rest in Engine log)' : ''}` : `Loaded “${name}”`, r.warnings.length > 0);
+  logLine(`preset loaded: presets/${file}`);
+  renderPresetDlg();
+  return r;
+}
+// Put a preset's contents on the rig (from a file, or the last session). `file` only names it in messages.
+async function applyPreset(json, file) {
   const r = readPreset(json);
   if (r.error) { presetNote(`${file}: ${r.error}`, true); return r; }
   try {
@@ -4941,12 +4976,6 @@ async function loadPresetFile(file) {
       }
     }
   } catch (e) { presetNote(`Couldn't load ${file}: ${e.message}. The rig may be part way between presets.`, true); logLine(`preset: ${e.stack || e.message}`, true); renderPresetDlg(); return null; }
-  const name = r.name || file.replace(/\.rig\.json$/i, '');
-  setCurrentPreset(file, name);
-  r.warnings.forEach((w) => logLine('preset: ' + w, true));
-  presetNote(r.warnings.length ? `Loaded “${name}” with ${r.warnings.length} note${r.warnings.length > 1 ? 's' : ''}: ${r.warnings[0]}${r.warnings.length > 1 ? ' (rest in Engine log)' : ''}` : `Loaded “${name}”`, r.warnings.length > 0);
-  logLine(`preset loaded: presets/${file}`);
-  renderPresetDlg();
   return r;
 }
 // Load from the list: unsaved edits are only thrown away on a second click.
@@ -4964,7 +4993,7 @@ async function renamePreset(file, newName) {
     await library.core.write('presets', target, JSON.stringify(json, null, 2));
     if (target !== e.name) await library.core.remove('presets', e.name);
     presetState.renaming = null; await refreshLibrary();
-    if (presetState.file === e.name) { presetState.file = target; $('presetName').textContent = newName; updatePresetEdited(); }
+    if (presetState.file === e.name) { presetState.file = target; $('presetName').textContent = newName; updatePresetEdited(); sessionSig = null; saveSession(); }
     presetNote(`Renamed to “${newName}”`); logLine(`preset renamed: presets/${e.name} -> presets/${target}`);
   } catch (err) { presetNote(`Couldn't rename: ${err.message}`, true); }
   renderPresetDlg();
@@ -4974,7 +5003,7 @@ async function deletePreset(file) {
   if (!armed('del:' + file, `Click Delete again to delete “${presetLabel(e)}”.`)) return;
   try {
     await library.core.remove('presets', e.name); await refreshLibrary();
-    if (presetState.file === e.name) { presetState.file = null; updatePresetEdited(); }
+    if (presetState.file === e.name) { presetState.file = null; presetState.sig = ''; updatePresetEdited(); sessionSig = null; saveSession(); }
     presetNote(`Deleted “${presetLabel(e)}”`); logLine(`preset deleted: presets/${e.name}`);
   } catch (err) { presetNote(`Couldn't delete: ${err.message}`, true); }
   renderPresetDlg();
@@ -4997,7 +5026,7 @@ function renderPresetDlg() {
   const list = library.entries.presets || [], ed = presetEdited(), cur = presetState.file, A = presetState.armed;
   $('presetCount').textContent = `${list.length} saved · in the library's presets folder`;
   $('presetCur').innerHTML = `<b>${escHtml($('presetName').textContent)}</b><span class="muted">${cur ? `presets/${escHtml(cur)}` : 'not saved as a preset yet'}${ed ? ' · <span class="edited">edited</span>' : ''}</span>`;
-  $('presetSave').disabled = !cur; $('presetSave').title = cur ? `Save over “${$('presetName').textContent}”` : 'Use Save as new to name it first';
+  $('presetSave').title = cur ? `Save over “${$('presetName').textContent}”` : 'Save under the name typed below';
   const ul = $('presetList'), top = ul.scrollTop, sorted = [...list].sort((a, b) => presetLabel(a).localeCompare(presetLabel(b), undefined, { sensitivity: 'base', numeric: true }));
   ul.innerHTML = sorted.length ? sorted.map((e) => {
     const f = encodeURIComponent(e.name), here = e.name === cur;
@@ -5043,6 +5072,7 @@ function wirePresets() {
   setInterval(() => {
     if (presetState.sig === null) { if (rig.meters) presetState.sig = presetSig(); return; }
     const ed = presetEdited(); if (ed !== !$('presetEdited').hidden) { updatePresetEdited(); renderPresetDlg(); }
+    saveSession();
   }, 700);
   refreshPresetList();
 }
@@ -5340,6 +5370,7 @@ function loop() {
 function wireStart() {
   $('startBtn').onclick = async () => {
     const src = document.querySelector('input[name=src]:checked').value;
+    if (library.pendingFolder) await reconnectLibraryFolder();   // the folder needs a click to come back: this one
     $('startBtn').disabled = true; $('startBtn').textContent = 'Starting…'; $('startErr').hidden = true;
     try { await startAudio(src); $('startOverlay').hidden = true; }
     catch (err) {
@@ -5362,6 +5393,7 @@ function wireStart() {
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
   buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireHost(); wireControllers(); wirePresets(); wireTags(); wireFileDlg(); wireStart();
   const libraryReady = initLibrary().catch((e) => logLine('library: ' + e.message, true));
+  libraryReady.then(restoreSession).catch((e) => logLine('session: ' + e.message, true));
   restoreSkin(libraryReady).catch((e) => logLine('skin: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();
   $('master').value = state.master; canvas.style.cursor = 'grab';

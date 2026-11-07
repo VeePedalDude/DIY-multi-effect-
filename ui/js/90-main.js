@@ -60,6 +60,7 @@ function loop() {
 function wireStart() {
   $('startBtn').onclick = async () => {
     const src = document.querySelector('input[name=src]:checked').value;
+    if (library.pendingFolder) await reconnectLibraryFolder();   // the folder needs a click to come back: this one
     $('startBtn').disabled = true; $('startBtn').textContent = 'Starting…'; $('startErr').hidden = true;
     try { await startAudio(src); $('startOverlay').hidden = true; }
     catch (err) {
@@ -82,6 +83,7 @@ function wireStart() {
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
   buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireHost(); wireControllers(); wirePresets(); wireTags(); wireFileDlg(); wireStart();
   const libraryReady = initLibrary().catch((e) => logLine('library: ' + e.message, true));
+  libraryReady.then(restoreSession).catch((e) => logLine('session: ' + e.message, true));
   restoreSkin(libraryReady).catch((e) => logLine('skin: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();
   $('master').value = state.master; canvas.style.cursor = 'grab';

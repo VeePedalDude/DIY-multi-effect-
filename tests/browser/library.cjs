@@ -120,7 +120,10 @@ async function drop(page, target, files) {
   await open();
   const L2 = await lib();
   check(L2.ir.length === 2 && L2.nam.length === 1 && L2.presets.includes('Lib Test.rig.json'), `after reload: ${L2.ir.length} IRs, ${L2.nam.length} NAM, presets ${JSON.stringify(L2.presets)}`);
-  check(!(await tapsOk()), 'fresh start uses the built-in cab');
+  for (let i = 0; i < 20 && !(await tapsOk()); i++) await sleep(200);
+  check(await tapsOk(), 'the last session comes back: the cab has its IR again');
+  await page.evaluate(() => localStorage.removeItem('rig01.session')); await open();
+  check(!(await tapsOk()), 'with no last session (a new browser), a fresh start uses the built-in cab');
   await presetLoad(page, 'Lib Test.rig.json');
   for (let i = 0; i < 25 && !(await tapsOk()); i++) await sleep(200);
   const note = await page.textContent('#presetNote');
@@ -200,6 +203,24 @@ async function drop(page, target, files) {
     await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-presets.png') });
     await page.keyboard.press('Escape'); await sleep(200);
     check(await page.$eval('#presetDlg', (d) => d.hidden), 'Escape closes the window');
+  }
+
+  console.log('11. A restart picks up where you left off; Save with nothing saved yet asks for a name');
+  {
+    const cabMix = () => page.evaluate(() => window.__rig.buildPreset('x').chain.find((c) => c.id === 'cab').params.mix);
+    await page.mouse.move(800, 120); await page.keyboard.press('3'); await sleep(300);
+    await page.evaluate(() => { const el = document.querySelector('[data-pid="cab.mix"]'); el.value = 0.42; el.dispatchEvent(new Event('input', { bubbles: true })); }); await sleep(1600);
+    const before = await cabMix();
+    await open(); await sleep(1500);
+    const back = await page.evaluate(() => ({ name: document.getElementById('presetName').textContent, edited: !document.getElementById('presetEdited').hidden }));
+    check(back.name === 'Lib Test' && back.edited && Math.abs((await cabMix()) - before) < 1e-6, `after a reload: “${back.name}”, still marked edited, CAB mix still ${before}`);
+    await page.evaluate(() => localStorage.removeItem('rig01.session')); await open(); await sleep(1200);
+    await page.click('#presetBtn'); await page.click('#presetSave'); await sleep(300);
+    const asked = await page.evaluate(() => [document.getElementById('presetName').textContent, document.activeElement.id, document.getElementById('presetNote').textContent]);
+    await page.keyboard.type('First Save'); await page.click('#presetSave'); await sleep(900);
+    check(asked[0] === 'Ambient Drive' && asked[1] === 'presetInput' && /Type a name/.test(asked[2]) && (await lib()).presets.includes('First Save.rig.json') && await page.textContent('#presetName') === 'First Save',
+      'a fresh rig: Save asks for a name (and puts the cursor there); typing one and Save saves it');
+    await presetClose(page);
   }
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);

@@ -7,6 +7,14 @@ const root = path.resolve(__dirname, '../..');
 let fails = 0;
 const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// presets: the window opened from the preset name in the top bar (ui/js/70-presets.js)
+const presetSaveNew = async (page, name) => { await page.click('#presetBtn'); await page.fill('#presetInput', name); await page.click('#presetSaveNew'); await sleep(800); };
+const presetLoad = async (page, file) => {                      // unsaved edits: the second click loads
+  if (await page.$eval('#presetDlg', (d) => d.hidden)) await page.click('#presetBtn');
+  const sel = `[data-preset-load="${encodeURIComponent(file)}"]`; await page.click(sel); await sleep(300);
+  if (/again to load/.test(await page.textContent('#presetNote'))) await page.click(sel);
+};
+const presetClose = (page) => page.click('#presetDlg [data-act="preset-close"]');
 
 (async () => {
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -105,10 +113,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.click('#vStage'); await sleep(300);
 
   console.log('8. A preset brings its chain back, in order');
-  await page.click('#settingsBtn'); await page.fill('#presetInput', 'Chain Test'); await page.click('#presetSave'); await sleep(800);
+  await presetSaveNew(page, 'Chain Test'); await presetClose(page);
   const saved = ids((await C()).ui);
   await page.evaluate(() => { window.__rig.chain.remove('holo2'); window.__rig.chain.remove('cab2'); window.__rig.chain.add('amp', 0); window.__rig.chain.move('tess', 0); }); await sleep(800);
-  await page.selectOption('#presetSel', 'Chain Test.rig.json'); await page.click('#presetLoad'); await sleep(1500); await fresh();
+  await presetLoad(page, 'Chain Test.rig.json'); await presetClose(page); await sleep(1500); await fresh();
   c = await C();
   const fb2 = await page.evaluate(() => window.__rig.eff('holo2', 'feedback'));
   check(ids(c.ui) === saved && inStep(c) && Math.abs(fb2 - 0.8) < 1e-3 && c.conns['holo2.halo'] === 'lfo', `loading it restores ${ids(c.ui)} in the page and the engine, HOLOGRAM 2's knobs and its patch`);

@@ -67,6 +67,21 @@ In the browser, loading a capture briefly pauses audio (about 0.1 s for a large 
 about half a second) because the engine runs on the audio thread there. The swap itself is
 a click-free crossfade. The Linux host loads on a background thread instead.
 
+## Saving and loading presets
+
+Click the preset name at the top left (**Preset ▾**). The presets window opens in the middle of the page:
+
+- **Save** writes over the preset that's loaded.
+- **Save as new** takes a name of its own (type it, then Enter). If a preset of that name already
+  exists, in any capitals, the first click says so and a second click replaces it.
+- **The list:** click a preset to load it. **Rename** changes both the file and the name inside it.
+  **Delete** asks for a second click.
+- **Edited:** after you turn something, the top bar says *edited*. Loading another preset then asks
+  for a second click, so unsaved changes aren't lost by accident.
+
+Scenes A–D live inside the preset that's loaded: **Store**, then a letter, keeps the knobs and patches
+in that scene; **Save** keeps the scenes in the preset file.
+
 ## Preset files
 
 Presets are `.rig.json` files in `presets/`. They are versioned and built to keep working as the rig changes:

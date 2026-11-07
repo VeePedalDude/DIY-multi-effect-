@@ -46,6 +46,14 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .preset{display:flex;align-items:center;gap:10px}
 .preset .name{display:flex;flex-direction:column;gap:2px;min-width:150px}
 .preset .name b{font-size:19px;font-weight:600}
+.presetbtn{background:none;border:1px solid transparent;border-radius:8px;padding:2px 8px;margin-left:-8px;color:inherit;text-align:left;cursor:pointer}
+.presetbtn:hover,.presetbtn:focus-visible{border-color:var(--accent)}
+.edited{color:var(--warn);font-weight:500}
+.presetnew input{flex:1;min-height:38px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px;color:inherit}
+.asset li.filerow > button[data-preset-load]{flex:1}
+#presetList li.filerow{align-items:center;gap:6px}
+#presetList li.filerow > .btn.mini{width:auto;flex:none;flex-direction:row;align-items:center;justify-content:center;min-height:34px;padding:0 12px;border:1px solid var(--line2);background:var(--raise);text-align:center}
+.asset li.filerow > input{flex:1;min-height:34px;background:var(--raise);border:1px solid var(--accent);border-radius:8px;padding:0 10px;color:inherit}
 .seg{display:flex;gap:4px;padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
 .seg button{min-height:34px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:600 13px/1 var(--display);letter-spacing:.1em}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--ink)}
@@ -239,7 +247,7 @@ body.panel-hidden .matrix{right:16px}
   <span class="brand">RIG/01</span>
   <button class="btn icon" id="settingsBtn" aria-label="Settings" aria-expanded="false" aria-controls="drawer"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" fill="none"/></svg></button>
   <div class="preset">
-    <div class="name"><span class="eyebrow">Preset</span><b id="presetName">Ambient Drive</b></div>
+    <button class="name presetbtn" id="presetBtn" aria-haspopup="dialog" aria-controls="presetDlg" title="Presets: save, load, rename"><span class="eyebrow">Preset ▾</span><b><span id="presetName">Ambient Drive</span><span class="edited" id="presetEdited" hidden> · edited</span></b></button>
   </div>
   <div class="seg" role="group" aria-label="View">
     <button id="vStage" aria-pressed="true">3D Stage</button>
@@ -320,13 +328,6 @@ body.panel-hidden .matrix{right:16px}
     <button class="btn" id="heartBtn">Connect heart strap</button>
   </section>
   <section>
-    <h3>Presets</h3>
-    <div class="row"><input id="presetInput" aria-label="Preset name" style="flex:1;min-height:38px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px" value="Ambient Drive"><button class="btn" id="presetSave">Save</button></div>
-    <select id="presetSel" aria-label="Saved presets"></select>
-    <div class="row"><button class="btn" id="presetLoad">Load</button><button class="btn" id="presetDelete">Delete</button></div>
-    <p class="note" id="presetNote">Presets are .rig.json files in the library's presets folder.</p>
-  </section>
-  <section>
     <h3>Engine log</h3>
     <div class="log" id="log" aria-live="off"></div>
     <div class="cmdrow"><input id="cmdIn" aria-label="Engine command" placeholder="param_set 3 feedback 0.6"><button class="btn" id="cmdSend">Send</button></div>
@@ -343,7 +344,6 @@ body.panel-hidden .matrix{right:16px}
   </div>
   <button class="btn" id="tap">Tap <span class="mono" id="bpm">120</span></button>
   <div class="slider"><label for="master" style="color:inherit;font:inherit">MASTER <span id="masterVal">-12 dB</span></label><input type="range" id="master" min="-60" max="6" step="1" value="-12"></div>
-  <div class="slider"><label for="ctrlSlider" style="color:inherit;font:inherit">CONTROLLER <span id="ctrlVal">0.00</span></label><input type="range" id="ctrlSlider" min="-1" max="1" step="0.01" value="0"></div>
   <div class="hint" id="hint"></div>
 </footer>
 
@@ -362,6 +362,18 @@ body.panel-hidden .matrix{right:16px}
   </div>
 </div>
 
+<div class="overlay" id="presetDlg" hidden>
+  <div class="card filedlg asset" id="presetDlgCard" role="dialog" aria-modal="true" aria-labelledby="presetDlgTitle">
+    <div class="fdhead"><div><div class="eyebrow" id="presetCount"></div><h2 id="presetDlgTitle">Presets</h2></div>
+      <button class="btn mini" data-act="preset-close" aria-label="Close presets">✕</button></div>
+    <div class="fdcur"><div class="cur" id="presetCur"></div>
+      <div class="row"><button class="btn primary" id="presetSave">Save</button></div></div>
+    <p class="note" id="presetNote" role="status">Presets are .rig.json files in the library's presets folder.</p>
+    <ul id="presetList" class="fdlist" aria-label="Saved presets"></ul>
+    <div class="row presetnew"><input id="presetInput" aria-label="Name for a new preset" placeholder="Name for a new preset" autocomplete="off"><button class="btn" id="presetSaveNew">Save as new</button></div>
+    <div class="row fdbtns"><span class="spacer"></span><button class="btn" data-act="preset-close">Done</button></div>
+  </div>
+</div>
 <div class="overlay" id="fileDlg" hidden>
   <div class="card filedlg asset" id="fileDlgCard" role="dialog" aria-modal="true" aria-labelledby="fileDlgTitle"></div>
 </div>

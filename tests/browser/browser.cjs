@@ -57,10 +57,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   v = await page.evaluate(async () => { const xs = []; for (let i = 0; i < 40; i++) { xs.push(window.__rig.eff('tess', 'fold')); await new Promise((r) => setTimeout(r, 50)); } xs.sort((a, b) => a - b); return (xs[0] + xs[xs.length - 1]) / 2; });
   check(r.status === 0 && Math.abs(v - 0.6) < 0.12, `instance by id: param_set tess fold 0.6 -> resp ${r.status}, engine centre ${v.toFixed(3)} (heart-modulated)`);
 
-  console.log('3. UI: patch CONTROLLER -> CAB MIX in the matrix, then sweep the controller slider');
+  console.log('3. UI: patch CONTROLLER -> CAB MIX in the matrix, then sweep the controller');
   await page.click('#vMatrix');
   await page.click('button.cell[data-pid="cab.mix"][data-sid="ctrl"]');
-  const setSlider = (v) => page.evaluate((v) => { const s = document.getElementById('ctrlSlider'); s.value = v; s.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  const setSlider = (v) => page.evaluate((v) => window.__rig.inputs.set('ctrl', v), v);   // as a bound control would
   // a meter packet made at least 0.3 s (audio time) after now: a busy headless page can hand them over late
   const fresh = async () => { const t0 = await page.evaluate(() => window.__rig.ctx.currentTime); await page.waitForFunction((t0) => window.__rig.meters.t > t0 + 0.3, t0, { timeout: 10000 }); };
   await setSlider(-1); await sleep(200); await fresh();

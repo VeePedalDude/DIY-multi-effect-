@@ -1,0 +1,12 @@
+{
+  "struct": "rig::RandomSH",
+  "kind": "source",
+  "category": "chaos",
+  "tags": [
+    "random",
+    "sample and hold",
+    "example"
+  ],
+  "author": "RIG/01",
+  "version": "1.0.0"
+}

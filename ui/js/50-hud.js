@@ -10,6 +10,7 @@ function tapRowHtml(pid, color) {
 }
 let fxRemoveArmed = null;                // the module whose Remove was clicked once (click again to confirm)
 function renderPanel() {
+  renderFileDlg();
   if (state.focus === 'add') { renderAddPanel(); return; }
   if (state.focus === 'addfx') { renderAddFxPanel(); return; }
   const s = srcFocus(); if (s) { renderSourcePanel(s); return; }
@@ -39,7 +40,7 @@ function renderPanel() {
 // The add panel for effects: a tab per category (engine/modules/<category>/), search across them all.
 PICKERS.fx = {
   cats: () => DESC.moduleCategories,
-  items: () => MTYPE_ORDER.map((t) => { const d = MTYPES[t]; return { type: t, name: d.name, sub: d.kind, category: d.category, have: MODS.filter((m) => m.type === t).length,
+  items: () => MTYPE_ORDER.map((t) => { const d = MTYPES[t]; return { type: t, d, name: d.name, sub: d.kind, category: d.category, have: MODS.filter((m) => m.type === t).length,
     detail: d.params.map((q) => q.label.toLowerCase()).join(' · ') + (d.asset ? ` · loads ${d.asset.label.toLowerCase()} files` : '') }; }),
   full: () => chainFull(), attr: 'data-addfx-type', noun: 'effect', folder: 'engine/modules', doc: 'docs/ADDING_A_MODULE.md',
 };
@@ -139,7 +140,6 @@ function wireHud() {
   $('tap').onclick = () => { const n = performance.now(); taps = taps.filter((x) => n - x < 3000); taps.push(n);
     if (taps.length > 1) { const d = (taps[taps.length - 1] - taps[0]) / (taps.length - 1); state.bpm = clamp(Math.round(60000 / d), 30, 300); $('bpm').textContent = state.bpm; rig.cmd(`set_bpm ${state.bpm}`); } };
   $('master').oninput = (e) => { state.master = Number(e.target.value); $('masterVal').textContent = state.master + ' dB'; rig.cmd(`master ${state.master}`); };
-  $('ctrlSlider').oninput = (e) => setCtrl(Number(e.target.value));
 
   // settings drawer: audio
   $('srcSel').onchange = async (e) => {

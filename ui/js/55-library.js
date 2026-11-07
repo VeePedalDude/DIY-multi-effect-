@@ -2,6 +2,7 @@
 // keeps the file lists fresh, and runs imports (file picker, whole folders, drag and drop).
 const library = { core: null, backend: '', rootName: '', kinds: {}, entries: {}, pendingFolder: null };
 rig.library = library;
+rig.importFiles = (files) => importFiles(files, null);        // tests and the console
 
 function libraryKinds() {
   const k = {};
@@ -9,9 +10,10 @@ function libraryKinds() {
     m.asset.exts.split(',').map((e) => e.trim().toLowerCase()).forEach((e) => { if (e && !list.includes(e)) list.push(e); }); });
   k.presets = ['.rig.json'];
   k.skins = ['.rigskin'];
+  k.plugins = ['.rigfx', '.clap'];                             // effects and sources as files (61-plugins.js)
   return k;
 }
-const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets', skins: 'skins' }[k] || k);
+const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets', skins: 'skins', plugins: 'plugins' }[k] || k);
 
 async function initLibrary() {
   library.kinds = libraryKinds();
@@ -37,12 +39,15 @@ async function refreshLibrary() {
     try { library.entries[k] = await library.core.list(k); } catch (e) { library.entries[k] = []; logLine(`library: couldn't read ${k}/: ${e.message}`, true); }
   }
   const where = {
-    folder: `Folder “${library.rootName}”. Files you put in its ir, nam, presets and skins folders show up after Rescan.`,
+    folder: `Folder “${library.rootName}”. Files you put in its ir, nam, presets, skins and plugins folders show up after Rescan.`,
     browser: 'Stored in this browser. Choose a folder to keep the library as normal files you can open, back up and share.',
     memory: 'Temporary: this page can’t store files where it’s open, so imports are lost on reload.',
   }[library.backend];
   $('libWhere').textContent = library.pendingFolder && library.backend !== 'folder' ? `Your folder “${library.pendingFolder.name}” needs permission again. Until then: ${where}` : where;
   $('libCounts').textContent = Object.keys(library.kinds).map((k) => `${(library.entries[k] || []).length} ${kindLabel(k)}`).join(' · ');
+  await knowLibraryPlugins();
+  await loadTagIndex();                                       // library.json: tags, favorites, notes (62-tags.js)
+  renderPluginList();
   refreshPresetList();
   renderSkinList();
   renderPanel();
@@ -74,6 +79,9 @@ async function importFiles(files, target) {
   }
   results.forEach((r) => logLine(r.status === 'skipped' ? `skipped ${r.name}: ${r.reason}` : `${r.status === 'duplicate' ? 'already in library' : r.status === 'renamed' ? 'imported as' : 'imported'} ${r.kind}/${r.name}`, r.status === 'skipped'));
   await refreshLibrary();
+  for (const r of results) if (r.kind === 'plugins' && (r.status === 'added' || r.status === 'renamed') && rig.node) {   // a new plugin is ready straight away
+    await loadPlugin(r.name, new Uint8Array(await (await library.core.file('plugins', r.name)).arrayBuffer()));
+  }
   const skins = results.filter((r) => r.kind === 'skins' && r.status !== 'skipped');
   if (skins.length) await useSkin('lib:' + skins[skins.length - 1].name);   // a dropped skin is put on straight away
   const ok = results.filter((r) => r.status !== 'skipped');
@@ -109,4 +117,18 @@ function wireLibrary() {
     const files = [...e.target.files], target = MODS.find((m) => m.id === e.target.dataset.target) || null;
     e.target.value = ''; if (files.length) await importFiles(files, target);
   };
+}
+
+// The settings drawer's list of plugin files, and what became of each.
+function renderPluginList() {
+  const el = $('libPlugins'); if (!el) return;
+  const list = library.entries.plugins || [];
+  if (!list.length) { el.innerHTML = 'No plugins yet: put <span class="mono">.rigfx</span> bundles in the library\u2019s <span class="mono">plugins</span> folder (docs/PLUGINS.md).'; return; }
+  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  el.innerHTML = list.map((e) => {
+    const m = e.meta || {}, r = plugins.results[e.name];
+    const what = m.error ? `not usable: ${m.error}` : m.native ? `native CLAP (${m.native}): the rig-host runs it` : `${m.name || ''} · ${m.kind || ''}${m.author ? ' · ' + m.author : ''}`;
+    const state = r ? (r.status >= 0 ? ' · loaded' : ` · not loaded: ${r.note}`) : '';
+    return `<div><b>${esc(e.name)}</b> <span class="muted">${esc(what + state)}</span></div>`;
+  }).join('');
 }

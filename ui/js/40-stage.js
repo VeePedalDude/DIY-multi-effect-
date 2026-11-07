@@ -14,12 +14,24 @@ function mkTex(cv) { const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.
 
 // Face geometry, in canvas pixels: the card art's own size (518 x 754). One knob row per two params;
 // cards with more than one row grow by stretching a plain strip of the side rails (45-faces.js drawCard).
-const FW = 518, CARD_H = 754, PW = 3.4, ROW_H = 150, KNOB_Y0 = 492;
-const faceH = (m) => CARD_H + ROW_H * Math.max(0, Math.ceil(m.params.length / 2) - 1);
+// The front holds up to four knobs. A module with more keeps the rest on the back of its card, drawn
+// with the same card art, and a highlighted tab at the foot of the card turns it over.
+const FW = 518, CARD_H = 754, PW = 3.4, ROW_H = 200, KNOB_Y0 = 492, FRONT_KNOBS = 4;
+const faceH = (m) => CARD_H + ROW_H * Math.max(0, Math.ceil(Math.min(m.params.length, FRONT_KNOBS) / 2) - 1);
+const hasBack = (m) => m.params.length > FRONT_KNOBS;
+const knobSide = (p) => (p.pi >= FRONT_KNOBS ? 1 : 0);          // 0 front, 1 back
 function knobXY(p) {
-  const n = p.mod.params.length, row = Math.floor(p.pi / 2), inRow = Math.min(2, n - row * 2);
-  return [inRow === 2 ? (p.pi % 2 ? 372 : 146) : FW / 2, KNOB_Y0 + row * ROW_H];
+  const n = p.mod.params.length, side = knobSide(p), i = p.pi - side * FRONT_KNOBS;
+  const cnt = side ? n - FRONT_KNOBS : Math.min(n, FRONT_KNOBS), row = Math.floor(i / 2), inRow = Math.min(2, cnt - row * 2);
+  return [inRow === 2 ? (i % 2 ? 372 : 146) : FW / 2, KNOB_Y0 + row * ROW_H];
 }
+// The turn-over tab (centre, half size) and a file module's file strip, in face pixels.
+const flipTab = (m) => ({ x: FW / 2, y: m.FH - 100, w: 236, h: 44 });
+const FILE_STRIP = { x: 46, y: 163, w: 426, h: 33 };
+const inBox = (px, py, b) => px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+const inTab = (px, py, t) => Math.abs(px - t.x) <= t.w / 2 + 8 && Math.abs(py - t.y) <= t.h / 2 + 8;
+const cardFlip = {};                                             // module id -> showing its back
+rig.cardFlip = cardFlip;
 const SPACING = 4;
 const pickables = [];
 let flowCurve, flowTube, flowGeo, flowMat, flowPos, inLbl, outLbl, carryLine, carryGeo;
@@ -74,17 +86,27 @@ function buildModules() {
     const FH = faceH(m), PH = PW * FH / FW, tileGlow = styleOf(m).glow;
     const g = new THREE.Group(); g.position.set(pos.x, 0.8 + PH / 2, pos.z); g.lookAt(0, g.position.y, 22);
     // the card's thickness (inset so its rounded corners stay clear) and a glow behind it when focused
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: SKIN.stage.slab })); slab.position.z = .02; g.add(slab);
+    // 'spin' turns the card over; the glow behind it stays put
+    const spin = new THREE.Group(); g.add(spin);
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(PW * .96, PH * .97, .12), new THREE.MeshBasicMaterial({ color: SKIN.stage.slab })); slab.position.z = .02; spin.add(slab);
     const halo = new THREE.Mesh(new THREE.PlaneGeometry(PW * 1.3, PH * 1.2), new THREE.MeshBasicMaterial({ map: glowTex(), color: tileGlow, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.position.z = -.06; g.add(halo);
+    halo.position.z = -.14; g.add(halo);
     const cv = document.createElement('canvas'); cv.width = FW; cv.height = FH; const tex = mkTex(cv);
-    const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); face.position.z = .1; g.add(face);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: tex, transparent: true })); face.position.z = .1; spin.add(face);
+    let back = null, bctx = null, btex = null;
+    if (hasBack(m)) {
+      const bcv = document.createElement('canvas'); bcv.width = FW; bcv.height = FH; btex = mkTex(bcv); bctx = bcv.getContext('2d');
+      back = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), new THREE.MeshBasicMaterial({ map: btex, transparent: true }));
+      back.position.z = -.06; back.rotation.y = Math.PI; spin.add(back);
+      back.userData = { type: 'face', mod: m, side: 1 }; pickables.push(back);
+    }
+    const flip = cardFlip[m.id] && back ? 1 : 0; spin.rotation.y = flip * Math.PI;
     const glow = new THREE.Mesh(new THREE.RingGeometry(1.2, 2.2, 48), new THREE.MeshBasicMaterial({ color: tileGlow, transparent: true, opacity: .08, side: THREE.DoubleSide, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.set(pos.x, .02, pos.z);
     scene.add(glow, g); modObjs.push(glow, g);
-    Object.assign(m, { group: g, baseY: g.position.y, face, slab, halo, glow, ctx: cv.getContext('2d'), tex, FH, PH });
-    face.userData = { type: 'face', mod: m }; pickables.push(face);
-    drawFace(m);
+    Object.assign(m, { group: g, baseY: g.position.y, spin, face, back, slab, halo, glow, ctx: cv.getContext('2d'), tex, bctx, btex, FH, PH, flipA: flip });
+    face.userData = { type: 'face', mod: m, side: 0 }; pickables.push(face);
+    drawFace(m, true);
   });
   if (!chainFull()) {                                   // the "+" card: a plain dashed outline, half height
     const pos = cardSpot(MODS.length, n), PH = PW * 0.62, cv = document.createElement('canvas'); cv.width = FW; cv.height = Math.round(FW * 0.62);
@@ -168,7 +190,28 @@ function drawAddLabel(force) {
   c.font = `400 16px ${SKIN.ui.fontMono}`; c.fillText(`a source · ${SRC.length}/${DESC.maxSources}`, 16, 58);
   addOrb.lbl.material.map.needsUpdate = true;
 }
-function knobWorld(p) { const m = p.mod, [kx, ky] = knobXY(p); return m.face.localToWorld(new THREE.Vector3((kx / FW - .5) * PW, (.5 - ky / m.FH) * m.PH, .12)); }
+// A point on a side of a card, in world space (z lifts it off the face, towards the viewer of that side).
+function facePoint(m, side, x, y, z = .12) { return (side ? m.back : m.face).localToWorld(new THREE.Vector3((x / FW - .5) * PW, (.5 - y / m.FH) * m.PH, z)); }
+// Where a cable meets a knob. A knob on the side that's turned away: the cable goes to the turn-over tab.
+function knobWorld(p) {
+  const m = p.mod, side = knobSide(p), showing = cardFlip[m.id] ? 1 : 0;
+  if (side !== showing) { const t = flipTab(m); return facePoint(m, showing, t.x, t.y); }
+  const [kx, ky] = knobXY(p); return facePoint(m, side, kx, ky);
+}
+// Each frame: ease a card towards the side it should show.
+function flipStep(m, dt) {
+  if (!m.back) return;
+  const goal = cardFlip[m.id] ? 1 : 0;
+  if (m.flipA === goal) return;
+  m.flipA = RM ? goal : (Math.abs(goal - m.flipA) < .004 ? goal : m.flipA + (goal - m.flipA) * Math.min(1, dt * 9));
+  m.spin.rotation.y = m.flipA * Math.PI;
+}
+function turnCard(m, toBack) {
+  if (!hasBack(m)) return;
+  cardFlip[m.id] = toBack === undefined ? !cardFlip[m.id] : !!toBack;
+  if (!cardFlip[m.id]) delete cardFlip[m.id];
+  drawFace(m, true);
+}
 function bez(a, b) { return new THREE.CubicBezierCurve3(a, a.clone().add(new THREE.Vector3(0, -3.5, 1.5)), b.clone().add(new THREE.Vector3(0, 3, 2.5)), b); }
 // Where a cable ends: a module's knob, or just under the orb of the source whose knob it moves
 // (one point per knob, spread across the orb).
@@ -210,9 +253,11 @@ function pick(e) {
   const u = hit.object.userData; if (u.type === 'src' || u.type === 'srclabel') return { type: u.type, src: u.src };
   if (u.type === 'srcadd') return { type: 'srcadd' };
   if (u.type === 'fxadd') return { type: 'fxadd' };
-  const m = u.mod, px = hit.uv.x * FW, py = (1 - hit.uv.y) * m.FH; let knob = null;
-  m.params.forEach((p) => { const [kx, ky] = knobXY(p); if (Math.hypot(px - kx, py - ky) < 84) knob = p; });
-  return { type: 'face', mod: m, knob };
+  const m = u.mod, side = u.side || 0, px = hit.uv.x * FW, py = (1 - hit.uv.y) * m.FH; let knob = null;
+  if (hasBack(m) && inTab(px, py, flipTab(m))) return { type: 'face', mod: m, side, flip: true };
+  if (!side && m.asset && inBox(px, py, FILE_STRIP)) return { type: 'face', mod: m, side, file: true };
+  m.params.forEach((p) => { if (knobSide(p) !== side) return; const [kx, ky] = knobXY(p); if (Math.hypot(px - kx, py - ky) < 84) knob = p; });
+  return { type: 'face', mod: m, side, knob };
 }
 let drag = null;
 function wireStageInput() {
@@ -246,11 +291,28 @@ function stageClick(h) {
   if (h.type === 'src') { state.carrying = state.carrying === h.src.id ? null : h.src.id; state.focus = 'src:' + h.src.id; update(); return; }
   if (h.type === 'srclabel') { state.focus = 'src:' + h.src.id; update(); return; }
   if (h.knob && state.carrying) { connect(h.knob.id, state.conns[h.knob.id] === state.carrying ? null : state.carrying); state.carrying = null; state.focus = h.mod.id; update(); return; }
+  if (h.flip) { turnCard(h.mod); state.focus = h.mod.id; update(); return; }
+  if (h.file && !state.carrying) { state.focus = h.mod.id; update(); openFileDlg(h.mod, canvas); return; }
   state.focus = h.mod.id; flyTo(h.mod); update();
 }
 // Test helpers: where a module's face, or a source's orb or name label, is on screen (client px).
 rig.camSnap = () => { cam.r = camGoal.r; cam.target.copy(camGoal.target); placeCamera(); camera.updateMatrixWorld(); };   // tests: skip the camera's easing
 rig.fxAddScreen = () => { if (!addCard) return null; const v = addCard.group.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
+// Where a point on a card is on screen: part 'tab' (the turn-over tab), 'file' (the file strip), or a knob index.
+rig.cardScreen = (id, part) => {
+  const m = MODS.find((x) => x.id === id); if (!m) return null;
+  let side = cardFlip[m.id] ? 1 : 0, x, y;
+  if (part === 'tab') ({ x, y } = flipTab(m));
+  else if (part === 'file') { x = FILE_STRIP.x + FILE_STRIP.w / 2; y = FILE_STRIP.y + FILE_STRIP.h / 2; side = 0; }
+  else { const p = m.params[part]; if (!p) return null; side = knobSide(p); [x, y] = knobXY(p); }
+  m.group.updateMatrixWorld(true);
+  const v = facePoint(m, side, x, y, 0).project(camera), r = canvas.getBoundingClientRect();
+  return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height, side };
+};
+rig.cableEnd = (pid) => { if (!knobOf(pid)) return null; const v = targetWorld(pid).project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
+rig.pickAt = (x, y) => { const h = pick({ clientX: x, clientY: y }); return h && { type: h.type, mod: h.mod && h.mod.id, side: h.side, knob: h.knob && h.knob.id, flip: !!h.flip, file: !!h.file }; };
+rig.cardAngle = (id) => { const m = MODS.find((x) => x.id === id); return m ? m.flipA : null; };   // 0 front .. 1 back
+rig.turnCard = (id, toBack) => { const m = MODS.find((x) => x.id === id); if (m) turnCard(m, toBack); return !!(m && cardFlip[m.id]); };
 rig.cables = () => cables.map((c) => `${c.s.id}>${c.pid}`);
 rig.addScreen = () => { if (!addOrb) return null; const v = addOrb.lbl.position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };
 rig.srcScreen = (id, part = 'lbl') => { const s = SRCMAP[id]; if (!s) return null; const v = s[part].position.clone().project(camera), r = canvas.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; };

@@ -82,7 +82,7 @@ function drawSourceView(dt) { const s = srcFocus(); if (s && SRCVIEW[s.type]) SR
 // The add panel for sources: a tab per category (engine/sources/<category>/), search across them all.
 PICKERS.src = {
   cats: () => DESC.sourceCategories,
-  items: () => TYPE_ORDER.map((t) => { const d = TYPES[t], have = SRC.filter((s) => s.type === t).length; return { type: t, name: d.name, sub: d.sub, category: d.category, have,
+  items: () => TYPE_ORDER.map((t) => { const d = TYPES[t], have = SRC.filter((s) => s.type === t).length; return { type: t, d, name: d.name, sub: d.sub, category: d.category, have,
     color: instanceColor(SKIN, t, have + 1, d.index), detail: (d.params.length ? d.params.map((q) => q.label.toLowerCase()).join(' · ') : 'no settings') + (d.ext ? ' · takes outside input' : '') }; }),
   full: () => rackFull(), attr: 'data-add-type', noun: 'source', folder: 'engine/sources', doc: 'docs/ADDING_A_SOURCE.md',
 };

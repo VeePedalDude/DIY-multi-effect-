@@ -1,0 +1,13 @@
+{
+  "struct": "rig::Trem",
+  "kind": "effect",
+  "category": "modulation",
+  "tags": [
+    "tremolo",
+    "volume",
+    "lfo",
+    "example"
+  ],
+  "author": "RIG/01",
+  "version": "1.0.0"
+}

@@ -64,7 +64,10 @@ a colour name. Images and fonts are file names inside the `.rigskin`.
 Cards are drawn 518 × 754 pixels. Use that shape (any resolution with the same proportions), with
 transparent rounded corners. The title sits at the upper left (y ≈ 120–200), the display at
 x 50–468, y 206–374, and the knobs below it. Leave those areas plain enough to read over.
-Modules with more than four knobs stretch the strip between y 400 and 470.
+Cards with a second row of knobs (three or four) stretch the strip between y 400 and 470. A module
+with more than four knobs has its others on the back of the card, drawn with the same frame image;
+a tab near the foot of the card (y ≈ height − 120 to − 80, centred) turns it over, so keep that
+area plain too. File modules (Amp, Cab) draw their file strip at y 163–196, just above the display.
 
 ## The packet
 

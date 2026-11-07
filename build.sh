@@ -10,7 +10,7 @@ mkdir -p build/obj/native build/obj/wasm dist
 CXX="${CXX:-g++}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 NAM_SRC="$(ls third_party/NeuralAmpModelerCore/NAM/*.cpp third_party/NeuralAmpModelerCore/NAM/wavenet/*.cpp)"
-INC="-DNDEBUG -DNAM_SAMPLE_FLOAT -include engine/core/json_assert.h -isystem third_party/NeuralAmpModelerCore -isystem third_party/NeuralAmpModelerCore/NAM -isystem third_party/eigen -isystem third_party/nlohmann -isystem third_party/q -isystem third_party/q/infra -isystem third_party/hypedfuzz"
+INC="-DNDEBUG -DNAM_SAMPLE_FLOAT -include engine/core/json_assert.h -isystem third_party/NeuralAmpModelerCore -isystem third_party/NeuralAmpModelerCore/NAM -isystem third_party/eigen -isystem third_party/nlohmann -isystem third_party/q -isystem third_party/q/infra -isystem third_party/hypedfuzz -isystem third_party/clap/include"
 export ZIG_GLOBAL_CACHE_DIR="$PWD/build/zig-cache" ZIG_LOCAL_CACHE_DIR="$PWD/build/zig-cache"
 ZIGCXX="python3 -m ziglang c++"
 WASM="-target wasm32-wasi -fwasm-exceptions -mexception-handling"
@@ -47,8 +47,10 @@ echo tools/wasm/cpp_exception.S | compile build/obj/wasm-rt "python3 -m ziglang 
 echo tools/wasm/wasi_none.c | compile build/obj/wasm-rt "python3 -m ziglang cc -target wasm32-wasi -O2 -Wall -Wextra -Werror"
 
 STRICT="-std=c++20 -Wall -Wextra -Werror $INC"
+echo "== plugins (plugins/<id>/ -> dist/plugins/<id>.rigfx; docs/PLUGINS.md): the native tests load them"
+for d in plugins/*/; do python3 tools/build_plugin.py "$d" --if-stale; done
 echo "== native tests"
-$CXX -O2 $STRICT -o build/tests tests/native/*.cpp build/obj/native/*.o
+$CXX -O2 $STRICT -o build/tests tests/native/*.cpp build/obj/native/*.o -ldl
 ./build/tests
 echo "== text protocol through the C API (one parser for the browser and rig-host), and threads"
 $CXX -O2 $STRICT -pthread -o build/protocol tests/api/protocol.cpp build/obj/native/*.o

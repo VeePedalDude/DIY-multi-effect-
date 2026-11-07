@@ -9,6 +9,14 @@ const root = path.resolve(__dirname, '../..');
 let fails = 0;
 const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// presets: the window opened from the preset name in the top bar (ui/js/70-presets.js)
+const presetSaveNew = async (page, name) => { await page.click('#presetBtn'); await page.fill('#presetInput', name); await page.click('#presetSaveNew'); await sleep(800); };
+const presetLoad = async (page, file) => {                      // unsaved edits: the second click loads
+  if (await page.$eval('#presetDlg', (d) => d.hidden)) await page.click('#presetBtn');
+  const sel = `[data-preset-load="${encodeURIComponent(file)}"]`; await page.click(sel); await sleep(300);
+  if (/again to load/.test(await page.textContent('#presetNote'))) await page.click(sel);
+};
+const presetClose = (page) => page.click('#presetDlg [data-act="preset-close"]');
 
 // Runs in the page: build files and drop them on an element or a screen point.
 async function drop(page, target, files) {
@@ -79,15 +87,29 @@ async function drop(page, target, files) {
   check(L.ir.includes('Greenback 4x12.wav') && st.cab === 'V30 SM57.wav', 'stage background: imported, cab keeps its IR');
   check(L.nam.includes('Plexi crunch.nam') && st.amp === 'Plexi crunch.nam', `amp face: NAM imported and assigned (${st.amp})`);
 
-  console.log('4. Search inside the cab panel');
-  await page.keyboard.press('3'); await sleep(400);
+  console.log('4. The file browser: opens from the file strip on the cab card; search, pick (it stays open), Escape');
+  await page.keyboard.press('3'); await sleep(300); await page.evaluate(() => window.__rig.camSnap()); await sleep(200);
+  const strip = await page.evaluate(() => window.__rig.cardScreen('cab', 'file'));
+  await page.mouse.click(strip.x, strip.y); await sleep(400);
+  const dlg = await page.evaluate(() => ({ id: window.__rig.fileDlg.id, shown: !document.getElementById('fileDlg').hidden, focus: document.activeElement && document.activeElement.id, title: document.getElementById('fileDlgTitle').textContent }));
+  check(dlg.id === 'cab' && dlg.shown && dlg.focus === 'as-cab' && dlg.title === 'Choose an IR', `clicking the card's file strip opens “${dlg.title}”, search box focused`);
   await page.fill('#as-cab', 'green'); await sleep(200);
-  const hits = await page.$$eval('#al-cab li button', (b) => b.map((x) => x.querySelector('span').textContent));
+  const hits = await page.$$eval('#al-cab li [data-asset-pick]', (b) => b.map((x) => x.querySelector('span').textContent));
   check(hits.length === 1 && hits[0] === 'Greenback 4x12.wav', `“green” finds ${JSON.stringify(hits)}`);
-  await page.fill('#as-cab', '');
+  await page.click('#al-cab li [data-asset-pick]'); await sleep(700);
+  const picked = await page.evaluate(() => ({ cab: window.__rig.state.assets.cab.name, open: window.__rig.fileDlg.id }));
+  await page.fill('#as-cab', ''); await sleep(200);
+  await page.click('#al-cab [data-asset-pick="V30%20SM57.wav"]'); await sleep(700);
+  check(picked.cab === 'Greenback 4x12.wav' && picked.open === 'cab' && await page.evaluate(() => window.__rig.state.assets.cab.name) === 'V30 SM57.wav', 'a click loads the file and the browser stays open for the next one');
+  await page.keyboard.press('Escape'); await sleep(200);
+  check(await page.evaluate(() => window.__rig.fileDlg.id === null && document.getElementById('fileDlg').hidden), 'Escape closes it');
+  await page.click('[data-act="asset-browse"][data-mod="cab"]'); await sleep(300);
+  const viaPanel = await page.evaluate(() => window.__rig.fileDlg.id);
+  await page.click('#fileDlg', { position: { x: 5, y: 5 } }); await sleep(200);
+  check(viaPanel === 'cab' && await page.evaluate(() => window.__rig.fileDlg.id === null), 'the side panel’s Browse button opens it too; a click outside closes it');
 
   console.log('5. Save a preset file');
-  await page.click('#settingsBtn'); await page.fill('#presetInput', 'Lib Test'); await page.click('#presetSave'); await sleep(500);
+  await presetSaveNew(page, 'Lib Test'); await presetClose(page);
   const saved = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'Lib Test.rig.json')).text()));
   const cabEntry = saved.chain.find((c) => c.id === 'cab'), ampEntry = saved.chain.find((c) => c.id === 'amp');
   check(saved.format === "rig-preset" && saved.version === 4 && cabEntry.asset.name === 'V30 SM57.wav' && /^[0-9a-f]{8}$/.test(cabEntry.asset.hash) && ampEntry.asset.kind === 'nam', 'presets/Lib Test.rig.json written with both file references');
@@ -99,22 +121,23 @@ async function drop(page, target, files) {
   const L2 = await lib();
   check(L2.ir.length === 2 && L2.nam.length === 1 && L2.presets.includes('Lib Test.rig.json'), `after reload: ${L2.ir.length} IRs, ${L2.nam.length} NAM, presets ${JSON.stringify(L2.presets)}`);
   check(!(await tapsOk()), 'fresh start uses the built-in cab');
-  await page.click('#settingsBtn'); await page.selectOption('#presetSel', 'Lib Test.rig.json'); await page.click('#presetLoad');
+  await presetLoad(page, 'Lib Test.rig.json');
   for (let i = 0; i < 25 && !(await tapsOk()); i++) await sleep(200);
   const note = await page.textContent('#presetNote');
-  check((await tapsOk()) && /Loaded presets\/Lib Test/.test(note), `preset reloaded the IR into the engine; note: “${note}”`);
+  check((await tapsOk()) && /Loaded “Lib Test”/.test(note), `preset reloaded the IR into the engine; note: “${note}”`);
   check(await page.evaluate(() => window.__rig.state.assets.amp && window.__rig.state.assets.amp.name) === 'Plexi crunch.nam', 'and re-assigned the NAM capture');
 
   console.log('7. Remove the IR file: the preset still loads, says what is missing, and keeps the reference');
-  await page.click('#settingsBtn'); await page.keyboard.press('3'); await sleep(400);
+  await presetClose(page); await page.mouse.move(800, 120); await page.keyboard.press('3'); await sleep(400);
   await page.click('[data-act="asset-remove"][data-mod="cab"]'); await page.click('[data-act="asset-remove"][data-mod="cab"]'); await sleep(600);
   check(!(await lib()).ir.includes('V30 SM57.wav'), 'file removed from the library after confirming');
-  await page.click('#settingsBtn'); await page.selectOption('#presetSel', 'Lib Test.rig.json'); await page.click('#presetLoad'); await sleep(800);
+  await presetLoad(page, 'Lib Test.rig.json'); await sleep(800);
   const note2 = await page.textContent('#presetNote');
   check(/isn't in the library/.test(note2) && !(await tapsOk()), `loads on built-in with a note: “${note2.slice(0, 80)}…”`);
   await page.click('#presetSave'); await sleep(500);
   const resaved = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'Lib Test.rig.json')).text()));
   check(resaved.chain.find((c) => c.id === 'cab').asset.name === 'V30 SM57.wav', 're-saving keeps the missing file’s reference');
+  await presetClose(page);
 
   console.log('8. Real captures play; a broken one is refused with a reason');
   const ampMeter = () => page.evaluate(() => window.__rig.modMeter('amp', 'rate'));
@@ -140,6 +163,44 @@ async function drop(page, target, files) {
   const cabLine = (await page.textContent('[data-asset-mod="cab"] .cur')).trim();
   check(taps === 144000 && chans === 2 && r9.nan === 0 && /stereo · 3\.00 s/.test(cabLine), `engine runs ${taps} taps × ${chans} channels (“${cabLine.slice(0, 60)}”, engine load ${(100 * r9.load).toFixed(0)}%)`);
   await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-nam-reverb.png') });
+
+  console.log('10. The presets window: name, save as new, edited mark, replace, load over edits, rename, delete');
+  {
+    const files = async () => (await lib()).presets.sort().join(', ');
+    const knob = (v) => page.evaluate((v) => { const el = document.querySelector('[data-pid="cab.mix"]'); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    const edited = () => page.evaluate(() => !document.getElementById('presetEdited').hidden);
+    await page.mouse.move(800, 120); await page.keyboard.press('3'); await sleep(300);
+    await presetLoad(page, 'Lib Test.rig.json'); await sleep(800); await presetClose(page); await sleep(900);
+    const clean = !(await edited());
+    await knob(0.31); await sleep(1600);
+    check(clean && await edited() && /edited/.test(await page.getAttribute('#presetBtn', 'aria-label')), 'turning a knob after loading marks the preset “edited” in the top bar');
+    await page.click('#presetBtn'); await sleep(200);
+    const startsEmpty = (await page.inputValue('#presetInput')) === '';
+    await page.click('#presetSaveNew'); await sleep(300);
+    check(startsEmpty && /Type a name/.test(await page.textContent('#presetNote')) && (await files()) === 'Lib Test.rig.json', 'the new-preset name box starts empty; Save as new without a name asks for one and writes nothing');
+    await page.click('#presetInput'); await page.keyboard.type('Clean A'); await page.keyboard.press('Enter'); await sleep(900);
+    check((await files()) === 'Clean A.rig.json, Lib Test.rig.json' && await page.textContent('#presetName') === 'Clean A' && !(await edited()), `typing a name + Enter saves a new preset beside the old one (${await files()}); it is now current, not edited`);
+    await page.fill('#presetInput', 'clean a'); await page.click('#presetSaveNew'); await sleep(400);
+    const askedReplace = /already exists/.test(await page.textContent('#presetNote'));
+    await page.click('#presetSaveNew'); await sleep(900);
+    check(askedReplace && (await files()) === 'Clean A.rig.json, Lib Test.rig.json', 'a name that exists (any case) asks first; the second click replaces it, still one file');
+    await presetClose(page); await knob(0.55); await sleep(1600);
+    await page.click('#presetBtn'); await page.click(`[data-preset-load="${encodeURIComponent('Lib Test.rig.json')}"]`); await sleep(400);
+    const warned = /unsaved changes/.test(await page.textContent('#presetNote')) && await page.textContent('#presetName') === 'clean a';
+    await page.click(`[data-preset-load="${encodeURIComponent('Lib Test.rig.json')}"]`); await sleep(1200);
+    check(warned && await page.textContent('#presetName') === 'Lib Test', 'loading another preset over unsaved edits asks first; the second click loads it');
+    await page.click(`[data-preset-rename="${encodeURIComponent('Clean A.rig.json')}"]`); await sleep(200);
+    await page.fill('[data-preset-rename-input]', 'Crunch B'); await page.keyboard.press('Enter'); await sleep(900);
+    const renamed = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'Crunch B.rig.json')).text()).name);
+    check((await files()) === 'Crunch B.rig.json, Lib Test.rig.json' && renamed === 'Crunch B', `Rename: the file and the name inside it (${await files()})`);
+    await page.click(`[data-preset-del="${encodeURIComponent('Crunch B.rig.json')}"]`); await sleep(200);
+    const askedDel = (await files()).includes('Crunch B');
+    await page.click(`[data-preset-del="${encodeURIComponent('Crunch B.rig.json')}"]`); await sleep(800);
+    check(askedDel && (await files()) === 'Lib Test.rig.json', 'Delete asks for a second click, then deletes');
+    await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-presets.png') });
+    await page.keyboard.press('Escape'); await sleep(200);
+    check(await page.$eval('#presetDlg', (d) => d.hidden), 'Escape closes the window');
+  }
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

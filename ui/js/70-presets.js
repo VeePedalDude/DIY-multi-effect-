@@ -14,64 +14,186 @@ function applySnapshot(s) {
   sendAll(); syncCables(); update();
 }
 function setMaster(db) { state.master = db; $('master').value = db; $('masterVal').textContent = db + ' dB'; rig.cmd(`master ${db}`); }
-function refreshPresetList() {
-  const sel = $('presetSel'), keep = sel.value; sel.innerHTML = '';
-  (library.entries.presets || []).forEach((e) => { const o = document.createElement('option'); o.value = e.name; o.textContent = (e.meta && e.meta.name) || e.name.replace(/\.rig\.json$/i, ''); sel.appendChild(o); });
-  if (keep && [...sel.options].some((o) => o.value === keep)) sel.value = keep;
-  $('presetLoad').disabled = $('presetDelete').disabled = !sel.options.length;
+// ---- preset files: a window in the middle of the page (like the file browser), opened from the preset
+// name in the top bar. What's loaded is presetState.file; its signature (the preset as it would be saved,
+// without its name and date) says whether the rig has been edited since it was loaded or saved.
+const presetState = { file: null, sig: null, armed: null, armT: 0, renaming: null, opener: null };
+rig.presetState = presetState;
+const presetSig = () => { const p = buildPreset(''); delete p.saved; delete p.name; return JSON.stringify(p); };
+const presetEdited = () => presetState.sig !== null && presetSig() !== presetState.sig;
+const presetEntry = (file) => (library.entries.presets || []).find((e) => e.name.toLowerCase() === String(file).toLowerCase());
+const presetLabel = (e) => (e.meta && e.meta.name) || e.name.replace(/\.rig\.json$/i, '');
+const escHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+function presetNote(text, warn) { const n = $('presetNote'); if (n) { n.textContent = text; n.className = 'note' + (warn ? ' warnline' : ''); } presetState.lastNote = [text, !!warn]; }
+// A second click within 4 s confirms (replace, discard changes, delete).
+function armed(key, message) {
+  if (presetState.armed === key) { clearTimeout(presetState.armT); presetState.armed = null; return true; }
+  presetState.armed = key; clearTimeout(presetState.armT);
+  presetState.armT = setTimeout(() => { presetState.armed = null; renderPresetDlg(); }, 4000);
+  presetNote(message, true); renderPresetDlg(); return false;
 }
-function presetNote(text, warn) { const n = $('presetNote'); n.textContent = text; n.className = 'note' + (warn ? ' warnline' : ''); }
+function setCurrentPreset(file, name) {
+  presetState.file = file; presetState.sig = presetSig();
+  $('presetName').textContent = name; updatePresetEdited();
+}
+function updatePresetEdited() { const ed = presetEdited(); $('presetEdited').hidden = !ed; $('presetBtn').setAttribute('aria-label', `Presets: ${$('presetName').textContent}${ed ? ', edited' : ''}`); }
 
-async function savePreset() {
-  if (!library.core) return;
-  const name = $('presetInput').value.trim() || 'Untitled', file = safeFileName(name) + '.rig.json';
-  const existed = (library.entries.presets || []).some((e) => e.name === file);
+async function writePreset(file, name) {
   await library.core.write('presets', file, JSON.stringify(buildPreset(name), null, 2));
-  await refreshLibrary(); $('presetSel').value = file; $('presetName').textContent = name;
-  presetNote(`${existed ? 'Replaced' : 'Saved'} presets/${file}`); logLine(`preset saved: presets/${file}`);
+  await refreshLibrary(); setCurrentPreset(file, name);
+  logLine(`preset saved: presets/${file}`);
+}
+// Save: over the preset that's loaded.
+async function savePreset() {
+  if (!library.core || !presetState.file) return;
+  const e = presetEntry(presetState.file), name = e ? presetLabel(e) : $('presetName').textContent;
+  try { await writePreset(presetState.file, name); presetNote(`Saved “${name}”`); }
+  catch (err) { presetNote(`Couldn't save: ${err.message}`, true); }
+  renderPresetDlg();
+}
+// Save as new: a name of its own; an existing name is only replaced on a second click.
+async function savePresetAs() {
+  if (!library.core) return;
+  const name = $('presetInput').value.trim();
+  if (!name) { presetNote('Type a name for the new preset first.', true); $('presetInput').focus(); return; }
+  const file = safeFileName(name) + '.rig.json', had = presetEntry(file);
+  if (had && !armed('new:' + file.toLowerCase(), `“${presetLabel(had)}” already exists. Click Save as new again to replace it.`)) return;
+  try { await writePreset(had ? had.name : file, name); $('presetInput').value = ''; presetNote(`Saved “${name}”`); }
+  catch (err) { presetNote(`Couldn't save: ${err.message}`, true); }
+  renderPresetDlg();
 }
 async function loadPresetFile(file) {
   let json; try { json = JSON.parse(await (await library.core.file('presets', file)).text()); } catch (e) { presetNote(`Couldn't read ${file}: ${e.message}`, true); return null; }
   const r = readPreset(json);
   if (r.error) { presetNote(`${file}: ${r.error}`, true); return r; }
-  applyChain(r.chain); applyRack(r.rack); state.sourceExtras = r.sourceExtras;
-  // CONTROLLER bindings: a preset that names any sets them; one that names none keeps yours
-  if (Object.keys(r.inputs || {}).length) { Object.keys(state.inputs).forEach((id) => bindInput(id, null)); Object.entries(r.inputs).forEach(([id, b]) => bindInput(id, b)); }
-  applySnapshot(r.snap);
-  if (r.master !== undefined) setMaster(r.master);
-  state.scenes = r.scenes; state.scene = null; state.presetExtras = r.extras;
-  document.querySelectorAll('.scene').forEach((x) => { x.classList.toggle('stored', !!state.scenes[x.dataset.scene]); x.setAttribute('aria-pressed', 'false'); });
-  for (const m of MODS) {
-    if (!m.asset) continue;
-    const ref = r.assets[m.id];
-    if (!ref) { if (state.assets[m.id]) clearAsset(m); continue; }
-    const found = await library.core.findRef(ref);
-    if (found) { await selectAsset(m, found.name); if (found.name !== ref.name) r.warnings.push(`${m.id}: ${ref.name} was found renamed as ${found.name}`); }
-    else {                                    // keep the reference so re-saving doesn't lose it; play built-in meanwhile
-      r.warnings.push(`${m.id}: ${ref.kind}/${ref.name} isn't in the library; using built-in until you add it`);
-      if (rig.node) rig.node.port.postMessage({ type: 'asset_clear', inst: m.inst });
-      state.assets[m.id] = { kind: ref.kind, name: ref.name, size: ref.size, hash: ref.hash, missing: true };
-      const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null; d.irDecay = null; d.namMeta = null; d.engineNote = "";
-      assetStatus[m.id] = ' · missing from library (kept in the preset)';
+  try {
+    applyChain(r.chain); applyRack(r.rack); state.sourceExtras = r.sourceExtras;
+    // CONTROLLER bindings: a preset that names any sets them; one that names none keeps yours
+    if (Object.keys(r.inputs || {}).length) { Object.keys(state.inputs).forEach((id) => bindInput(id, null)); Object.entries(r.inputs).forEach(([id, b]) => bindInput(id, b)); }
+    applySnapshot(r.snap);
+    if (r.master !== undefined) setMaster(r.master);
+    state.scenes = r.scenes; state.scene = null; state.presetExtras = r.extras;
+    document.querySelectorAll('.scene').forEach((x) => { x.classList.toggle('stored', !!state.scenes[x.dataset.scene]); x.setAttribute('aria-pressed', 'false'); });
+    for (const m of MODS) {
+      if (!m.asset) continue;
+      const ref = r.assets[m.id];
+      if (!ref) { if (state.assets[m.id]) clearAsset(m); continue; }
+      const found = await library.core.findRef(ref);
+      if (found) { await selectAsset(m, found.name); if (found.name !== ref.name) r.warnings.push(`${m.id}: ${ref.name} was found renamed as ${found.name}`); }
+      else {                                    // keep the reference so re-saving doesn't lose it; play built-in meanwhile
+        r.warnings.push(`${m.id}: ${ref.kind}/${ref.name} isn't in the library; using built-in until you add it`);
+        if (rig.node) rig.node.port.postMessage({ type: 'asset_clear', inst: m.inst });
+        state.assets[m.id] = { kind: ref.kind, name: ref.name, size: ref.size, hash: ref.hash, missing: true };
+        const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null; d.irDecay = null; d.namMeta = null; d.engineNote = "";
+        assetStatus[m.id] = ' · missing from library (kept in the preset)';
+      }
     }
-  }
+  } catch (e) { presetNote(`Couldn't load ${file}: ${e.message}. The rig may be part way between presets.`, true); logLine(`preset: ${e.stack || e.message}`, true); renderPresetDlg(); return null; }
   const name = r.name || file.replace(/\.rig\.json$/i, '');
-  $('presetName').textContent = name; $('presetInput').value = name;
+  setCurrentPreset(file, name);
   r.warnings.forEach((w) => logLine('preset: ' + w, true));
-  presetNote(r.warnings.length ? `Loaded with ${r.warnings.length} note${r.warnings.length > 1 ? 's' : ''}: ${r.warnings[0]}${r.warnings.length > 1 ? ' (rest in Engine log)' : ''}` : `Loaded presets/${file}`, r.warnings.length > 0);
+  presetNote(r.warnings.length ? `Loaded “${name}” with ${r.warnings.length} note${r.warnings.length > 1 ? 's' : ''}: ${r.warnings[0]}${r.warnings.length > 1 ? ' (rest in Engine log)' : ''}` : `Loaded “${name}”`, r.warnings.length > 0);
   logLine(`preset loaded: presets/${file}`);
+  renderPresetDlg();
   return r;
 }
-let deleteArmed = 0;
-async function deletePreset() {
-  const file = $('presetSel').value; if (!file) return;
-  if (!deleteArmed) { deleteArmed = setTimeout(() => { deleteArmed = 0; $('presetDelete').textContent = 'Delete'; }, 4000); $('presetDelete').textContent = 'Confirm delete'; return; }
-  clearTimeout(deleteArmed); deleteArmed = 0; $('presetDelete').textContent = 'Delete';
-  await library.core.remove('presets', file); await refreshLibrary(); presetNote(`Deleted presets/${file}`); logLine(`preset deleted: presets/${file}`);
+// Load from the list: unsaved edits are only thrown away on a second click.
+async function pickPreset(file) {
+  if (presetEdited() && !armed('load:' + file, `“${$('presetName').textContent}” has unsaved changes. Click “${presetLabel(presetEntry(file) || { name: file })}” again to load it anyway, or Save first.`)) return;
+  await loadPresetFile(file);
+}
+async function renamePreset(file, newName) {
+  const e = presetEntry(file); newName = newName.trim();
+  if (!e || !newName) { presetState.renaming = null; renderPresetDlg(); return; }
+  const target = safeFileName(newName) + '.rig.json', clash = presetEntry(target);
+  if (clash && clash.name !== e.name) { presetNote(`“${presetLabel(clash)}” already exists. Pick another name.`, true); return; }
+  try {
+    const json = JSON.parse(await (await library.core.file('presets', e.name)).text()); json.name = newName;
+    await library.core.write('presets', target, JSON.stringify(json, null, 2));
+    if (target !== e.name) await library.core.remove('presets', e.name);
+    presetState.renaming = null; await refreshLibrary();
+    if (presetState.file === e.name) { presetState.file = target; $('presetName').textContent = newName; updatePresetEdited(); }
+    presetNote(`Renamed to “${newName}”`); logLine(`preset renamed: presets/${e.name} -> presets/${target}`);
+  } catch (err) { presetNote(`Couldn't rename: ${err.message}`, true); }
+  renderPresetDlg();
+}
+async function deletePreset(file) {
+  const e = presetEntry(file); if (!e) return;
+  if (!armed('del:' + file, `Click Delete again to delete “${presetLabel(e)}”.`)) return;
+  try {
+    await library.core.remove('presets', e.name); await refreshLibrary();
+    if (presetState.file === e.name) { presetState.file = null; updatePresetEdited(); }
+    presetNote(`Deleted “${presetLabel(e)}”`); logLine(`preset deleted: presets/${e.name}`);
+  } catch (err) { presetNote(`Couldn't delete: ${err.message}`, true); }
+  renderPresetDlg();
+}
+
+// ---- the window
+function refreshPresetList() { renderPresetDlg(); }
+function openPresetDlg(opener) {
+  presetState.opener = opener || document.activeElement; presetState.renaming = null;
+  $('presetDlg').hidden = false; renderPresetDlg();
+  const first = $('presetList').querySelector('[aria-current="true"]') || $('presetInput'); first.focus();
+}
+function closePresetDlg() {
+  if ($('presetDlg').hidden) return;
+  $('presetDlg').hidden = true; presetState.renaming = null;
+  const o = presetState.opener; presetState.opener = null; if (o && o.isConnected && o.focus) o.focus();
+}
+function renderPresetDlg() {
+  if (!$('presetDlg') || $('presetDlg').hidden) return;
+  const list = library.entries.presets || [], ed = presetEdited(), cur = presetState.file, A = presetState.armed;
+  $('presetCount').textContent = `${list.length} saved · in the library's presets folder`;
+  $('presetCur').innerHTML = `<b>${escHtml($('presetName').textContent)}</b><span class="muted">${cur ? `presets/${escHtml(cur)}` : 'not saved as a preset yet'}${ed ? ' · <span class="edited">edited</span>' : ''}</span>`;
+  $('presetSave').disabled = !cur; $('presetSave').title = cur ? `Save over “${$('presetName').textContent}”` : 'Use Save as new to name it first';
+  const ul = $('presetList'), top = ul.scrollTop, sorted = [...list].sort((a, b) => presetLabel(a).localeCompare(presetLabel(b), undefined, { sensitivity: 'base', numeric: true }));
+  ul.innerHTML = sorted.length ? sorted.map((e) => {
+    const f = encodeURIComponent(e.name), here = e.name === cur;
+    if (presetState.renaming === e.name) return `<li class="filerow"><input data-preset-rename-input="${f}" value="${escHtml(presetLabel(e))}" aria-label="New name for ${escHtml(presetLabel(e))}" autocomplete="off">
+      <button class="btn mini" data-preset-rename-ok="${f}">Rename</button><button class="btn mini" data-preset-rename-cancel>Cancel</button></li>`;
+    return `<li class="filerow"><button data-preset-load="${f}" aria-current="${here}"><span>${escHtml(presetLabel(e))}${here && ed ? ' <span class="edited">· edited</span>' : ''}</span>
+        <span class="meta">${new Date(e.mtime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}${A === 'load:' + e.name ? ' · click again to load' : ''}</span></button>
+      <button class="btn mini" data-preset-rename="${f}" aria-label="Rename ${escHtml(presetLabel(e))}">Rename</button>
+      <button class="btn mini" data-preset-del="${f}" aria-label="Delete ${escHtml(presetLabel(e))}">${A === 'del:' + e.name ? 'Confirm' : 'Delete'}</button></li>`;
+  }).join('') : '<li class="muted">No presets yet. Name the rig below and press Save as new.</li>';
+  ul.scrollTop = top;
+  const ri = ul.querySelector('[data-preset-rename-input]'); if (ri && document.activeElement !== ri) { ri.focus(); ri.select(); }
+  if (presetState.lastNote) presetNote(...presetState.lastNote);
 }
 function wirePresets() {
+  $('presetBtn').onclick = () => openPresetDlg($('presetBtn'));
   $('presetSave').onclick = savePreset;
-  $('presetLoad').onclick = () => { const f = $('presetSel').value; if (f) loadPresetFile(f); };
-  $('presetDelete').onclick = deletePreset;
+  $('presetSaveNew').onclick = savePresetAs;
+  $('presetInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); savePresetAs(); } });
+  const dlg = $('presetDlg');
+  dlg.addEventListener('click', (e) => {
+    if (e.target === dlg || e.target.closest('[data-act="preset-close"]')) { closePresetDlg(); return; }
+    const b = e.target.closest('[data-preset-load],[data-preset-rename],[data-preset-del],[data-preset-rename-ok],[data-preset-rename-cancel]'); if (!b) return;
+    const d = b.dataset;
+    if (d.presetLoad) pickPreset(decodeURIComponent(d.presetLoad));
+    else if (d.presetRename) { presetState.renaming = decodeURIComponent(d.presetRename); renderPresetDlg(); }
+    else if (d.presetDel) deletePreset(decodeURIComponent(d.presetDel));
+    else if (d.presetRenameOk) { const f = decodeURIComponent(d.presetRenameOk); renamePreset(f, dlg.querySelector('[data-preset-rename-input]').value); }
+    else { presetState.renaming = null; renderPresetDlg(); }
+  });
+  dlg.addEventListener('keydown', (e) => {
+    const ri = e.target.dataset && e.target.dataset.presetRenameInput;
+    if (ri && e.key === 'Enter') { e.preventDefault(); renamePreset(decodeURIComponent(ri), e.target.value); return; }
+    if (ri && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); presetState.renaming = null; renderPresetDlg(); return; }
+    if (e.key !== 'Tab') return;                                 // keep Tab inside the window
+    const f = [...$('presetDlgCard').querySelectorAll('button,input')].filter((x) => !x.disabled && x.offsetParent);
+    if (!f.length) return;
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
+    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('presetDlg').hidden) { e.preventDefault(); closePresetDlg(); } });
+  // the "edited" mark, checked now and then (cheap: the preset is a few KB)
+  setInterval(() => {
+    if (presetState.sig === null) { if (rig.meters) presetState.sig = presetSig(); return; }
+    const ed = presetEdited(); if (ed !== !$('presetEdited').hidden) { updatePresetEdited(); renderPresetDlg(); }
+  }, 700);
   refreshPresetList();
 }
+
+rig.buildPreset = buildPreset;                                     // tests and the console
+rig.loadPresetJson = async (json, name = 'Console.rig.json') => { await library.core.write('presets', name, json); return loadPresetFile(name); };

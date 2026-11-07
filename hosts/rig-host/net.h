@@ -104,7 +104,7 @@ struct Client {
   std::string in;                        // bytes not yet parsed
   std::string msg; int msgOp = 0;        // a message being reassembled from fragments
   // a binary file announced by the last text message ({type:'asset', ...}), waiting for its bytes
-  std::string pendInst, pendRef; bool pend = false;
+  std::string pendInst, pendRef; bool pend = false, pendPlugin = false;
 };
 inline bool sendAll(sock_t s, const char* p, size_t n) {
   while (n) { const int k = (int)send(s, p, (int)(n > (1u << 20) ? (1u << 20) : n), 0); if (k <= 0) return false; p += k; n -= (size_t)k; }

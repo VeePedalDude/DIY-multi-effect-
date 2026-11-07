@@ -123,8 +123,11 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   check(/rig-host/.test(await page.textContent('#engineState')) && (await V('window.__rig.meters.outPk')) > 0.005, 'connected again, and playing');
 
   console.log('6. The Driver menu: every device, a buffer size, switching while it plays, remembered');
-  await page.click('#settingsBtn'); await sleep(300);
   await page.waitForFunction(() => window.__rig.host.devices && document.querySelectorAll('#hostDev option').length > 0, null, { timeout: 10000 });
+  const btn = await page.evaluate(() => { const b = document.getElementById('driverBtn'); return { shown: !b.hidden && b.offsetWidth > 0, text: b.textContent }; });
+  await page.click('#driverBtn'); await sleep(300);
+  const opened = await page.evaluate(() => !document.getElementById('drawer').hidden && document.activeElement === document.getElementById('hostDev'));
+  check(btn.shown && /^Driver: .+ · \d+$/.test(btn.text) && opened, `the top bar's “${btn.text}” button opens the Driver menu`);
   const menu = await page.evaluate(() => ({ dev: [...document.querySelectorAll('#hostDev option')].map((o) => [o.textContent, o.selected]), shown: !document.getElementById('hostDevRow').hidden && !document.getElementById('hostBufRow').hidden, panel: !document.getElementById('hostPanel').hidden, d: window.__rig.host.devices }));
   check(menu.shown && menu.dev.some(([t, s]) => s && (asio ? /^ASIO · RIG Test ASIO/.test(t) : /choose input and output/.test(t))) && menu.panel === asio,
     `Driver menu: ${menu.dev.map(([t, s]) => (s ? '[' : '') + t + (s ? ']' : '')).join(' | ')}; Buffer menu shown${asio ? ', Driver settings button' : ''}`);
@@ -152,6 +155,19 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   const saved = require('fs').existsSync(cfg) ? require('fs').readFileSync(cfg, 'utf8') : '';
   check(new RegExp(`frames=${want}`).test(saved) && /device=/.test(saved), `remembered in ${path.basename(cfg)}: ${saved.split('\n').filter((l) => /=/.test(l)).join(', ')}`);
   try { require('fs').unlinkSync(cfg); } catch (e) { /* */ }
+
+  console.log('7. A plugin bundle from the library: the host loads its own platform\'s .clap and plays it');
+  const rigfx = fs.readFileSync(path.join(root, 'dist/plugins/trem.rigfx')).toString('base64');
+  const imp = await page.evaluate(async (b) => (await window.__rig.importFiles([new File([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))], 'trem.rigfx')])).map((r) => r.status), rigfx);
+  await page.waitForFunction(() => window.__rig.plugins.results['trem.rigfx'], null, { timeout: 20000 });
+  const pr = await V("window.__rig.plugins.results['trem.rigfx']");
+  check(imp[0] === 'added' && pr.status >= 0, `imported and loaded by the host: “${pr.note}”`);
+  await page.waitForFunction(() => window.__rig.engineDesc.moduleTypes.some((t) => t.type === 'trem'), null, { timeout: 10000 });
+  await V("window.__rig.chain.add('trem')");
+  await page.waitForFunction(() => window.__rig.engineChain.some((e) => e.id === 'trem'), null, { timeout: 10000 });
+  await page.evaluate(() => { window.__rig.cmd('param_set trem depth 1'); window.__rig.cmd('param_set trem rate 0.4'); });
+  const g = await page.evaluate(async () => { let lo = 9, hi = -9, pk = 0; const t0 = performance.now(); while (performance.now() - t0 < 2000) { const v = window.__rig.modMeter('trem', 'gain'); if (v !== undefined) { lo = Math.min(lo, v); hi = Math.max(hi, v); } pk = Math.max(pk, window.__rig.meters.outPk || 0); await new Promise((r) => setTimeout(r, 20)); } return [lo, hi, pk]; });
+  check(g[0] < 0.2 && g[1] > 0.8 && g[2] > 0.003, `TREMOLO in the host's chain at DEPTH 100%: its gain swings ${g[0].toFixed(2)}..${g[1].toFixed(2)}, and the rig plays on (output peak ${g[2].toFixed(3)})`);
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

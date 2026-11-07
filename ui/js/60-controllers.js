@@ -1,8 +1,7 @@
 // 60-controllers.js - outside-world inputs feeding sources.
 //  - USB gamepads, joysticks, flight sticks and HOTAS (the Gamepad API: every axis, hat and button) and MIDI
 //    inputs (Web MIDI: CC, pitch bend, keys, aftertouch) bound to CONTROLLER instances, one control each
-//    (state.inputs; reading and LEARN are in 12-inputs-core.js). Unbound instances read nothing; the bottom
-//    bar's CONTROLLER slider is the on-screen control for `ctrl`.
+//    (state.inputs; reading and LEARN are in 12-inputs-core.js). Unbound instances read nothing.
 //  - A Bluetooth heart strap -> `heart`.
 // Bindings are kept with presets and in this browser (localStorage), by device name, so they come back
 // when the device does. Every optional browser feature fails softly (an app preview can block gamepads,
@@ -18,7 +17,7 @@ function loadInputs() {
 function bindInput(id, b) { if (b) state.inputs[id] = b; else delete state.inputs[id]; delete INPUTS.toggles[id]; delete INPUTS.lastRaw[id]; delete INPUTS.raw[id]; saveInputs(); }
 
 // A value for a CONTROLLER instance; sent at most every 25 ms (the latest one always goes out).
-function queueCtrl(id, v) { if (v === null) return; INPUTS.pending[id] = v; if (id === 'ctrl') { state.ctrl = v; $('ctrlVal').textContent = v.toFixed(2); $('ctrlSlider').value = v; } }
+function queueCtrl(id, v) { if (v === null) return; INPUTS.pending[id] = v; }
 function flushCtrl() {
   const now = performance.now();
   for (const [id, v] of Object.entries(INPUTS.pending)) {
@@ -28,7 +27,6 @@ function flushCtrl() {
     INPUTS.sentAt[id] = now; INPUTS.sentVal[id] = v; delete INPUTS.pending[id];
   }
 }
-function setCtrl(v) { queueCtrl('ctrl', v); }                 // the bottom bar's slider
 // One raw reading of a bound control -> its value (with toggle edges for buttons and keys).
 function feed(id, bind, raw) {
   INPUTS.raw[id] = raw;
@@ -46,7 +44,7 @@ function startLearn(id) { INPUTS.learning = id; INPUTS.learnBase = padSnapshot(r
 function readPads() {
   if (INPUTS.padBlocked || !navigator.getGamepads) return [];
   try { const p = navigator.getGamepads(); return p ? Array.from(p).filter(Boolean) : []; }
-  catch (e) { INPUTS.padBlocked = true; $('padNote').textContent = 'Gamepads are blocked where this page is open. Open the file directly in Chrome to use one; the CONTROLLER slider still works.'; logLine('gamepad blocked: ' + e.message, true); return []; }
+  catch (e) { INPUTS.padBlocked = true; $('padNote').textContent = 'Gamepads are blocked where this page is open. Open the file directly in Chrome to use one.'; logLine('gamepad blocked: ' + e.message, true); return []; }
 }
 // 125 times a second, on its own timer (not the drawing loop, so a quick tap is never missed when frames
 // are slow or the page is hidden): read the pads (the Gamepad API has no events for values), LEARN,
@@ -120,4 +118,5 @@ function wireControllers() {
     } catch (err) { $('heartNote').textContent = /permissions policy/i.test(err.message) ? 'Bluetooth is blocked where this page is open. Open the file directly in Chrome.' : 'Strap not connected: ' + err.message; }
   };
 }
-rig.inputs = { state: () => ({ inputs: state.inputs, learning: INPUTS.learning, midi: INPUTS.midiState, pads: INPUTS.pads.map((p) => p.id), midiInputs: midiNames(), raw: { ...INPUTS.raw } }), learn: startLearn, enableMidi };
+rig.inputs = { state: () => ({ inputs: state.inputs, learning: INPUTS.learning, midi: INPUTS.midiState, pads: INPUTS.pads.map((p) => p.id), midiInputs: midiNames(), raw: { ...INPUTS.raw } }), learn: startLearn, enableMidi,
+  set: queueCtrl };                                          // tests: a value for a CONTROLLER instance, as a bound control would send

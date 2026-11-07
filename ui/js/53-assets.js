@@ -43,7 +43,7 @@ function metaLine(e) {
 }
 function searchText(e) {
   const m = e.meta || {};
-  return [e.name, m.name, m.modeledBy, m.gear, m.gearType, m.toneType, m.architecture].filter(Boolean).join(' ').toLowerCase();
+  return [e.name, m.name, m.modeledBy, m.gear, m.gearType, m.toneType, m.architecture, (e.tags || []).join(' '), e.note || ''].filter(Boolean).join(' ').toLowerCase();
 }
 // Every word of the query must appear somewhere in the file's name or details.
 function matchesQuery(e, q) { const words = q.toLowerCase().split(/\s+/).filter(Boolean); const t = searchText(e); return words.every((w) => t.includes(w)); }

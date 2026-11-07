@@ -90,6 +90,9 @@ function sectionFromSnapshot(s, top) {
 function buildPreset(name) {
   const sec = sectionFromSnapshot(currentSnapshot(), true);
   sec.chain.forEach((c) => { const a = state.assets[c.id]; if (a) c.asset = { kind: a.kind, name: a.name, size: a.size, hash: a.hash }; });
+  // A plugin effect or source names its file, so a rig without it can say which plugin to add (optional: older builds ignore it)
+  sec.chain.forEach((c) => { const p = MTYPES[c.type] && MTYPES[c.type].plugin; if (p) c.plugin = { file: p.file, version: p.version }; });
+  sec.sources.forEach((e) => { const p = TYPES[e.type] && TYPES[e.type].plugin; if (p) e.plugin = { file: p.file, version: p.version }; });
   return {
     format: PRESET_FORMAT, version: PRESET_VERSION, name, saved: new Date().toISOString(),
     chain: sec.chain.concat(state.presetExtras), mods: sec.mods, sources: sec.sources.concat(state.sourceExtras || []), tempo: sec.tempo, master: state.master,
@@ -105,7 +108,7 @@ function readChainList(list, renames, warn) {
     if (!e || typeof e.id !== 'string' || !SOURCE_ID.test(e.id)) { warn(`module ${e && e.id}: not a usable id; skipped`); continue; }
     if (chain.some((c) => c.id === e.id)) { warn(`module ${e.id}: listed twice; the first is used`); continue; }
     const type = renames.modules[e.type] || e.type;
-    if (!MTYPES[type]) { extras.push(e); warn(`${e.id}: this build has no “${e.type}” module; its settings are kept in the file`); continue; }
+    if (!MTYPES[type]) { extras.push(e); warn(e.plugin && e.plugin.file ? `${e.id}: needs the plugin ${e.plugin.file} (add it to the library’s plugins folder); its settings are kept in the file` : `${e.id}: this build has no “${e.type}” module; its settings are kept in the file`); continue; }
     chain.push({ id: e.id, type });
   }
   return { chain, extras };
@@ -117,7 +120,7 @@ function readRack(list, renames, warn, moduleIds = new Set()) {
     if (rack.some((r) => r.id === e.id)) { warn(`source ${e.id}: listed twice; the first is used`); continue; }
     if (moduleIds.has(e.id)) { warn(`source ${e.id}: clashes with a module's id; skipped`); continue; }
     const type = (renames.sourceTypes || {})[e.type] || e.type;
-    if (!TYPES[type]) { extras.push(e); warn(`source ${e.id}: this build has no “${e.type}” source; its settings are kept in the file`); continue; }
+    if (!TYPES[type]) { extras.push(e); warn(e.plugin && e.plugin.file ? `source ${e.id}: needs the plugin ${e.plugin.file} (add it to the library’s plugins folder); its settings are kept in the file` : `source ${e.id}: this build has no “${e.type}” source; its settings are kept in the file`); continue; }
     rack.push({ id: e.id, type });
   }
   return { rack, extras };

@@ -19,8 +19,11 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   const audio = process.env.RIG_HOST_AUDIO ? process.env.RIG_HOST_AUDIO.trim().split(/\s+/) : ['--backend', 'null', '--sim-loopback', String(LOOP)];
   const cfg = path.join(require('os').tmpdir(), `rig-host-test-${PORT}.cfg`);       // where the Driver menu's choice is remembered
   const cfgArg = /wine/.test(bin[0]) ? require('child_process').execSync(`winepath -w ${cfg}`).toString().trim() : cfg;
-  const args = [...bin.slice(1), ...audio, '--riff', '--port', String(PORT), '--no-browser', '--config', cfgArg];
-  const proc = spawn(bin[0], args, { cwd: root, env: { ...process.env, WINEDEBUG: '-all' } });
+  const libDir = path.join(require('os').tmpdir(), `rig-host-lib-${PORT}`);            // stands in for Documents/RIG01
+  fs.rmSync(libDir, { recursive: true, force: true });
+  const libArg = /wine/.test(bin[0]) ? require('child_process').execSync(`winepath -w ${libDir}`).toString().trim() : libDir;
+  const args = [...bin.slice(1), ...audio, '--riff', '--port', String(PORT), '--no-browser', '--config', cfgArg, '--library', libArg];
+  const proc = spawn(bin[0], args, { cwd: root, env: { ...process.env, WINEDEBUG: '-all', LANG: process.env.LANG || 'C.UTF-8' } });   // Wine reads Linux file names in this locale
   let out = ''; proc.stdout.on('data', (d) => { out += d; }); proc.stderr.on('data', (d) => { out += d; });
   for (let i = 0; i < 200 && !/page:/.test(out); i++) await sleep(100);
   check(/page:\s+http:\/\/127\.0\.0\.1:\d+\//.test(out), `${path.basename(bin[bin.length - 1])} started: ${(out.match(/audio:[^\n]*/) || ['?'])[0].trim()}`);
@@ -123,8 +126,11 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   check(/rig-host/.test(await page.textContent('#engineState')) && (await V('window.__rig.meters.outPk')) > 0.005, 'connected again, and playing');
 
   console.log('6. The Driver menu: every device, a buffer size, switching while it plays, remembered');
-  await page.click('#settingsBtn'); await sleep(300);
   await page.waitForFunction(() => window.__rig.host.devices && document.querySelectorAll('#hostDev option').length > 0, null, { timeout: 10000 });
+  const btn = await page.evaluate(() => { const b = document.getElementById('driverBtn'); return { shown: !b.hidden && b.offsetWidth > 0, text: b.textContent }; });
+  await page.click('#driverBtn'); await sleep(300);
+  const opened = await page.evaluate(() => !document.getElementById('drawer').hidden && document.activeElement === document.getElementById('hostDev'));
+  check(btn.shown && /^Driver: .+ · \d+$/.test(btn.text) && opened, `the top bar's “${btn.text}” button opens the Driver menu`);
   const menu = await page.evaluate(() => ({ dev: [...document.querySelectorAll('#hostDev option')].map((o) => [o.textContent, o.selected]), shown: !document.getElementById('hostDevRow').hidden && !document.getElementById('hostBufRow').hidden, panel: !document.getElementById('hostPanel').hidden, d: window.__rig.host.devices }));
   check(menu.shown && menu.dev.some(([t, s]) => s && (asio ? /^ASIO · RIG Test ASIO/.test(t) : /choose input and output/.test(t))) && menu.panel === asio,
     `Driver menu: ${menu.dev.map(([t, s]) => (s ? '[' : '') + t + (s ? ']' : '')).join(' | ')}; Buffer menu shown${asio ? ', Driver settings button' : ''}`);
@@ -152,6 +158,92 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   const saved = require('fs').existsSync(cfg) ? require('fs').readFileSync(cfg, 'utf8') : '';
   check(new RegExp(`frames=${want}`).test(saved) && /device=/.test(saved), `remembered in ${path.basename(cfg)}: ${saved.split('\n').filter((l) => /=/.test(l)).join(', ')}`);
   try { require('fs').unlinkSync(cfg); } catch (e) { /* */ }
+
+  console.log('7. A plugin bundle from the library: the host loads its own platform\'s .clap and plays it');
+  const rigfx = fs.readFileSync(path.join(root, 'dist/plugins/trem.rigfx')).toString('base64');
+  const imp = await page.evaluate(async (b) => (await window.__rig.importFiles([new File([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))], 'trem.rigfx')])).map((r) => r.status), rigfx);
+  await page.waitForFunction(() => window.__rig.plugins.results['trem.rigfx'], null, { timeout: 20000 });
+  const pr = await V("window.__rig.plugins.results['trem.rigfx']");
+  check(imp[0] === 'added' && pr.status >= 0, `imported and loaded by the host: “${pr.note}”`);
+  await page.waitForFunction(() => window.__rig.engineDesc.moduleTypes.some((t) => t.type === 'trem'), null, { timeout: 10000 });
+  await V("window.__rig.chain.add('trem')");
+  await page.waitForFunction(() => window.__rig.engineChain.some((e) => e.id === 'trem'), null, { timeout: 10000 });
+  await page.evaluate(() => { window.__rig.cmd('param_set trem depth 1'); window.__rig.cmd('param_set trem rate 0.4'); });
+  const g = await page.evaluate(async () => { let lo = 9, hi = -9, pk = 0; const t0 = performance.now(); while (performance.now() - t0 < 2000) { const v = window.__rig.modMeter('trem', 'gain'); if (v !== undefined) { lo = Math.min(lo, v); hi = Math.max(hi, v); } pk = Math.max(pk, window.__rig.meters.outPk || 0); await new Promise((r) => setTimeout(r, 20)); } return [lo, hi, pk]; });
+  check(g[0] < 0.2 && g[1] > 0.8 && g[2] > 0.003, `TREMOLO in the host's chain at DEPTH 100%: its gain swings ${g[0].toFixed(2)}..${g[1].toFixed(2)}, and the rig plays on (output peak ${g[2].toFixed(3)})`);
+
+  console.log('8. The library is a real folder (Documents/RIG01 by default): one folder per kind of file');
+  const ls = (d) => { try { return fs.readdirSync(path.join(libDir, d)).filter((n) => !n.endsWith('.part')); } catch (e) { return null; } };
+  check(['NAM', 'IR', 'Effects', 'Mod Sources', 'Skins', 'Presets'].every((d) => ls(d)), `the host made ${fs.readdirSync(libDir).sort().join(', ')}`);
+  check(ls('Effects').includes('trem.rigfx') && await V("window.__rig.library.backend") === 'host', 'the page\'s library is that folder: TREMOLO, imported above, is in Effects');
+  const randB64 = fs.readFileSync(path.join(root, 'dist/plugins/rand.rigfx')).toString('base64');
+  await page.evaluate(async (b) => window.__rig.importFiles([new File([Uint8Array.from(atob(b), (c) => c.charCodeAt(0))], 'rand.rigfx')]), randB64);
+  check(ls('Mod Sources').includes('rand.rigfx') && !ls('Effects').includes('rand.rigfx'), 'a source plugin goes in Mod Sources (by its manifest)');
+  const wav = Buffer.alloc(44 + 960 * 2); wav.write('RIFF', 0); wav.writeUInt32LE(36 + 960 * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(48000, 24); wav.writeUInt32LE(96000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(960 * 2, 40); wav.writeInt16LE(30000, 44);
+  const odd = 'Cab ünïcode – 4x12.wav';
+  fs.writeFileSync(path.join(libDir, 'IR', odd), wav);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus'))); await sleep(1500);
+  const irs = await V("(window.__rig.library.entries.ir || []).map((e) => e.name + ':' + (e.meta ? e.meta.sampleRate : '?'))");
+  check(irs.includes(odd + ':48000'), `a file put in IR by hand shows up on coming back to the page, name intact (${irs.join(', ')})`);
+  await page.fill('#presetName', 'Folder test'); await page.click('#presetSave'); await sleep(1500);
+  const pres = ls('Presets');
+  check(pres.includes('board.json') && pres.some((n) => n.endsWith('.rig.json')), `Save writes the pedalboard and its preset to Presets: ${pres.join(', ')}`);
+  const irBack = await page.evaluate(async (n) => { const f = await window.__rig.library.core.file('ir', n); return new Uint8Array(await f.arrayBuffer()).length; }, odd);
+  check(irBack === wav.length, `the page reads the file's bytes back (${irBack} of ${wav.length})`);
+  await page.evaluate(async (n) => { await window.__rig.library.core.remove('ir', n); }, odd);
+  check(!ls('IR').includes(odd), 'removing it from the library deletes the file');
+
+  console.log('9. Only the rig page can use the library: other sites and other host names are refused');
+  const http = require('http');
+  const req = (headers, method = 'GET', p = '/lib/list') => new Promise((res) => { const r = http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers }, (x) => { let b = ''; x.on('data', (d) => { b += d; }); x.on('end', () => res([x.statusCode, b])); }); r.on('error', (e) => res([0, e.message])); r.end(method === 'PUT' ? 'x' : undefined); });
+  const ok = await req({ 'X-Rig': '1' }), noHdr = await req({}), evil = await req({ 'X-Rig': '1', Origin: 'http://evil.example' }), rebind = await req({ 'X-Rig': '1', Host: `evil.example:${PORT}` });
+  const put = await req({ 'Content-Type': 'text/plain', Origin: 'http://evil.example' }, 'PUT', '/lib/f/plugins%2Fx.clap'), dots = await req({ 'X-Rig': '1' }, 'PUT', '/lib/f/nam%2F..%2F..%2Fx.nam');
+  check(ok[0] === 200 && noHdr[0] === 403 && evil[0] === 403 && rebind[0] === 403 && put[0] === 403 && dots[0] === 400 && !fs.existsSync(path.join(libDir, 'Effects', 'x.clap')),
+    `the page's own request ${ok[0]}; no header ${noHdr[0]}; another site ${evil[0]}; another host name ${rebind[0]}; another site writing a plugin ${put[0]}; a path with .. ${dots[0]}`);
+
+  console.log('10. Anything this browser kept before is copied into the folder, once');
+  await page.evaluate(async () => {
+    const db = await new Promise((r) => { const q = indexedDB.open('rig01-library', 1); q.onsuccess = () => r(q.result); });
+    const nam = JSON.stringify({ version: '0.5.4', architecture: 'Linear', config: { receptive_field: 2, bias: false }, weights: [1, 0], metadata: { name: 'Old Capture' } });
+    await new Promise((r) => { const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').put({ blob: new Blob([nam]), lastModified: Date.now() }, 'nam/old capture.nam'); tx.oncomplete = r; });
+    localStorage.removeItem('rig01.lib.brought');
+  });
+  await page.reload(); await page.waitForFunction(() => window.__rig && window.__rig.library && window.__rig.library.backend === 'host', null, { timeout: 20000 }); await sleep(800);
+  check(ls('NAM').includes('old capture.nam') && ls('Effects').includes('trem.rigfx'), `after a reload: the browser's old capture is in NAM (${ls('NAM').join(', ')}), and everything else is still there`);
+
+  console.log('11. Updating and removing plugin files by hand, with the rig playing');
+  const startHost = async () => { await page.check('input[name=src][value=riff]'); await page.click('#startBtn'); await page.waitForFunction(() => window.__rig.meters && window.__rig.engineChain, null, { timeout: 20000 }); await sleep(1500); };
+  await startHost();
+  // (the engine can still hold a "trem" from before the reload that the page doesn't show: a known rig-host
+  // reconnect issue, reported separately; cleared here so the page's own TREMOLO can take that id)
+  if (!(await V("window.__rig.chain.list().some((e) => e.id === 'trem')"))) { await V("window.__rig.cmd('fx_remove trem')"); await sleep(300); await V("window.__rig.chain.add('trem') && 1"); await sleep(800); }
+  await V("window.__rig.knob('trem.rate', 0.66)");
+  // A newer build: other native code (16 bytes added after each .clap's end, which loaders ignore), repacked.
+  const v2 = await page.evaluate(async (b64) => {
+    const { unzip, zipFiles } = window.__rig.skinTools, files = await unzip(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)));
+    const out = []; for (const [n, d] of files) { if (/\.clap$/.test(n)) { const x = new Uint8Array(d.length + 16); x.set(d); x.fill(7, d.length); out.push([n, x]); } else out.push([n, d]); }
+    const z = zipFiles(out); let s = ''; for (const c of z) s += String.fromCharCode(c); return btoa(s);
+  }, fs.readFileSync(path.join(root, 'dist/plugins/trem.rigfx')).toString('base64'));
+  fs.writeFileSync(path.join(libDir, 'Effects', 'trem.rigfx'), Buffer.from(v2, 'base64'));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForFunction(() => /TREMOLO: 1 in the rig now runs the new version/.test(document.getElementById('log').textContent), null, { timeout: 15000 }).catch(() => {});
+  const u = await page.evaluate(() => ({ log: document.getElementById('log').textContent, chain: window.__rig.engineChain.map((e) => e.id), rate: window.__rig.knob('trem.rate'), types: window.__rig.engineDesc.moduleTypes.filter((t) => t.type === 'trem').length }));
+  check(/trem \(TREMOLO\) replaced/.test(u.log) && /now runs the new version/.test(u.log), 'a newer trem.rigfx put in Effects: the host replaced the type and the TREMOLO in the chain moved onto it');
+  check(u.chain.includes('trem') && Math.abs(u.rate - 0.66) < 1e-6 && u.types === 1, `in the chain still (${u.chain.join(' ')}), RATE kept (${u.rate}), listed once`);
+  await page.reload(); await page.waitForFunction(() => window.__rig && window.__rig.ready, null, { timeout: 15000 }); await startHost();
+  await page.waitForFunction(() => /plugin trem\.rigfx: effect trem \(TREMOLO\) (already loaded|replaced|added)/.test(document.getElementById('log').textContent), null, { timeout: 15000 }).catch(() => {});
+  const rl = await page.evaluate(() => document.getElementById('log').textContent);
+  check(/trem \(TREMOLO\) already loaded/.test(rl) && !/trem \(TREMOLO\) replaced/.test(rl), 'a page reload keeps what the host has: “already loaded”, nothing replaced');
+  const sameClap = await page.evaluate(async (b64) => (await window.__rig.importFiles([new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], 'trem.rigfx')])).length, (() => { const b = fs.readFileSync(path.join(libDir, 'Effects', 'trem.rigfx')); let e = b.length - 22; while (b.readUInt32LE(e) !== 0x06054b50) e--; const t = Buffer.from('repacked'); const c = Buffer.from(b); c.writeUInt16LE(t.length, e + 20); return Buffer.concat([c.subarray(0, e + 22), t]).toString('base64'); })());
+  await page.waitForFunction(() => (document.getElementById('log').textContent.match(/trem \(TREMOLO\) already loaded/g) || []).length >= 2, null, { timeout: 10000 }).catch(() => {});
+  const rl2 = await page.evaluate(() => document.getElementById('log').textContent);
+  check(sameClap === 1 && (rl2.match(/trem \(TREMOLO\) already loaded/g) || []).length >= 2 && await V("window.__rig.host.up"), 'a bundle repacked around the same native code: “already loaded”, and the host plays on (it used to write over the loaded copy)');
+  fs.unlinkSync(path.join(libDir, 'Mod Sources', 'rand.rigfx'));
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await page.waitForFunction(() => !window.__rig.typesKnown().sources.includes('rand') && !window.__rig.engineDesc.sourceTypes.some((t) => t.type === 'rand'), null, { timeout: 10000 }).catch(() => {});
+  const gone = await page.evaluate(() => ({ known: window.__rig.typesKnown().sources, desc: window.__rig.engineDesc.sourceTypes.map((t) => t.type) }));
+  check(!gone.known.includes('rand') && !gone.desc.includes('rand'), `rand.rigfx deleted from Mod Sources: RANDOM is out of Add a source and the host's list (${gone.desc.join(' ')})`);
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

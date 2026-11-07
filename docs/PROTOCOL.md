@@ -30,6 +30,8 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `ext <source> <value>` | feed an outside value to a source (`ext heart 72`, `ext ctrl -0.4`) |
 | `tuner <0\|1> [mute 0\|1]` | strobe tuner on the dry input; with mute (the default) the output fades out while it's on |
 | `tuner_ref <400..480>` | the tuner's A4 reference in Hz (default 440) |
+| `listen <0\|1>` | find the notes being played on the dry input (the Visualizer's keyboard; the page sends it while that view is up) |
+| `plugin_remove <id>` | retire a plugin type whose file was removed: it leaves the Add lists and can't be added; instances already in the rig keep running (loading a plugin with an id already taken by a plugin type replaces it the same way) |
 | `input_channel <0\|1>` | browser only: which interface input to use |
 | `asset_load <inst> <kind>/<file>` | load a library file into a module's slot (`asset_load cab ir/V30 SM57.wav`) |
 | `asset_clear <inst>` | back to the module's built-in (e.g. the built-in cab) |
@@ -151,6 +153,12 @@ The tuner's readings are in the meter block at `meters.tun` (from the descriptio
 4× its pitch: each phase turns at harmonic × (string − target) Hz, forwards when sharp. C API:
 `rig_tuner(on, mute)`, `rig_tuner_ref(a4)`. Meter packets in the browser also carry `t`, the audio
 clock when they were made.
+
+The notes being played (engine/core/listen.h, Poly Voice's tracker) are in the meter block at
+`meters.notes`: on, how many notes, then `notesMax` (6) MIDI note numbers with their fraction (from the
+tuner's A4; −1 for an empty slot), loudest first, then their levels. A note lights after three of the
+tracker's 5 ms hops and goes out when it stops being heard, or at once when the input falls under
+−54 dBFS. C API: `rig_listen(on)`.
 
 When the real rig moves to mod-host, the control hub translates
 `mod_connect` into `cv_map` with min = knob − depth and max = knob + depth.

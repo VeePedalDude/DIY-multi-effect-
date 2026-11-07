@@ -20,7 +20,7 @@ assets = {p.name: f"data:{mime[p.suffix]};base64,{base64.b64encode(p.read_bytes(
           for p in sorted((ui / 'assets').glob('*')) if p.suffix in mime}
 assets_js = "const UI_ASSETS = {" + ",".join(f"'{k}':'{v}'" for k, v in assets.items()) + "};\n"
 app = "(function () {\n'use strict';\n" + assets_js + "\n".join(f"// ===== {p.relative_to(root)} =====\n{p.read_text()}" for p in parts) + "\n})();\n"
-worklet = (ui / 'worklet/engine-worklet.js').read_text()
+worklet = (ui / 'worklet/wclap-host.js').read_text() + '\n' + (ui / 'worklet/engine-worklet.js').read_text()   # the WebCLAP host first: the engine uses it
 wasm = base64.b64encode((root / 'build/rig.wasm').read_bytes()).decode()
 for name, text in (('worklet', worklet), ('app', app)):
     if '</script' in text.lower():

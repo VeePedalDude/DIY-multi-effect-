@@ -2,7 +2,7 @@
 
 ```
           ┌──────────────────────── ui/ (browser) ───────────────────────┐
-guitar →  │ 3D stage · panel · matrix · presets ──text commands──┐       │
+guitar →  │ 3D stage · panel · viz · presets ──text commands─────┐       │
  2i2      │      ▲ meters + description                          ▼       │
           │      └──────────── worklet (ui/worklet) ◄── rig.wasm ────────┤ → 2i2 out
           └──────────────────────────────────────────────────────────────┘
@@ -56,7 +56,7 @@ Native (low latency):  ui/ in a browser ──WebSocket──▶ hosts/rig-host 
 The engine publishes everything the UI needs as JSON (`rig_describe()`): modules with each
 parameter's symbol, label, range, unit, curve and default; sources; and where each value
 sits in the meter block. The worklet builds the protocol from it, and the UI builds the
-stage, knobs, panel, matrix and number formatting from it. That's why adding an effect
+stage, knobs, panel, patching and number formatting from it. That's why adding an effect
 needs no UI or protocol changes.
 
 ## Rules that keep it modular

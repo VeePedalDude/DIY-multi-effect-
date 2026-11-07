@@ -54,17 +54,20 @@ a colour name. Images and fonts are file names inside the `.rigskin`.
 | `sources` | orb, cable and label colour per modulation source id: `lfo env adsr orbit heart ctrl geo seq` (GEO PULSE's 3D view and GATE SEQ's squares draw in it too) |
 | `sourceFallback` | colours for sources that aren't listed (future ones) |
 | `labels` | the source name labels above the orbs: `bg`, `text` |
-| `viz` | the Visualizer view (V): `bg` (a veil over the background picture, so the rings read), `track` (each ring's band), `grid` (the spokes and outer edge), `text` / `bright` (values, the hovered ring), `core` (the centre, which swells with the rack's activity). The rings use the `sources` colours |
+| `viz` | the Visualizer view (V): `bg` (a veil over the background picture, so the rings read), `track` (each ring's band), `grid` (the spokes and outer edge), `text` / `bright` (values, the hovered ring), `core` (the centre, which swells with the rack's activity), and its keyboard: `keyWhite`, `keyBlack`, `keySide` (the white keys' front edges), `keyEdge` (outlines, the black keys' sides), `keyLit` (keys being played, and their glow). The rings use the `sources` colours |
 | `tuner` | the strobe tuner. `tile`: which of your `tiles` it's drawn on (turned sideways). `glass` (its display), `stripe` (the strobe bands), `inTune` / `flat` / `sharp` (note, arrows and marker), `text` / `bright`. The face-down mini card in the top bar: `back`, `backLine` (border and lattice), `backMark` (the little strobe on it) |
 | `fonts` | fonts in the packet: `[{ "family": "Orbitron", "file": "orbitron.woff2", "weight": "700" }]`. Use the family name in `ui.fontDisplay` / `ui.fontMono`. Formats: woff2, woff, ttf, otf. |
-| `css` | a stylesheet in the packet, applied after the built-in one, for anything the settings don't cover. Selectors to use: `#viz` (the Visualizer's canvas), `.top`, `.bottom`, `.panel`, `.drawer`, `.tuner`, `.tunerMini`, `.tabs`, `.tab`, `.pick-search`, `.matrix` (and its `table`, `th`, `.cell`), `.btn`, `.scene`, `.skinrow`, `.asset`, `.patch`, `.overlay .card`. |
+| `css` | a stylesheet in the packet, applied after the built-in one, for anything the settings don't cover. Selectors to use: `#viz` (the Visualizer's canvas), `.top`, `.bottom`, `.panel`, `.drawer`, `.tuner`, `.tunerMini`, `.tabs`, `.tab`, `.pick-search`, `.btn`, `.board` (the pedalboard: `.fsw` footswitches, `.boardtree` its tree), `.skinrow`, `.asset`, `.patch`, `.overlay .card`. |
 
 ### Card frame images
 
 Cards are drawn 518 × 754 pixels. Use that shape (any resolution with the same proportions), with
 transparent rounded corners. The title sits at the upper left (y ≈ 120–200), the display at
 x 50–468, y 206–374, and the knobs below it. Leave those areas plain enough to read over.
-Modules with more than four knobs stretch the strip between y 400 and 470.
+Cards with a second row of knobs (three or four) stretch the strip between y 400 and 470. A module
+with more than four knobs has its others on the back of the card, drawn with the same frame image;
+a tab near the foot of the card (y ≈ height − 120 to − 80, centred) turns it over, so keep that
+area plain too. File modules (Amp, Cab) draw their file strip at y 163–196, just above the display.
 
 ## The packet
 

@@ -87,6 +87,27 @@ const near = (px, h, tol = 60) => { const c = hex(h); return Math.abs(px[0] - c[
   await page.keyboard.press('v'); await sleep(400); const again = await V(`!document.getElementById('viz').hidden`);
   check(back[0] && back[1] === 'visible' && g1 > back[2] && again, `V: the stage is back and drawing again (${g1 - back[2]} frames); V again: the rings`);
 
+  console.log('7. The keyboard lights the notes the riff plays and names them; it listens only while the view is up');
+  {
+    const keys = () => page.evaluate(() => { const k = window.__rig.viz.keys(); return { on: k.on, notes: k.heard.map((h) => Math.round(h.n)), chord: k.chord && (k.chord.name || k.chord.interval || k.chord.notes.join(' ')) }; });
+    let k = await keys(), lit = null, named = new Set(), lights = 0;
+    for (let i = 0; i < 40; i++) {
+      await sleep(150); k = await keys();
+      if (k.chord) named.add(k.chord);
+      if (k.notes.length && !lit) {
+        const n = k.notes[0], px = await page.evaluate((n) => { const v = window.__rig.viz; v.draw(); const p = v.keyAt(n); return v.pixel(p.x, p.y); }, n);
+        lit = { n, px }; lights = near(px, await V('window.__rig.viz.colors().keyLit'), 70) ? 1 : 0;
+      }
+    }
+    check(k.on === 1, 'the Visualizer switches the engine’s listener on (its meters say so)');
+    check(lit && lights, `the riff lights keys: the loudest, MIDI ${lit && lit.n}, is drawn in the skin’s keyLit colour (${lit && lit.px.slice(0, 3)})`);
+    check(named.size > 0, `and the keyboard names what it hears: ${[...named].slice(0, 6).join(', ')}`);
+    await page.screenshot({ path: path.join(shots, 'shot-viz-keys.png') });
+    await page.keyboard.press('v'); await sleep(900);
+    check((await keys()).on === 0, 'back on the stage, the listener is off again');
+    await page.keyboard.press('v'); await sleep(300);
+  }
+
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();
   console.log(fails ? `\n${fails} FAILED` : '\nALL VISUALIZER CHECKS PASSED');

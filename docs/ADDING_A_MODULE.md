@@ -74,6 +74,8 @@ Rules:
 - No memory allocation in `process`. Size buffers as members (fixed arrays).
 - Use `undenorm()` in feedback paths and keep loop gain below 1.
 - Up to 8 parameters (`MAXPAR`) and 2 display meters (`meters()` + names in the desc).
+  The first four knobs are on the front of the card and the rest on its back, so put the knobs
+  people reach for most first.
 - `Context` gives `sr` and `bpm` for tempo-synced effects.
 
 ## 2. Run `./build.sh`
@@ -137,7 +139,7 @@ screen('trem', (c, b, m, h) => {
 NOTES.trem = 'Shown in the focus panel.';
 ```
 
-Then run `./build.sh`. The new effect appears on the stage, in the panel, in the matrix, as a
+Then run `./build.sh`. The new effect appears on the stage, in the panel, as a
 patch target for every source, and in the protocol (`param_set trem depth 0.8`).
 
 `tests/native/test_conformance.cpp` (test 93) checks every registered module automatically: the

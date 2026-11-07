@@ -1,6 +1,7 @@
 // engine/api/rig_api.cpp - flat C API. The browser (WebAssembly) and future hosts
 // (the Linux JACK host) talk to the engine only through these functions.
 #include "../engine.h"
+#include "../plugins.h"
 #include <new>
 
 #if defined(__wasm__)
@@ -102,6 +103,8 @@ EXPORT(rig_collect) void rig_collect() { E().collect(false); }
 // Tuner on the dry input: on/off, and whether the output is muted while it's on.
 EXPORT(rig_tuner) void rig_tuner(int on, int mute) { E().tuner.on = on != 0; E().tuner.mute = mute != 0; }
 EXPORT(rig_tuner_ref) void rig_tuner_ref(float a4) { E().tuner.a4 = rig::clampf(a4, 400.f, 480.f); }
+// The notes being played (the Visualizer's keyboard): on while it's up.
+EXPORT(rig_listen) void rig_listen(int on) { E().listen.on = on != 0; }
 EXPORT(rig_ext)    void rig_ext(int src, float v) { if (E().rack.used(src)) E().rack.ext(src, v); }
 EXPORT(rig_tempo)  void rig_tempo(float bpm) { E().bpm = rig::clampf(bpm, 30.f, 300.f); }
 EXPORT(rig_master) void rig_master(float db) { E().masterDb = rig::clampf(db, -60.f, 6.f); }
@@ -130,7 +133,7 @@ EXPORT(rig_asset_status) const char* rig_asset_status(int m) { return E().used(m
 //   param_set <inst> <symbol> <0..1>          bypass <inst> <0|1>
 //   mod_connect <inst> <symbol> <source> <depth> [phase] [div]     mod_disconnect <inst> <symbol>
 //   set_bpm <bpm>   master <dB>   ext <source> <value>   input_channel <0|1>
-//   tuner <0|1> [mute 0|1]   tuner_ref <A4 Hz, 400..480>
+//   tuner <0|1> [mute 0|1]   tuner_ref <A4 Hz, 400..480>   listen <0|1>
 //   src_add <type> [id]   src_remove <source>   src_set <source> <symbol> <0..1>
 //   src_mod <source> <symbol> <from source> <depth> [phase] [div]   src_unmod <source> <symbol>
 //   src_cfg <source> <symbol> <0..1>   src_cell <source> <row> <symbol> <0..1>
@@ -174,6 +177,8 @@ int exec(char* line) {
     if (!t[1] || (strcmp(t[1], "0") && strcmp(t[1], "1"))) return ERR_RANGE;
     rig_tuner(t[1][0] == '1', !(t[2] && !strcmp(t[2], "0"))); return 0;
   }
+  if (!strcmp(c, "plugin_remove")) { if (!t[1]) return ERR_RANGE; const int r = rig::retirePlugin(t[1]); if (r < 0) return ERR_INSTANCE; E().describe(); return 0; }
+  if (!strcmp(c, "listen")) { if (!t[1] || (strcmp(t[1], "0") && strcmp(t[1], "1"))) return ERR_RANGE; rig_listen(t[1][0] == '1'); return 0; }
   if (!strcmp(c, "tuner_ref")) { const double v = num(t[1]); if (!(v >= 400 && v <= 480)) return ERR_RANGE; rig_tuner_ref((float)v); return 0; }
   if (!strcmp(c, "fx_add")) {
     if (!t[1] || rig::moduleTypeIndex(t[1]) < 0) return ERR_INSTANCE;
@@ -189,7 +194,7 @@ int exec(char* line) {
     E().moveModule(m, (int)strtol(t[2], nullptr, 10)); g_changed |= 2; return 0;
   }
   if (!strcmp(c, "src_add")) {
-    bool known = false; for (int k = 0; k < rig::NSRCTYPES && t[1]; k++) known = known || !strcmp(rig::sourceTypeDesc(k).id, t[1]);
+    bool known = false; for (int k = 0; k < rig::sourceTypeCount() && t[1]; k++) known = known || !strcmp(rig::sourceTypeDesc(k).id, t[1]);
     if (!known) return ERR_INSTANCE;
     const int k = E().addSource(t[1], t[2] ? t[2] : ""); if (k < 0) return k == -2 ? ERR_FULL : k == -3 ? ERR_ID_TAKEN : ERR_INSTANCE;
     g_changed |= 1; return 0;
@@ -231,3 +236,25 @@ EXPORT(rig_input_channel) int rig_input_channel() { return g_inCh; }
 // The slot of the module named in rig_cmd_buf() (an id, or a position in the chain), or -1: for hosts
 // that load files into a module by name (asset messages).
 EXPORT(rig_find_module) int rig_find_module() { g_cmd[sizeof g_cmd - 1] = 0; const int m = inst(g_cmd); return E().used(m) ? m : -1; }
+
+// ---------------------------------------------------------------- plugins (engine/plugins.h)
+// A plugin becomes a new effect or source type. Natively: rig_plugin_open(path) loads a .clap and reads
+// what it is (may take a while: call it off the audio thread), rig_plugin_commit(handle) adds the type
+// (on the engine's thread, between blocks). In the browser the worklet has already instantiated the
+// .wclap and read its description: it writes that JSON into rig_plugin_buf() and calls
+// rig_plugin_register(lib). Either way rig_plugin_status() says what happened, and describe() lists the
+// new type. Errors: -1 unusable, -2 id taken by another type, -3 no room for more plugin types.
+EXPORT(rig_plugin_status) const char* rig_plugin_status() { return rig::pluginStatus().c_str(); }
+#if defined(__wasm__)
+static std::vector<char> g_pluginJson;
+EXPORT(rig_plugin_buf) char* rig_plugin_buf(int bytes) { g_pluginJson.assign((size_t)(bytes > 0 ? bytes : 0) + 1, 0); return g_pluginJson.data(); }
+EXPORT(rig_plugin_register) int rig_plugin_register(int lib, const char* file) {
+  const int r = rig::registerJsPlugin(lib, g_pluginJson.empty() ? "" : g_pluginJson.data(), file);
+  if (r >= 0 && g_engine) E().describe();
+  return r;
+}
+#else
+EXPORT(rig_plugin_open) int rig_plugin_open(const char* path, const char* file) { return rig::openClapPlugin(path, file); }
+EXPORT(rig_plugin_commit) int rig_plugin_commit(int h) { const int r = rig::commitPluginHandle(h); if (r >= 0 && g_engine) E().describe(); return r; }
+EXPORT(rig_plugin_load) int rig_plugin_load(const char* path) { const int h = rig_plugin_open(path, nullptr); return h < 0 ? h : rig_plugin_commit(h); }
+#endif

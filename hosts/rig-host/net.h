@@ -2,7 +2,9 @@
 // talk to it over one WebSocket per open page. Sockets on Windows (Winsock) and Linux; no libraries.
 // Also a tiny reader for the flat JSON messages the page sends, and a string escaper for replies.
 #pragma once
+#include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <cstdio>
 #include <string>
@@ -104,7 +106,7 @@ struct Client {
   std::string in;                        // bytes not yet parsed
   std::string msg; int msgOp = 0;        // a message being reassembled from fragments
   // a binary file announced by the last text message ({type:'asset', ...}), waiting for its bytes
-  std::string pendInst, pendRef; bool pend = false;
+  std::string pendInst, pendRef; bool pend = false, pendPlugin = false;
 };
 inline bool sendAll(sock_t s, const char* p, size_t n) {
   while (n) { const int k = (int)send(s, p, (int)(n > (1u << 20) ? (1u << 20) : n), 0); if (k <= 0) return false; p += k; n -= (size_t)k; }
@@ -140,13 +142,35 @@ template <class F> bool wsParse(Client& c, F&& onMsg) {
     if (fin) { onMsg(c.msgOp, c.msg); c.msg.clear(); }
   }
 }
+// A request header's value (lower-cased request text in, trimmed value out); "" if absent.
+inline std::string header(const std::string& lower, const char* name) {
+  const std::string k = std::string("\r\n") + name + ":"; size_t a = lower.find(k); if (a == std::string::npos) return "";
+  a += k.size(); while (a < lower.size() && lower[a] == ' ') a++; const size_t b = lower.find("\r\n", a);
+  return lower.substr(a, (b == std::string::npos ? lower.size() : b) - a);
+}
+inline std::string pctDecode(const std::string& s) {
+  std::string o; for (size_t i = 0; i < s.size(); i++) {
+    if (s[i] == '%' && i + 2 < s.size() && isxdigit((unsigned char)s[i + 1]) && isxdigit((unsigned char)s[i + 2])) { o += (char)strtol(s.substr(i + 1, 2).c_str(), nullptr, 16); i += 2; }
+    else o += s[i];
+  }
+  return o;
+}
 // Read and answer the HTTP request in c.in. Returns: 0 need more bytes, 1 page or 404 sent (close), 2 now a WebSocket.
-inline int httpHandle(Client& c, const std::string& page) {
+// Requests for /lib/... (the library folder, library.h) go to onLib(method, path, body, lowerHeaders) -> the whole response.
+template <class F> int httpHandle(Client& c, const std::string& page, F&& onLib) {
   const size_t end = c.in.find("\r\n\r\n"); if (end == std::string::npos) return c.in.size() > 16384 ? 1 : 0;
-  const std::string req = c.in.substr(0, end); c.in.erase(0, end + 4);
+  std::string lower = c.in.substr(0, end); for (char& ch : lower) ch = (char)tolower((unsigned char)ch);
+  const size_t clen = (size_t)strtoull(header(lower, "content-length").c_str(), nullptr, 10);
+  if (clen > (256u << 20)) return 1;                             // 256 MB: far more than any library file
+  if (c.in.size() < end + 4 + clen) return 0;                    // the body isn't all here yet
+  const std::string req = c.in.substr(0, end), body = c.in.substr(end + 4, clen); c.in.erase(0, end + 4 + clen);
   const std::string line = req.substr(0, req.find("\r\n"));
-  std::string lower = req; for (char& ch : lower) ch = (char)tolower((unsigned char)ch);
   const bool get = line.rfind("GET ", 0) == 0, upgrade = lower.find("upgrade: websocket") != std::string::npos;
+  const size_t sp = line.find(' '), sp2 = line.find(' ', sp + 1);
+  if (sp != std::string::npos && sp2 != std::string::npos && line.compare(sp + 1, 5, "/lib/") == 0) {
+    const std::string r = onLib(line.substr(0, sp), line.substr(sp + 1, sp2 - sp - 1), body, lower);
+    sendAll(c.s, r.data(), r.size()); return 1;
+  }
   std::string path = get ? line.substr(4, line.find(' ', 4) - 4) : "";
   if (get && upgrade && path == "/ws") {
     const size_t k = lower.find("sec-websocket-key:"); if (k == std::string::npos) return 1;

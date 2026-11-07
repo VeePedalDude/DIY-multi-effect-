@@ -2,7 +2,28 @@
 
 ## The folder
 
-The library is a normal folder you choose. In the rig: menu → **Library → Choose folder…**.
+**With the rig-host** (the program you run on Windows or Linux), the library is made for you: the first
+time it runs it creates `RIG01` in your Documents folder (`--library DIR` puts it elsewhere), and the page
+uses it with nothing to choose or allow:
+
+```
+Documents/RIG01/
+  NAM/           Neural Amp Modeler captures (.nam)
+  IR/            cabinet impulse responses (.wav)
+  Effects/       effect plugins (.rigfx bundles, or plain .clap)
+  Mod Sources/   modulation source plugins (.rigfx); one imported through the rig goes here by its manifest
+  Skins/         looks for the page (.rigskin)
+  Presets/       the pedalboard (board.json) and its presets (.rig.json)
+  library.json   your tags, favorites and notes (below)
+```
+
+Put files in these folders from Explorer; they show up when you come back to the page (or press
+**Rescan**), and a new plugin is loaded straight away. **Open folder** in the Library panel opens it.
+Anything this browser had stored before is copied in the first time. The page reads and writes the folder
+through the rig-host (`hosts/rig-host/library.h`, `/lib/...`), which answers only its own page: requests
+from other web sites, or to another host name, are refused.
+
+**In the test page** (`rig-test.html` opened straight in Chrome), the library is a normal folder you choose. In the rig: menu → **Library → Choose folder…**.
 Pick or create something like `Documents/RIG Library`. The rig creates one subfolder per file kind:
 
 ```
@@ -10,6 +31,9 @@ RIG Library/
   ir/        cabinet impulse responses (.wav)
   nam/       Neural Amp Modeler captures (.nam)
   presets/   RIG presets (.rig.json)
+  skins/     looks for the page (.rigskin)
+  plugins/   effects and sources as files (.rigfx bundles; in the rig-host also plain .clap): docs/PLUGINS.md
+  library.json   your tags, favorites and notes (below)
 ```
 
 These are ordinary files. Copy IRs straight into `ir/` from Explorer or Finder and press **Rescan**,
@@ -39,11 +63,15 @@ different file with a taken name gets ` (2)` added.
 
 ## Choosing a file for a module
 
-Select the module (click it, or press its number). Its panel lists every file of its kind with
-details: sample rate, channels and length for IRs; architecture, gear, tone and author for NAM
-captures. Type in the search box: every word must match the name or the details.
+Click the file strip under the module's name on its card (it says what's loaded, and BROWSE), or
+**Browse…** in its panel. The file browser opens in the middle of the page. It lists every file of
+the module's kind with details: sample rate, channels and length for IRs; architecture, gear, tone
+and author for NAM captures. Type in the search box: every word must match the name or the details.
+A click loads a file straight away and the browser stays open, so you can try captures one after
+another; **Done**, Escape or a click outside closes it. Files dropped on it are imported.
 **Use built-in** returns to the module's default. **Remove file** deletes the file from the
-library; it asks you to press again to confirm.
+library; it asks you to press again to confirm. The module's panel keeps just the current file,
+these buttons and a drop area.
 
 **IRs** of any length up to 20 s, mono or stereo, play in full: a 20 ms cabinet, a room, or a long
 reverb. The browser decodes the WAV (16/24/32-bit or float, any sample rate it reads) and resamples
@@ -59,6 +87,32 @@ and the amp's panel and the engine log say why; whatever was playing keeps playi
 In the browser, loading a capture briefly pauses audio (about 0.1 s for a large one; a 20 s stereo IR
 about half a second) because the engine runs on the audio thread there. The swap itself is
 a click-free crossfade. The Linux host loads on a background thread instead.
+
+## The pedalboard: scenes and presets
+
+Presets live on the pedalboard in the bottom-left corner. **Scenes** are banks of presets; you build
+each one with as many presets as you want.
+
+- **▼ / ▲** step to the previous / next scene. The board shows the scene's name, its position and how
+  many presets it has.
+- **The footswitches** are the scene's presets: click one to put it on. Its LED lights; an orange dot
+  means it has unsaved edits. **+** adds a preset to the scene.
+- **Name and SAVE**: type the preset's name in the box (Enter saves too). **SAVE** writes the preset
+  you're on, under that name.
+- **Every preset is its own sound.** A new one starts blank: gate, amp and cab with their knobs at
+  defaults, no modulation. Edit it as you like.
+- **Edits stay with each preset** while you move around the board, so you can try one, step to another
+  and come back. They last until the page restarts; only **SAVE** keeps them.
+- **The tree** (**Tree**) shows every scene with its presets. There you can rename scenes and presets,
+  move them up and down, add presets (**+ Preset**) and scenes (**+ Scene**), and delete them.
+  Deleting asks for a second click.
+
+After a restart the board comes back on the preset you were on, as saved.
+
+The board is `presets/board.json` in the library: the scenes in order, each preset's name and file,
+and where you were. Each preset is its own `.rig.json` file beside it, in the format below. Preset
+files from before the board stay in the folder but aren't on it. Their A–D `scenes` still read, but
+aren't used.
 
 ## Preset files
 
@@ -92,7 +146,7 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
   migrate to it with every source at its default, which is exactly how they sounded.
 - **Version 3** made `sources` the modulation rack: every instance in order, with its `type`
   (several of one type is fine), and `mods` targets can be source knobs (`lfo2.rate`:
-  cross-modulation). The rack belongs to the preset; scenes change the knobs and patches of the
+  cross-modulation). The rack belongs to the preset; scenes (in older files) change the knobs and patches of the
   instances in it. Version 2 files migrate to the six fixed sources they were made with.
 - **Version 4** made `chain` the effect chain in order: every instance with its `type` (several of
   one type is fine, any order, any subset). Version 3 files migrate to the five fixed modules in the
@@ -108,3 +162,37 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
 The Linux host will use the same folder layout on disk (for example `~/RIG Library`). Files can
 be added over the network or from a USB stick, and the host loads them with
 `asset_load <inst> <kind>/<file name>`.
+
+## Tags, favorites and notes
+
+Every file in the library and every kind of effect and source can be found by tag:
+
+- **Automatic tags** come from what a thing is:
+  - a NAM capture's gear type, tone, architecture, maker and who modeled it;
+  - an IR's length (up to 150 ms *cab*, up to 800 ms *room*, longer *reverb*), mono or stereo, and the
+    gear its file name mentions (V30, Greenback, SM57, 4x12…);
+  - a plugin's own tags, its category and *plugin*;
+  - a built-in effect or source is tagged *built-in*.
+- **Your tags and a note**: in the file browser, type tags (comma separated) and a note under the
+  loaded file's name.
+- **Favorites**: the ☆ beside any file, effect or source.
+
+Each list gets a row of chips: ★ (favorites only), then the tags used in that list, most used first.
+Choosing chips narrows the list to what has all of them. In the add panels a chosen chip searches every
+tab. The search box matches tags and notes too.
+
+Your tags, favorites and notes live in `library.json` at the top of the library folder. The files
+themselves are never changed, and the tags travel when you copy or back up the folder. The file is
+plain JSON:
+
+```json
+{ "format": "rig-library", "version": 1,
+  "files": { "nam/JCM800 crunch.nam": { "tags": ["rhythm"], "fav": true, "note": "for the verse" } },
+  "types": { "fx:holo": { "fav": true } } }
+```
+
+## Plugins in presets
+
+A preset that uses a plugin effect or source names its file (`"plugin": { "file": "trem.rigfx",
+"version": "1.0.0" }` on that chain or rack entry; older builds ignore it). Opened where the plugin
+isn't in the library, the preset says which file to add, and keeps that module's settings in the file.

@@ -16,6 +16,7 @@
 #include "fx_chain.h"
 #include "mod_rack.h"
 #include "core/tuner.h"
+#include "core/listen.h"
 
 namespace rig {
 
@@ -27,7 +28,8 @@ constexpr int M_MOD  = M_EFF + MAXMOD * MAXPAR;             // MAXMOD x MAXMODME
 constexpr int M_SRCM = M_MOD + MAXMOD * MAXMODMETERS;       // MAXSRC x MAXSRCMETERS source display values
 constexpr int M_SEFF = M_SRCM + MAXSRC * MAXSRCMETERS;      // MAXSRC x MAXPAR source knobs after cross-modulation, 0..1
 constexpr int M_TUN  = M_SEFF + MAXSRC * MAXPAR;            // the tuner (core/tuner.h TunerMeter)
-constexpr int M_LEN  = M_TUN + T_LEN;
+constexpr int M_NOTE = M_TUN + T_LEN;                       // the notes being played (core/listen.h ListenMeter)
+constexpr int M_LEN  = M_NOTE + L_LEN;
 
 // Small allocation-free JSON writer (no printf, so the WebAssembly build needs no imports).
 struct JsonOut {
@@ -77,7 +79,7 @@ struct Engine {
   float inBuf[MAXBLOCK], outL[MAXBLOCK], outR[MAXBLOCK];
   float aL[MAXBLOCK], aR[MAXBLOCK], bL[MAXBLOCK], bR[MAXBLOCK];
   float masterDb = 0.f; OnePole masterS;
-  Tuner tuner; float muteG = 1.f, muteStep = 0.f;          // tuner on the dry input; output fades out while tuning with mute
+  Tuner tuner; NoteListener listen; float muteG = 1.f, muteStep = 0.f;          // tuner on the dry input; output fades out while tuning with mute
   DCBlock dcL, dcR;
   int nanResets = 0;
   float meters[M_LEN];
@@ -100,7 +102,7 @@ struct Engine {
     int nd = 0; const char* const* ids = defaultChain(nd);    // engine/modules/default_chain.txt
     for (int i = 0; i < nd; i++) addModule(ids[i], nullptr, -1, false);
     runWord = wantOrder.load(); curOrder.store(runWord); dipG = dipTarget = 1.f; dipStep = 1.f / (0.010f * sr);
-    rack.init(sr); tuner.init(sr); muteG = 1.f; muteStep = 1.f / (0.010f * sr);
+    rack.init(sr); tuner.init(sr); listen.init(sr); muteG = 1.f; muteStep = 1.f / (0.010f * sr);
     masterS.setMs(sr, 30); masterS.y = db2lin(masterDb);
     memset(meters, 0, sizeof meters);
     describe(); writeRack(); writeChain();
@@ -244,6 +246,7 @@ struct Engine {
     if (dipping) for (int i = 0; i < n; i++) { aL[i] *= dipRamp[i]; aR[i] *= dipRamp[i]; }
     bool bad = false;
     tuner.process(inBuf, n);
+    listen.process(inBuf, n, tuner.a4);
     const float muteTarget = tuner.on && tuner.mute ? 0.f : 1.f;
     float g = db2lin(masterDb);
     for (int i = 0; i < n; i++) {
@@ -264,6 +267,7 @@ struct Engine {
   }
   void publish() {
     tuner.meters(&meters[M_TUN]);
+    listen.meters(&meters[M_NOTE]);
     meters[M_NAN] = (float)nanResets;
     for (int k = 0; k < MAXSRC; k++) meters[M_SRC + k] = rack.slot[k].val;
     for (int m = 0; m < MAXMOD; m++) {
@@ -346,17 +350,21 @@ struct Engine {
     j.key("nan"); j.num(M_NAN); j.ch(','); j.key("src"); j.num(M_SRC); j.ch(','); j.key("eff"); j.num(M_EFF); j.ch(',');
     j.key("mod"); j.num(M_MOD); j.ch(','); j.key("srcm"); j.num(M_SRCM); j.ch(','); j.key("len"); j.num(M_LEN); j.ch(',');
     j.key("perMod"); j.num(MAXMODMETERS); j.ch(','); j.key("perSrc"); j.num(MAXSRCMETERS); j.ch(','); j.key("seff"); j.num(M_SEFF); j.ch(',');
-    j.key("tun"); j.num(M_TUN); j.ch(','); j.key("tunLen"); j.num(T_LEN); j.ch(','); j.key("tunBands"); j.num(TUN_BANDS);
+    j.key("tun"); j.num(M_TUN); j.ch(','); j.key("tunLen"); j.num(T_LEN); j.ch(','); j.key("tunBands"); j.num(TUN_BANDS); j.ch(',');
+    j.key("notes"); j.num(M_NOTE); j.ch(','); j.key("notesMax"); j.num(LISTEN_NOTES);
     j.raw("},");
     j.key("maxModules"); j.num(MAXMOD); j.ch(',');
     j.key("moduleCategories"); j.ch('[');                   // the tabs of the add panel, in order
     for (int c = 0; c < NMODCATS; c++) { if (c) j.ch(','); j.ch('{'); j.key("id"); j.str(moduleCategories()[c].id); j.ch(','); j.key("label"); j.str(moduleCategories()[c].label); j.ch(','); j.key("blurb"); j.str(moduleCategories()[c].blurb); j.ch('}'); }
     j.raw("],");
     j.key("moduleTypes"); j.ch('[');                         // every kind of effect the chain can hold
-    for (int t = 0; t < NMODTYPES; t++) {
-      const ModuleDesc& d = moduleTypeDesc(t);
-      if (t) j.ch(',');
-      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(moduleTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("kind"); j.str(d.kind); j.ch(',');
+    for (int t = 0, first = 1; t < moduleTypeCount(); t++) {
+      if (moduleTypeRetired(t)) continue;
+      const ModuleDesc& d = moduleTypeDesc(t); const PluginInfo* pl = moduleTypes()[t].plugin;
+      if (!first) j.ch(',');
+      first = 0;
+      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(pl ? pl->category.c_str() : moduleTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("kind"); j.str(d.kind); j.ch(',');
+      if (pl) { j.key("plugin"); j.ch('{'); j.key("file"); j.str(pl->file.c_str()); j.ch(','); j.key("author"); j.str(pl->author.c_str()); j.ch(','); j.key("version"); j.str(pl->version.c_str()); j.ch(','); j.key("tags"); j.raw(pl->tags.c_str()); j.raw("},"); }
       j.key("params"); params(j, d.nparams, d.params);
       j.ch(','); j.key("meters"); j.ch('[');
       for (int k = 0; k < d.nmeters; k++) { if (k) j.ch(','); j.str(d.meters[k]); }
@@ -379,10 +387,13 @@ struct Engine {
     for (int c = 0; c < NSRCCATS; c++) { if (c) j.ch(','); j.ch('{'); j.key("id"); j.str(sourceCategories()[c].id); j.ch(','); j.key("label"); j.str(sourceCategories()[c].label); j.ch(','); j.key("blurb"); j.str(sourceCategories()[c].blurb); j.ch('}'); }
     j.raw("],");
     j.key("sourceTypes"); j.ch('[');                         // every kind of source the rack can hold
-    for (int t = 0; t < NSRCTYPES; t++) {
-      const SourceDesc& d = sourceTypeDesc(t);
-      if (t) j.ch(',');
-      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(sourceTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
+    for (int t = 0, first = 1; t < sourceTypeCount(); t++) {
+      if (sourceTypeRetired(t)) continue;
+      const SourceDesc& d = sourceTypeDesc(t); const PluginInfo* pl = sourceTypes()[t].plugin;
+      if (!first) j.ch(',');
+      first = 0;
+      j.ch('{'); j.key("type"); j.str(d.id); j.ch(','); j.key("category"); j.str(pl ? pl->category.c_str() : sourceTypes()[t].category); j.ch(','); j.key("name"); j.str(d.name); j.ch(','); j.key("sub"); j.str(d.sub); j.ch(',');
+      if (pl) { j.key("plugin"); j.ch('{'); j.key("file"); j.str(pl->file.c_str()); j.ch(','); j.key("author"); j.str(pl->author.c_str()); j.ch(','); j.key("version"); j.str(pl->version.c_str()); j.ch(','); j.key("tags"); j.raw(pl->tags.c_str()); j.raw("},"); }
       j.key("ext"); j.str(d.ext); j.ch(','); j.key("taps"); j.raw(d.taps ? "true" : "false"); j.ch(',');
       j.key("params"); params(j, d.nparams, d.params); j.ch(',');
       j.key("settings"); params(j, d.nsettings, d.settings); j.ch(',');

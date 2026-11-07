@@ -1,5 +1,5 @@
 // tests/browser/rack.cjs - the modulation rack in headless Chromium: adding sources from the "+" orb,
-// knobs and cross-modulation from the panel, carrying a cable orb to orb, the matrix's source-knob
+// knobs and cross-modulation from the panel, carrying a cable orb to orb, a source knob's
 // columns, duplicating, removing, a full rack, and a preset that brings its rack back.
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const path = require('path'), fs = require('fs');
@@ -7,6 +7,10 @@ const root = path.resolve(__dirname, '../..');
 let fails = 0;
 const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// presets: the pedalboard in the bottom-left corner (ui/js/70-presets.js)
+const boardSave = async (page, name) => { await page.fill('#presetName', name); await page.click('#presetSave'); await sleep(900); };
+const boardSlot = async (page, i) => { await page.click(`.fsw[data-slot="${i}"]`); await sleep(1500); };
+const boardAdd = async (page) => { await page.click('#boardAdd'); await sleep(1500); };
 
 (async () => {
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -64,19 +68,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(here && r.conns['lfo2.shape'] === 'orbit' && r.cables.includes('orbit>lfo2.shape') && !(await page.evaluate(() => window.__rig.state.carrying)), 'the target source opens with “Patch THREE-BODY here” on its knobs; one click patches SHAPE');
   await page.screenshot({ path: path.join(shots, 'shot-rack-stage.png') });
 
-  console.log('5. The matrix has a column for every source knob');
-  await page.click('#vMatrix'); await sleep(500);
-  const cols = await page.evaluate(() => document.querySelectorAll('#matrix thead tr:last-child th[scope=col]').length);
-  const want = await page.evaluate(() => Object.keys(window.__rig.state.conns).length >= 0 && document.querySelectorAll('#matrix tbody tr').length);
-  await page.click('.cell[data-pid="lfo.shape"][data-sid="adsr"]'); await sleep(500);
+  console.log('5. A source knob is patched from its panel (Moved by), with no Mod Matrix');
+  await page.evaluate(() => { window.__rig.state.focus = 'src:lfo'; }); await page.click('#vViz'); await sleep(200); await page.click('#vStage'); await sleep(400);
+  const offered = await page.evaluate(() => [...document.querySelectorAll('#panel [data-spatch="lfo.shape"] option')].map((o) => o.value));
+  await page.selectOption('[data-spatch="lfo.shape"]', 'adsr'); await sleep(500);
   r = await R();
-  check(cols === 10 + 32 && want === 7 && r.conns['lfo.shape'] === 'adsr', `${cols} columns (10 module knobs + 32 source knobs: 2 LFOs x 8, ENV 3, ADSR 4, ORBIT 6, HEART 1, CTRL 2), 7 rows; a dot patches ADSR -> LFO shape`);
+  check(offered.includes('adsr') && offered.includes('env') && r.conns['lfo.shape'] === 'adsr' && !(await page.$('#vMatrix')), `LFO's SHAPE “Moved by” offers the rack's sources (${offered.filter(Boolean).length}); choosing ADSR patches it`);
   await page.screenshot({ path: path.join(shots, 'shot-rack-matrix.png') });
-  await page.click('#vStage'); await sleep(300);
 
   console.log('6. Duplicate and remove');
-  // open a source by its name in the matrix (on the stage it may sit under the side panel)
-  const open = async (id) => { await page.click('#vMatrix'); await sleep(300); await page.click(`[data-edit-src="${id}"]`); await sleep(400); await page.click('#vStage'); await sleep(300); };
+  // open a source's panel (on the stage its orb may sit under the side panel)
+  const open = async (id) => { await page.evaluate((id) => { window.__rig.state.focus = 'src:' + id; }, id); await page.click('#vViz'); await sleep(300); await page.click('#vStage'); await sleep(300); };
   await open('lfo2');
   await page.click('[data-act="dup-src"]'); await sleep(800);
   r = await R();
@@ -100,10 +102,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   for (const id of ['orbit2', 'orbit3', 'orbit4', 'orbit5', 'orbit6', 'orbit7', 'orbit8', 'orbit9', 'orbit10', 'orbit11']) await page.evaluate((id) => window.__rig.rack.remove(id), id);
   await sleep(600);
   const before = (await R()).ui.map((s) => s.id).join();
-  await page.click('#settingsBtn'); await page.fill('#presetInput', 'Rack Test'); await page.click('#presetSave'); await sleep(800);
-  for (const id of ['lfo3', 'orbit12', 'orbit13', 'heart']) await page.evaluate((id) => window.__rig.rack.remove(id), id);
+  await boardSave(page, 'Rack Test');
+  await boardAdd(page); await fresh();
+  r = await R();
+  check(r.ui.length === 0 && r.engine.length === 0, 'a new footswitch starts with no modulation: an empty rack in the page and the engine');
   await page.evaluate(() => window.__rig.rack.add('env')); await sleep(600);
-  await page.selectOption('#presetSel', 'Rack Test.rig.json'); await page.click('#presetLoad'); await sleep(1500); await fresh();
+  await boardSlot(page, 0); await fresh();
   r = await R();
   const after = r.ui.map((s) => s.id).join();
   check(after === before && r.engine.length === r.ui.length && r.ui.every((s) => r.engine.some((e) => e.id === s.id && e.slot === s.slot)) && r.conns['lfo.shape'] === 'adsr' && r.conns['lfo2.rate'] === undefined,

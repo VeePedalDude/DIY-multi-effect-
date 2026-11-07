@@ -1,12 +1,16 @@
 // tests/browser/chain.cjs - the effect chain in headless Chromium: adding a module from the "+" card,
 // its knobs, moving it with ◀ ▶, duplicating, patching a source to the new one, removing one, a full
-// chain, the matrix, and a preset that brings its chain back in order.
+// chain, patching the new modules, and a preset that brings its chain back in order.
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || 'playwright-core');
 const path = require('path'), fs = require('fs');
 const root = path.resolve(__dirname, '../..');
 let fails = 0;
 const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// presets: the pedalboard in the bottom-left corner (ui/js/70-presets.js)
+const boardSave = async (page, name) => { await page.fill('#presetName', name); await page.click('#presetSave'); await sleep(900); };
+const boardSlot = async (page, i) => { await page.click(`.fsw[data-slot="${i}"]`); await sleep(1500); };
+const boardAdd = async (page) => { await page.click('#boardAdd'); await sleep(1500); };
 
 (async () => {
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -26,7 +30,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const inStep = (c) => ids(c.ui) === ids(c.engine) && c.ui.every((m) => c.engine.some((e) => e.id === m.id && e.slot === m.slot));
   const fresh = async () => { const t0 = await page.evaluate(() => window.__rig.ctx.currentTime); await page.waitForFunction((t0) => window.__rig.meters.t > t0 + 0.3, t0, { timeout: 10000 }); };
   const outPeak = () => page.evaluate(async () => { let p = 0; const t0 = performance.now(); while (performance.now() - t0 < 1500) { p = Math.max(p, window.__rig.meters.outPk); await new Promise((r) => setTimeout(r, 25)); } return p; });
-  const open = async (id) => { await page.click('#vMatrix'); await sleep(200); await page.evaluate((id) => { window.__rig.state.focus = id; }, id); await page.click('#vStage'); await sleep(400); };
+  const open = async (id) => { await page.evaluate((id) => { window.__rig.state.focus = id; }, id); await page.click('#vViz'); await sleep(200); await page.click('#vStage'); await sleep(400); };
   const setSlider = (sel, v) => page.evaluate(([sel, v]) => { const el = document.querySelector(sel); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, [sel, v]);
 
   console.log('1. The default chain, and the "+" card');
@@ -71,7 +75,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const pk = await outPeak();
   check(ids(c.ui) === 'holo2 gate amp cab holo tess' && inStep(c) && await page.isDisabled('[data-act="fx-left"]') && pk > 0.01, `chain now ${ids(c.ui)} in the page and the engine; ◀ is disabled at the front; still playing (peak ${pk.toFixed(3)})`);
   await page.screenshot({ path: path.join(shots, 'shot-chain-stage.png') });
-  await page.evaluate(() => { window.__rig.state.focus = 'addfx'; }); await page.click('#vMatrix'); await page.click('#vStage'); await sleep(400);
+  await page.evaluate(() => { window.__rig.state.focus = 'addfx'; }); await page.click('#vViz'); await page.click('#vStage'); await sleep(400);
   check(await page.getAttribute('[data-pick-tab="fx:delay"]', 'aria-selected') === 'true', 'the add panel opens again on the tab used last (Delay)');
   await page.screenshot({ path: path.join(shots, 'shot-picker.png') });
   await open('holo2');
@@ -97,18 +101,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const pk2 = await outPeak();
   check(armed === 'Confirm remove' && ids(c.ui) === 'holo2 gate cab cab2 holo tess' && inStep(c) && !c.conns['amp.input'] && pk2 > 1e-4, `Remove asks once more; the amp and its patch leave page and engine; still playing, quieter without its gain (peak ${pk2.toFixed(4)})`);
 
-  console.log('7. The matrix has columns for the new modules');
-  await page.click('#vMatrix'); await sleep(400);
-  const heads = await page.evaluate(() => [...document.querySelectorAll('#matrix thead tr:last-child th[scope=col] small')].map((s) => s.textContent));
-  check(heads.includes('HOLOGRAM 2') && heads.includes('CAB IR 2') && !heads.includes('AMP') && await page.isVisible('[data-matrix-addfx]'), `columns follow the chain (${[...new Set(heads)].slice(0, 6).join(', ')}…)`);
+  console.log('7. The new modules are patch targets (no Mod Matrix: patching is on the stage and in the panels)');
+  await open('cab2');
+  const targets = await page.evaluate(() => [...document.querySelectorAll('#panel [data-patch="cab2.mix"] option')].map((o) => o.value));
+  check(targets.includes('lfo') && targets.includes('ctrl') && !(await page.$('#vMatrix')) && !(await page.$('#matrix')), `CAB IR 2's MIX can be patched from its panel (${targets.filter(Boolean).length} sources offered); the Mod Matrix view is gone`);
   await page.screenshot({ path: path.join(shots, 'shot-chain-matrix.png') });
-  await page.click('#vStage'); await sleep(300);
 
   console.log('8. A preset brings its chain back, in order');
-  await page.click('#settingsBtn'); await page.fill('#presetInput', 'Chain Test'); await page.click('#presetSave'); await sleep(800);
+  await boardSave(page, 'Chain Test');
   const saved = ids((await C()).ui);
-  await page.evaluate(() => { window.__rig.chain.remove('holo2'); window.__rig.chain.remove('cab2'); window.__rig.chain.add('amp', 0); window.__rig.chain.move('tess', 0); }); await sleep(800);
-  await page.selectOption('#presetSel', 'Chain Test.rig.json'); await page.click('#presetLoad'); await sleep(1500); await fresh();
+  await boardAdd(page); await fresh();
+  c = await C();
+  check(ids(c.ui) === 'gate amp cab' && inStep(c), `a new footswitch starts blank: ${ids(c.ui)} in the page and the engine`);
+  await page.evaluate(() => { window.__rig.chain.add('amp', 0); window.__rig.chain.move('tess', 0); }); await sleep(800);
+  await boardSlot(page, 0); await fresh();
   c = await C();
   const fb2 = await page.evaluate(() => window.__rig.eff('holo2', 'feedback'));
   check(ids(c.ui) === saved && inStep(c) && Math.abs(fb2 - 0.8) < 1e-3 && c.conns['holo2.halo'] === 'lfo', `loading it restores ${ids(c.ui)} in the page and the engine, HOLOGRAM 2's knobs and its patch`);
@@ -129,7 +135,36 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const se = await page.evaluate(() => window.__rig.screenErrors);
   check(drawn.length === 15 && se.length === 0 && ids((await C()).ui) === saved, `added and removed ${drawn.join(', ')}: every face screen drew${se.length ? ' (errors: ' + se.join(' | ') + ')' : ''}; the chain is back to ${saved}`);
 
-  console.log('10. A full chain');
+  console.log('10. More than four knobs: the rest are on the back of the card, a tab turns it over');
+  {
+    const id = await page.evaluate(() => { const m = window.__rig.chain.add('peq'); return m && m.id; }); await sleep(900);
+    const n = (await C()).ui.length;
+    await page.mouse.move(700, 120); await page.keyboard.press(String(n)); await sleep(300); await page.evaluate(() => window.__rig.camSnap()); await sleep(300);
+    const sides = await page.evaluate((id) => [0, 1, 2, 3, 4, 5, 6, 7].map((k) => window.__rig.cardScreen(id, k).side).join(''), id);
+    check(sides === '00001111', `PARAMETRIC (8 knobs): knobs 1-4 on the front, 5-8 on the back (${sides})`);
+    let tab = await page.evaluate((id) => window.__rig.cardScreen(id, 'tab'), id);
+    await page.mouse.click(tab.x, tab.y);
+    await page.waitForFunction((id) => window.__rig.cardAngle(id) === 1, id, { timeout: 10000 }).catch(() => {});
+    const flipped = await page.evaluate((id) => !!window.__rig.cardFlip[id], id);
+    const back = await page.evaluate((id) => window.__rig.cardScreen(id, 5), id);
+    const before = await page.evaluate((id) => document.querySelector(`[data-pid="${id}.g2"]`).value, id);
+    await page.mouse.move(back.x, back.y); await page.mouse.down(); await page.mouse.move(back.x, back.y - 40, { steps: 6 }); await page.mouse.move(back.x, back.y - 80, { steps: 6 }); await page.mouse.up(); await sleep(300);
+    const after = await page.evaluate((id) => document.querySelector(`[data-pid="${id}.g2"]`).value, id);
+    check(flipped && back.side === 1 && Number(after) > Number(before) + 0.1, `the tab turns it over; GAIN 2 (the 6th knob, on the back) turns by dragging (${Number(before).toFixed(2)} → ${Number(after).toFixed(2)})`);
+    await page.selectOption(`[data-patch="${id}.q2"]`, 'lfo'); await sleep(400);
+    tab = await page.evaluate((id) => window.__rig.cardScreen(id, 'tab'), id);
+    await page.mouse.click(tab.x, tab.y);
+    await page.waitForFunction((id) => window.__rig.cardAngle(id) === 0, id, { timeout: 10000 }).catch(() => {}); await sleep(200);
+    tab = await page.evaluate((id) => window.__rig.cardScreen(id, 'tab'), id);
+    const end = await page.evaluate((id) => window.__rig.cableEnd(`${id}.q2`), id);
+    const front = await page.evaluate((id) => !window.__rig.cardFlip[id], id);
+    check(front && end && Math.hypot(end.x - tab.x, end.y - tab.y) < 40 && (await page.evaluate(() => window.__rig.cables())).includes(`lfo>${id}.q2`),
+      `turned back to the front, the LFO's cable to Q 2 (on the back) ends at the tab (${end ? Math.round(Math.hypot(end.x - tab.x, end.y - tab.y)) : '?'} px away)`);
+    await page.screenshot({ path: path.join(shots, 'shot-card-back.png') });
+    await page.evaluate((id) => window.__rig.chain.remove(id), id); await sleep(700);
+  }
+
+  console.log('11. A full chain');
   for (let i = 0; i < 8; i++) await page.evaluate(() => window.__rig.chain.add('gate'));
   await sleep(1000); c = await C();
   const extra = await page.evaluate(() => window.__rig.chain.add('gate'));

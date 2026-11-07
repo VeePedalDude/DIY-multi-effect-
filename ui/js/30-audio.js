@@ -19,6 +19,7 @@ async function startAudio(source) {
   node.port.onmessage = (e) => onEngineMsg(e.data);
   node.connect(ctx.destination);
   rig.node = node;
+  await loadLibraryPlugins();                                  // the library's plugins first: the rig may use them (61-plugins.js)
   syncChain(); syncRack(); sendAll();
   pushAllAssets();
   await ctx.resume();

@@ -19,6 +19,7 @@
 #include <atomic>
 #include <cstring>
 #include "sources/registry.h"
+#include "core/plugin.h"
 #include "core/tap.h"
 
 namespace rig {
@@ -31,10 +32,22 @@ constexpr int MAXSRC = 16;                 // instances in the rack
 constexpr int SRC_ID_LEN = 16;             // id, including the terminating zero
 
 // The registry as a table: each type's description and a way to make one.
-struct SourceType { const SourceDesc& (*desc)(); Source* (*make)(); const char* category; };
-#define RIG_TYPE(T, m, c) SourceType{ []() -> const SourceDesc& { static T proto; return proto.desc(); }, []() -> Source* { return new T(); }, #c },
-inline const SourceType* sourceTypes() { static const SourceType t[NSRCTYPES] = { RIG_SOURCES(RIG_TYPE) }; return t; }
+// Built-ins, then plugin sources loaded while the rig runs (core/plugin.h), as for modules (fx_chain.h).
+constexpr int MAXPLUGINSOURCES = 32;
+struct SourceType {
+  const SourceDesc& (*descFn)(); Source* (*makeFn)(); const char* category; PluginInfo* plugin;
+  const SourceDesc& desc() const { return plugin ? plugin->sdesc : descFn(); }
+  Source* make() const { return plugin ? new PluginSource(plugin) : makeFn(); }
+};
+#define RIG_TYPE(T, m, c) SourceType{ []() -> const SourceDesc& { static T proto; return proto.desc(); }, []() -> Source* { return new T(); }, #c, nullptr },
+struct SourceTypeTable {
+  SourceType t[NSRCTYPES + MAXPLUGINSOURCES] = { RIG_SOURCES(RIG_TYPE) };
+  int n = NSRCTYPES;
+};
 #undef RIG_TYPE
+inline SourceTypeTable& sourceTypeTable() { static SourceTypeTable t; return t; }
+inline const SourceType* sourceTypes() { return sourceTypeTable().t; }
+inline int sourceTypeCount() { return sourceTypeTable().n; }
 inline const SourceDesc& sourceTypeDesc(int t) { return sourceTypes()[t].desc(); }
 // The categories (folders, and the tabs of the add panel), in order, and what a fresh rack holds.
 struct SourceCategory { const char* id; const char* label; const char* blurb; };
@@ -42,7 +55,8 @@ struct SourceCategory { const char* id; const char* label; const char* blurb; };
 inline const SourceCategory* sourceCategories() { static const SourceCategory t[NSRCCATS] = { RIG_SOURCE_CATEGORIES(RIG_SCAT) }; return t; }
 #undef RIG_SCAT
 inline const char* const* defaultRack(int& n) { static const char* const ids[] = { RIG_DEFAULT_RACK }; n = (int)(sizeof ids / sizeof ids[0]); return ids; }
-inline int sourceTypeIndex(const char* type) { for (int t = 0; t < NSRCTYPES; t++) if (!strcmp(sourceTypeDesc(t).id, type)) return t; return -1; }
+inline bool sourceTypeRetired(int t) { return sourceTypes()[t].plugin && sourceTypes()[t].plugin->retired; }
+inline int sourceTypeIndex(const char* type) { for (int t = 0; t < sourceTypeCount(); t++) if (!sourceTypeRetired(t) && !strcmp(sourceTypeDesc(t).id, type)) return t; return -1; }
 
 enum RackError { RACK_BAD_TYPE = -1, RACK_FULL = -2, RACK_BAD_ID = -3, RACK_NO_SUCH = -4 };
 
@@ -99,7 +113,7 @@ struct ModRack {
   // Add an instance of type t (id nullptr or "" = automatic). Returns its slot, or a RackError.
   int add(int t, const char* id) {
     collect(false);
-    if (t < 0 || t >= NSRCTYPES) return RACK_BAD_TYPE;
+    if (t < 0 || t >= sourceTypeCount()) return RACK_BAD_TYPE;
     char want[SRC_ID_LEN];
     if (id && id[0]) { if (!validId(id) || find(id) >= 0) return RACK_BAD_ID; memcpy(want, id, strlen(id) + 1); }
     else autoId(t, want);

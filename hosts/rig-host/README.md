@@ -10,6 +10,10 @@ serves the same page to control it, so the browser only draws: it's no longer in
 2. Plug in the Scarlett 2i2, set it to 48 kHz in Focusrite Control, and close other programs that use it.
 3. Run `rig-host.exe`. It opens the page in your browser (`http://127.0.0.1:8000/`). Press **Start**.
 
+The first time it runs it makes a **`RIG01` folder in your Documents** with `NAM`, `IR`, `Effects`,
+`Mod Sources`, `Skins` and `Presets` inside: that is the library (docs/LIBRARY.md). Put files there from
+Explorer, or import them in the page; **Library → Open folder** opens it.
+
 Windows SmartScreen may warn that the program is unrecognised (it isn't signed): **More info → Run anyway**.
 The page loads three.js from the internet the first time, as the test bench does.
 
@@ -25,6 +29,7 @@ rig-host.exe --in scarlett --out scarlett --frames 64
 | `--list` | lists inputs and outputs, with numbers |
 | `--in N\|NAME`, `--out N\|NAME` | the devices (a number from `--list`, or part of the name). Choose one and the other follows it onto the same interface; choose neither and the input follows the default output |
 | `--asio NAME` | the ASIO driver (part of its name); without it, the interface's own driver if there is one (see ASIO below) |
+| `--library DIR` | the library folder (default `RIG01` in your Documents, made on first run) |
 | `--config FILE` | where the Driver menu's choice is remembered (default `rig-host.cfg` next to the program) |
 | `--frames N` | a fixed buffer size. Without it the host starts at 64 and doubles the buffer (up to 512) whenever the audio drops out |
 | `--periods N` | buffers in the queue (default 2) |
@@ -117,6 +122,8 @@ browser page ──WebSocket──▶ rig-host ──▶ engine (engine/api/rig_
 - **Page:** `dist/rig-test.html`, built into the program by `tools/embed_page.py`, served with
   `window.RIG_HOST` set. `ui/js/31-host.js` then connects to `/ws` instead of starting browser audio;
   the rest of the page works unchanged.
+- **Library:** `library.h` keeps the page's library in a real folder (Documents/RIG01) and serves it
+  at `/lib/...` (list, read, write, delete, open in Explorer); see docs/LIBRARY.md.
 - **Commands:** the same text protocol as the browser ([PROTOCOL.md](../../docs/PROTOCOL.md)), parsed
   by the engine itself (`rig_exec`), so the two can't drift apart. Two more for the host: `host_input
   riff|interface` and `latency_test`.

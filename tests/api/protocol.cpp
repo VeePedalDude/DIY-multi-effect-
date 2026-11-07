@@ -28,7 +28,7 @@ int main() {
     {"bypass gate 1", 0, 0}, {"bypass gate 0", 0, 0}, {"bypass 99 1", -1, 0},
     {"set_bpm 90", 0, 0}, {"set_bpm 20", -207, 0}, {"master -6", 0, 0}, {"master 12", -207, 0},
     {"ext ctrl 0.5", 0, 0}, {"ext nobody 0.5", -207, 0}, {"input_channel 1", 0, 0},
-    {"tuner 1", 0, 0}, {"tuner 1 mute 0", 0, 0}, {"tuner 2", -207, 0}, {"tuner 0", 0, 0}, {"tuner_ref 432", 0, 0}, {"tuner_ref 500", -207, 0},
+    {"tuner 1", 0, 0}, {"tuner 1 mute 0", 0, 0}, {"tuner 2", -207, 0}, {"tuner 0", 0, 0}, {"tuner_ref 432", 0, 0}, {"tuner_ref 500", -207, 0}, {"listen 1", 0, 0}, {"listen 2", -207, 0}, {"listen", -207, 0}, {"listen 0", 0, 0}, {"plugin_remove", -207, 0}, {"plugin_remove holo", -1, 0}, {"plugin_remove nosuch", -1, 0},
     {"src_add lfo", 0, 1}, {"src_add lfo wobble", 0, 1}, {"src_add lfo wobble", -2, 0}, {"src_add nosuch", -1, 0},
     {"src_set wobble rate 0.25", 0, 0}, {"src_set wobble nope 0.25", -103, 0}, {"src_set wobble rate 2", -207, 0},
     {"src_mod wobble rate env 0.4", 0, 0}, {"src_mod wobble rate env 0.4 45 2", 0, 0}, {"src_mod wobble rate nobody 0.4", -207, 0}, {"src_unmod wobble rate", 0, 0},

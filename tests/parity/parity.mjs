@@ -4,11 +4,12 @@ import fs from 'fs';
 const bytes = fs.readFileSync('build/rig.wasm');
 const mod = new WebAssembly.Module(bytes);
 const imports = WebAssembly.Module.imports(mod);
-const X = new WebAssembly.Instance(mod, {}).exports; X._initialize?.();
+const STUBS = { rig: { plugin_create: () => 0, plugin_destroy: () => {}, plugin_process: () => {}, plugin_output: () => 0, plugin_meters: () => 0 } };
+const X = new WebAssembly.Instance(mod, STUBS).exports; X._initialize?.();
 let fails = 0;
 const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 
-check(imports.length === 0, `no imports (${imports.map((i) => i.module + '.' + i.name).join(', ') || 'none'}) · ${(bytes.length / 1024).toFixed(0)} KB`);
+check(imports.every((i) => i.module === 'rig' && /^plugin_/.test(i.name)) && imports.length === 5, `imports only the plugin bridge (${imports.map((i) => i.module + '.' + i.name).join(', ')}) · ${(bytes.length / 1024).toFixed(0)} KB`);
 X.rig_init(48000);
 const u = new Uint8Array(X.memory.buffer, X.rig_describe()); let n = 0; while (u[n]) n++;
 const desc = JSON.parse(new TextDecoder().decode(u.subarray(0, n)));

@@ -92,13 +92,12 @@ const HOTAS = 'Fake HOTAS X (Vendor: 044f Product: b108)';
   const back = await boundText('waiting', false), v6 = await settle('ctrl', 1);
   check(gone && back && v6 > 0.98, 'unplugged: “waiting for it to be plugged in”; back in, it reads again (+1 at full twist, inverted, 0…+1)');
 
-  console.log('6. Bindings come back after a reload; the slider still moves an unbound CONTROLLER');
+  console.log('6. Bindings come back after a reload; UNBIND frees the CONTROLLER');
   await start();
   const st = await page.evaluate(() => window.__rig.inputs.state());
   check(st.inputs.ctrl && st.inputs.ctrl.device === HOTAS && st.inputs.ctrl.invert && st.inputs.ctrl.range === 'pos' && st.midi === 'on', `after a reload: ctrl ← ${st.inputs.ctrl && st.inputs.ctrl.type} ${st.inputs.ctrl && st.inputs.ctrl.num + 1}, inverted, 0…+1; MIDI back on by itself`);
   await open('ctrl'); await page.click('[data-in="unbind"]'); await sleep(200);
-  await page.$eval('#ctrlSlider', (el) => { el.value = '0.3'; el.dispatchEvent(new Event('input', { bubbles: true })); }); await sleep(200);
-  check((await lastExt('ctrl')) === 'ext ctrl 0.300' && /Not bound/.test(await page.textContent('#inView')), 'UNBIND, then the CONTROLLER slider: ext ctrl 0.300');
+  check(/Not bound/.test(await page.textContent('#inView')) && !(await page.evaluate(() => window.__rig.inputs.state().inputs.ctrl)) && !(await page.$('#ctrlSlider')), 'UNBIND: CONTROLLER is unbound (and there is no on-screen slider)');
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

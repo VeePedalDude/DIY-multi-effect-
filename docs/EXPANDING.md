@@ -47,7 +47,7 @@ differently.
 ## What updates itself
 
 Once the description changes, these follow with no other edits: the stage card or orb, the panel,
-the matrix (rows and columns), patching from and to it, cross-modulation, presets and scenes (in
+patching from and to it, cross-modulation, presets (in
 real units), the text protocol (`param_set`, `src_set`, `src_mod`), the worklet, and the
 conformance tests (format, range, finiteness, allocation, independence).
 

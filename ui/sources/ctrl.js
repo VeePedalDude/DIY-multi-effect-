@@ -10,7 +10,7 @@ SRCVIEW.ctrl = (() => {
     let h = `<div class="prow"><b style="letter-spacing:.08em">INPUT</b><span class="mono" id="inVal" style="font-size:12px"></span></div>`;
     if (learning) h += `<p class="note" style="color:var(--fg)">Listening: move a stick, the throttle or a hat, press a button, or turn a MIDI knob or fader…</p>`;
     else if (b) h += `<p class="note" id="inBound"><b style="color:var(--fg)">${esc(describeBinding(b))}</b>${here ? '' : ' · <span class="warnline">waiting for it to be plugged in</span>'}</p>`;
-    else h += `<p class="note">Not bound. Press LEARN, then move the control you want on a gamepad, joystick, flight stick or MIDI controller.${s.id === 'ctrl' ? ' Until then the CONTROLLER slider at the bottom moves it.' : ''}</p>`;
+    else h += `<p class="note">Not bound. Press LEARN, then move the control you want on a gamepad, joystick, flight stick or MIDI controller.</p>`;
     h += `<div class="row"><button class="btn mini${learning ? ' on' : ''}" data-in="learn" aria-pressed="${learning}">${learning ? 'CANCEL' : 'LEARN'}</button>`;
     if (b) {
       h += `<button class="btn mini${b.invert ? ' on' : ''}" data-in="invert" aria-pressed="${b.invert}">INVERT</button>

@@ -46,14 +46,40 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .preset{display:flex;align-items:center;gap:10px}
 .preset .name{display:flex;flex-direction:column;gap:2px;min-width:150px}
 .preset .name b{font-size:19px;font-weight:600}
-.presetbtn{background:none;border:1px solid transparent;border-radius:8px;padding:2px 8px;margin-left:-8px;color:inherit;text-align:left;cursor:pointer}
-.presetbtn:hover,.presetbtn:focus-visible{border-color:var(--accent)}
 .edited{color:var(--warn);font-weight:500}
-.presetnew input{flex:1;min-height:38px;background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 10px;color:inherit}
-.asset li.filerow > button[data-preset-load]{flex:1}
-#presetList li.filerow{align-items:center;gap:6px}
-#presetList li.filerow > .btn.mini{width:auto;flex:none;flex-direction:row;align-items:center;justify-content:center;min-height:34px;padding:0 12px;border:1px solid var(--line2);background:var(--raise);text-align:center}
-.asset li.filerow > input{flex:1;min-height:34px;background:var(--raise);border:1px solid var(--accent);border-radius:8px;padding:0 10px;color:inherit}
+/* the pedalboard (70-presets.js) */
+.board{position:absolute;left:16px;bottom:10px;width:440px;display:flex;flex-direction:column;gap:6px;padding:8px 10px;border:1px solid var(--line2);border-radius:14px;background:var(--raise)}
+.bscene{display:flex;align-items:center;gap:6px}
+.bnav{width:30px;height:30px;border-radius:8px;border:1px solid var(--line2);background:var(--glass);color:inherit;font-size:12px}
+.bsname{display:flex;flex-direction:column;min-width:120px;line-height:1.15}
+.bsname b{font-size:14px;letter-spacing:.06em;text-transform:uppercase}
+.bsname small{font-family:var(--mono);font-size:10px;color:var(--muted)}
+.bswitches{display:flex;gap:6px;flex-wrap:wrap;max-width:520px}
+.fsw{position:relative;width:64px;min-height:62px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px 5px;border-radius:12px;border:1px solid var(--line2);background:var(--glass);color:inherit;cursor:pointer}
+.fsw .led{width:8px;height:8px;border-radius:50%;background:var(--line2)}
+.fsw b{font-size:16px;line-height:1}
+.fsw small{max-width:58px;font-size:10px;line-height:1.2;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fsw.on{border-color:var(--accent)}
+.fsw.on .led{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.fsw.ed::after{content:"";position:absolute;top:5px;right:6px;width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.fsw.empty small{font-style:italic}
+.fsw.add{justify-content:center;font-size:22px;color:var(--muted);border-style:dashed}
+.bsave{display:flex;align-items:center;gap:6px}
+.bsave input{flex:1;min-width:0;min-height:34px;background:var(--glass);border:1px solid var(--line2);border-radius:8px;padding:0 10px;color:inherit}
+.bsave .edited{font-size:11px}
+.boardtree{position:absolute;left:16px;bottom:200px;z-index:12;width:min(560px,calc(100vw - 32px));max-height:min(560px,calc(100vh - 260px));overflow:auto;gap:10px;padding:16px}
+.boardtree h2{margin:2px 0 0;font-size:18px;letter-spacing:.06em}
+.treelist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.tscene{border:1px solid var(--line2);border-radius:10px;padding:6px 8px}
+.tscene.here{border-color:var(--accent)}
+.trow,.tpreset{display:flex;align-items:center;gap:4px}
+.trow .tname{flex:1}
+.trow small{color:var(--muted);font-family:var(--mono);font-size:10px}
+.tscene ol{list-style:none;margin:4px 0 0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:3px}
+.tpick{flex:1;text-align:left;background:none;border:1px solid transparent;border-radius:8px;padding:5px 8px;color:inherit;cursor:pointer}
+.tpick[aria-current="true"]{border-color:var(--accent);background:var(--glass)}
+.tpick small{color:var(--muted)}
+.tren{flex:1;min-height:30px;background:var(--glass);border:1px solid var(--accent);border-radius:8px;padding:0 8px;color:inherit}
 .seg{display:flex;gap:4px;padding:3px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
 .seg button{min-height:34px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:600 13px/1 var(--display);letter-spacing:.1em}
 .seg button[aria-pressed="true"]{background:var(--accent);color:var(--ink)}
@@ -102,12 +128,8 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .seqlane{display:block;width:100%;height:auto;border-radius:10px;border:1px solid var(--line);touch-action:none;cursor:crosshair}
 .hw{margin-top:auto;display:flex;flex-direction:column;gap:8px;padding-top:14px;border-top:1px solid var(--line);font-size:14px}
 
-.bottom{left:0;right:0;bottom:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;padding:10px 16px;background:var(--glass);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
-.scenes{display:flex;gap:6px;align-items:center}
-.scene{width:52px;min-height:48px;border-radius:10px;border:1px solid var(--line2);background:var(--raise);font-size:19px;font-weight:700}
-.scene.stored{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
-.scene[aria-pressed="true"]{background:var(--accent);color:var(--ink);border-color:var(--accent)}
-.scene.storing{outline:2px dashed var(--warn);outline-offset:2px}
+.bottom{left:0;right:0;bottom:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;padding:10px 16px 10px 476px;background:var(--glass);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
+@media (max-width:900px){.board{position:static;width:auto}.bottom{padding-left:16px}}
 .slider{display:flex;flex-direction:column;gap:4px;width:150px;font:500 11px/1.2 var(--mono);letter-spacing:.1em;color:var(--muted)}
 .hint{flex:1 1 240px;min-width:0;text-align:right;font-size:14px;color:var(--muted)}
 .hint.carry{color:var(--fg)}
@@ -156,7 +178,7 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .drop{border:1px dashed var(--line2);border-radius:10px;padding:10px;text-align:center;font-size:13px;color:var(--muted)}
 .filedlg{width:min(760px,100%);max-height:min(860px,calc(100vh - 32px));padding:22px;gap:12px;overflow:hidden}
 .filedlg h2{margin:2px 0 0;font-size:24px;letter-spacing:.06em}
-.filedlg .fdhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.filedlg .fdhead,.boardtree .fdhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .filedlg .fdcur{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;background:var(--raise)}
 .filedlg ul.fdlist{max-height:none;flex:1 1 auto;min-height:120px}
 .filedlg .fdbtns .spacer{flex:1}
@@ -246,9 +268,6 @@ body.panel-hidden .matrix{right:16px}
 <header class="hud top" id="top">
   <span class="brand">RIG/01</span>
   <button class="btn icon" id="settingsBtn" aria-label="Settings" aria-expanded="false" aria-controls="drawer"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" fill="none"/></svg></button>
-  <div class="preset">
-    <button class="name presetbtn" id="presetBtn" aria-haspopup="dialog" aria-controls="presetDlg" title="Presets: save, load, rename"><span class="eyebrow">Preset ▾</span><b><span id="presetName">Ambient Drive</span><span class="edited" id="presetEdited" hidden> · edited</span></b></button>
-  </div>
   <div class="seg" role="group" aria-label="View">
     <button id="vStage" aria-pressed="true">3D Stage</button>
     <button id="vMatrix" aria-pressed="false">Mod Matrix</button>
@@ -335,12 +354,19 @@ body.panel-hidden .matrix{right:16px}
 </aside>
 
 <footer class="hud bottom" id="bottom">
-  <div class="scenes" role="group" aria-label="Scenes">
-    <button class="scene" data-scene="A" aria-pressed="false">A</button>
-    <button class="scene" data-scene="B" aria-pressed="false">B</button>
-    <button class="scene" data-scene="C" aria-pressed="false">C</button>
-    <button class="scene" data-scene="D" aria-pressed="false">D</button>
-    <button class="btn" id="storeBtn" aria-pressed="false">Store</button>
+  <div class="board" id="board" role="group" aria-label="Pedalboard">
+    <div class="bscene">
+      <button class="bnav" id="sceneDown" aria-label="Previous scene" title="Previous scene">▼</button>
+      <div class="bsname"><b id="sceneName">Scene 1</b><small id="sceneCount"></small></div>
+      <button class="bnav" id="sceneUp" aria-label="Next scene" title="Next scene">▲</button>
+      <button class="btn mini" id="boardTreeBtn" aria-expanded="false" aria-controls="boardTree">Tree</button>
+    </div>
+    <div class="bswitches" id="boardSwitches" role="group" aria-label="Presets in this scene"></div>
+    <div class="bsave">
+      <input id="presetName" aria-label="Preset name" placeholder="Name this preset" autocomplete="off" spellcheck="false">
+      <span class="edited" id="presetEdited" hidden>edited</span>
+      <button class="btn primary" id="presetSave">Save</button>
+    </div>
   </div>
   <button class="btn" id="tap">Tap <span class="mono" id="bpm">120</span></button>
   <div class="slider"><label for="master" style="color:inherit;font:inherit">MASTER <span id="masterVal">-12 dB</span></label><input type="range" id="master" min="-60" max="6" step="1" value="-12"></div>
@@ -362,17 +388,12 @@ body.panel-hidden .matrix{right:16px}
   </div>
 </div>
 
-<div class="overlay" id="presetDlg" hidden>
-  <div class="card filedlg asset" id="presetDlgCard" role="dialog" aria-modal="true" aria-labelledby="presetDlgTitle">
-    <div class="fdhead"><div><div class="eyebrow" id="presetCount"></div><h2 id="presetDlgTitle">Presets</h2></div>
-      <button class="btn mini" data-act="preset-close" aria-label="Close presets">✕</button></div>
-    <div class="fdcur"><div class="cur" id="presetCur"></div>
-      <div class="row"><button class="btn primary" id="presetSave">Save</button></div></div>
-    <p class="note" id="presetNote" role="status">Presets are .rig.json files in the library's presets folder.</p>
-    <ul id="presetList" class="fdlist" aria-label="Saved presets"></ul>
-    <div class="row presetnew"><input id="presetInput" aria-label="Name for a new preset" placeholder="Name for a new preset" autocomplete="off"><button class="btn" id="presetSaveNew">Save as new</button></div>
-    <div class="row fdbtns"><span class="spacer"></span><button class="btn" data-act="preset-close">Done</button></div>
-  </div>
+<div class="card boardtree" id="boardTree" hidden role="region" aria-label="Preset tree">
+  <div class="fdhead"><div><div class="eyebrow" id="treeCount"></div><h2>Scenes and presets</h2></div>
+    <button class="btn mini" data-act="tree-close" aria-label="Close the tree">✕</button></div>
+  <ol id="treeList" class="treelist"></ol>
+  <div class="row"><button class="btn" data-act="tree-add-scene">+ Scene</button></div>
+  <p class="note" id="boardNote" role="status"></p>
 </div>
 <div class="overlay" id="fileDlg" hidden>
   <div class="card filedlg asset" id="fileDlgCard" role="dialog" aria-modal="true" aria-labelledby="fileDlgTitle"></div>

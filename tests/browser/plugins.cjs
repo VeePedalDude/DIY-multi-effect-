@@ -76,7 +76,7 @@ const b64 = (f) => fs.readFileSync(path.join(root, f)).toString('base64');
   check(saved && saved.chain.some((c) => c.id === 'trem' && c.plugin && c.plugin.file === 'trem.rigfx') && saved.sources.some((s) => s.id === 'rand' && s.plugin), 'the preset names each plugin\'s file');
   const json = JSON.stringify(saved);
   await boot(); await start();
-  const back = await page.evaluate(async (json) => { const r = await window.__rig.loadPresetJson(json); await new Promise((r) => setTimeout(r, 800)); return { chain: window.__rig.engineChain.map((e) => e.id), rack: (window.__rig.engineRack || []).map((s) => s.id), note: document.getElementById('presetNote').textContent, err: r && r.error, results: Object.keys(window.__rig.plugins.results), lib: (window.__rig.library.entries.plugins || []).map((e) => e.name) }; }, json);
+  const back = await page.evaluate(async (json) => { const r = await window.__rig.loadPresetJson(json); await new Promise((r) => setTimeout(r, 800)); return { chain: window.__rig.engineChain.map((e) => e.id), rack: (window.__rig.engineRack || []).map((s) => s.id), note: document.getElementById('boardNote').textContent, err: r && r.error, results: Object.keys(window.__rig.plugins.results), lib: (window.__rig.library.entries.plugins || []).map((e) => e.name) }; }, json);
   check(back.chain.includes('trem') && back.rack.includes('rand'), `after a reload: chain ${back.chain.join(' ')}; rack ${back.rack.join(' ')}`);
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);

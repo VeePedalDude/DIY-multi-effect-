@@ -9,14 +9,10 @@ const root = path.resolve(__dirname, '../..');
 let fails = 0;
 const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// presets: the window opened from the preset name in the top bar (ui/js/70-presets.js)
-const presetSaveNew = async (page, name) => { await page.click('#presetBtn'); await page.fill('#presetInput', name); await page.click('#presetSaveNew'); await sleep(800); };
-const presetLoad = async (page, file) => {                      // unsaved edits: the second click loads
-  if (await page.$eval('#presetDlg', (d) => d.hidden)) await page.click('#presetBtn');
-  const sel = `[data-preset-load="${encodeURIComponent(file)}"]`; await page.click(sel); await sleep(300);
-  if (/again to load/.test(await page.textContent('#presetNote'))) await page.click(sel);
-};
-const presetClose = (page) => page.click('#presetDlg [data-act="preset-close"]');
+// presets: the pedalboard in the bottom-left corner (ui/js/70-presets.js)
+const boardSave = async (page, name) => { await page.fill('#presetName', name); await page.click('#presetSave'); await sleep(900); };
+const boardSlot = async (page, i) => { await page.click(`.fsw[data-slot="${i}"]`); await sleep(1500); };
+const boardAdd = async (page) => { await page.click('#boardAdd'); await sleep(1500); };
 
 // Runs in the page: build files and drop them on an element or a screen point.
 async function drop(page, target, files) {
@@ -108,39 +104,35 @@ async function drop(page, target, files) {
   await page.click('#fileDlg', { position: { x: 5, y: 5 } }); await sleep(200);
   check(viaPanel === 'cab' && await page.evaluate(() => window.__rig.fileDlg.id === null), 'the side panel’s Browse button opens it too; a click outside closes it');
 
-  console.log('5. Save a preset file');
-  await presetSaveNew(page, 'Lib Test'); await presetClose(page);
-  const saved = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'Lib Test.rig.json')).text()));
+  console.log('5. SAVE on the pedalboard writes the preset file');
+  await boardSave(page, 'Lib Test');
+  const libFile = await page.evaluate(() => window.__rig.board.scenes[0].presets[0].file);
+  const saved = await page.evaluate(async (f) => JSON.parse(await (await window.__rig.library.core.file('presets', f)).text()), libFile);
   const cabEntry = saved.chain.find((c) => c.id === 'cab'), ampEntry = saved.chain.find((c) => c.id === 'amp');
-  check(saved.format === "rig-preset" && saved.version === 4 && cabEntry.asset.name === 'V30 SM57.wav' && /^[0-9a-f]{8}$/.test(cabEntry.asset.hash) && ampEntry.asset.kind === 'nam', 'presets/Lib Test.rig.json written with both file references');
+  check(saved.format === "rig-preset" && saved.version === 4 && saved.name === 'Lib Test' && cabEntry.asset.name === 'V30 SM57.wav' && /^[0-9a-f]{8}$/.test(cabEntry.asset.hash) && ampEntry.asset.kind === 'nam', `presets/${libFile} written (“Lib Test”) with both file references`);
   check(typeof cabEntry.params.locut === 'number' && saved.chain.find((c) => c.id === 'holo').params.feedback > 1, `values in real units (holo feedback ${saved.chain.find((c) => c.id === 'holo').params.feedback} %)`);
+  const boardFile = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'board.json')).text()));
+  check(boardFile.scenes[0].presets[0].file === libFile && /Lib Test/.test(await page.textContent('.fsw.on')), 'the board (presets/board.json) is written; footswitch 1 reads “Lib Test”');
   await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-library.png') });
 
-  console.log('6. Reload the page: library and preset persist, and the preset loads back');
+  console.log('6. Restart: the library and the board persist, and the preset you were on loads back');
   await open();
   const L2 = await lib();
-  check(L2.ir.length === 2 && L2.nam.length === 1 && L2.presets.includes('Lib Test.rig.json'), `after reload: ${L2.ir.length} IRs, ${L2.nam.length} NAM, presets ${JSON.stringify(L2.presets)}`);
-  for (let i = 0; i < 20 && !(await tapsOk()); i++) await sleep(200);
-  check(await tapsOk(), 'the last session comes back: the cab has its IR again');
-  await page.evaluate(() => localStorage.removeItem('rig01.session')); await open();
-  check(!(await tapsOk()), 'with no last session (a new browser), a fresh start uses the built-in cab');
-  await presetLoad(page, 'Lib Test.rig.json');
+  check(L2.ir.length === 2 && L2.nam.length === 1 && L2.presets.includes(libFile), `after reload: ${L2.ir.length} IRs, ${L2.nam.length} NAM, presets ${JSON.stringify(L2.presets)}`);
   for (let i = 0; i < 25 && !(await tapsOk()); i++) await sleep(200);
-  const note = await page.textContent('#presetNote');
-  check((await tapsOk()) && /Loaded “Lib Test”/.test(note), `preset reloaded the IR into the engine; note: “${note}”`);
-  check(await page.evaluate(() => window.__rig.state.assets.amp && window.__rig.state.assets.amp.name) === 'Plexi crunch.nam', 'and re-assigned the NAM capture');
+  check((await tapsOk()) && await page.inputValue('#presetName') === 'Lib Test', 'preset “Lib Test” is back on: the engine has its IR again');
+  check(await page.evaluate(() => window.__rig.state.assets.amp && window.__rig.state.assets.amp.name) === 'Plexi crunch.nam', 'and its NAM capture');
 
   console.log('7. Remove the IR file: the preset still loads, says what is missing, and keeps the reference');
-  await presetClose(page); await page.mouse.move(800, 120); await page.keyboard.press('3'); await sleep(400);
+  await page.mouse.move(800, 120); await page.keyboard.press('3'); await sleep(400);
   await page.click('[data-act="asset-remove"][data-mod="cab"]'); await page.click('[data-act="asset-remove"][data-mod="cab"]'); await sleep(600);
   check(!(await lib()).ir.includes('V30 SM57.wav'), 'file removed from the library after confirming');
-  await presetLoad(page, 'Lib Test.rig.json'); await sleep(800);
-  const note2 = await page.textContent('#presetNote');
+  await open(); await sleep(500);                                // the saved file, not the edited rig
+  const note2 = await page.textContent('#boardNote');
   check(/isn't in the library/.test(note2) && !(await tapsOk()), `loads on built-in with a note: “${note2.slice(0, 80)}…”`);
-  await page.click('#presetSave'); await sleep(500);
-  const resaved = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'Lib Test.rig.json')).text()));
+  await page.click('#presetSave'); await sleep(600);
+  const resaved = await page.evaluate(async (f) => JSON.parse(await (await window.__rig.library.core.file('presets', f)).text()), libFile);
   check(resaved.chain.find((c) => c.id === 'cab').asset.name === 'V30 SM57.wav', 're-saving keeps the missing file’s reference');
-  await presetClose(page);
 
   console.log('8. Real captures play; a broken one is refused with a reason');
   const ampMeter = () => page.evaluate(() => window.__rig.modMeter('amp', 'rate'));
@@ -167,60 +159,49 @@ async function drop(page, target, files) {
   check(taps === 144000 && chans === 2 && r9.nan === 0 && /stereo · 3\.00 s/.test(cabLine), `engine runs ${taps} taps × ${chans} channels (“${cabLine.slice(0, 60)}”, engine load ${(100 * r9.load).toFixed(0)}%)`);
   await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-nam-reverb.png') });
 
-  console.log('10. The presets window: name, save as new, edited mark, replace, load over edits, rename, delete');
+  console.log('10. The pedalboard: edits stay with each preset, scenes, the tree, and a restart');
   {
-    const files = async () => (await lib()).presets.sort().join(', ');
-    const knob = (v) => page.evaluate((v) => { const el = document.querySelector('[data-pid="cab.mix"]'); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
-    const edited = () => page.evaluate(() => !document.getElementById('presetEdited').hidden);
-    await page.mouse.move(800, 120); await page.keyboard.press('3'); await sleep(300);
-    await presetLoad(page, 'Lib Test.rig.json'); await sleep(800); await presetClose(page); await sleep(900);
-    const clean = !(await edited());
-    await knob(0.31); await sleep(1600);
-    check(clean && await edited() && /edited/.test(await page.getAttribute('#presetBtn', 'aria-label')), 'turning a knob after loading marks the preset “edited” in the top bar');
-    await page.click('#presetBtn'); await sleep(200);
-    const startsEmpty = (await page.inputValue('#presetInput')) === '';
-    await page.click('#presetSaveNew'); await sleep(300);
-    check(startsEmpty && /Type a name/.test(await page.textContent('#presetNote')) && (await files()) === 'Lib Test.rig.json', 'the new-preset name box starts empty; Save as new without a name asks for one and writes nothing');
-    await page.click('#presetInput'); await page.keyboard.type('Clean A'); await page.keyboard.press('Enter'); await sleep(900);
-    check((await files()) === 'Clean A.rig.json, Lib Test.rig.json' && await page.textContent('#presetName') === 'Clean A' && !(await edited()), `typing a name + Enter saves a new preset beside the old one (${await files()}); it is now current, not edited`);
-    await page.fill('#presetInput', 'clean a'); await page.click('#presetSaveNew'); await sleep(400);
-    const askedReplace = /already exists/.test(await page.textContent('#presetNote'));
-    await page.click('#presetSaveNew'); await sleep(900);
-    check(askedReplace && (await files()) === 'Clean A.rig.json, Lib Test.rig.json', 'a name that exists (any case) asks first; the second click replaces it, still one file');
-    await presetClose(page); await knob(0.55); await sleep(1600);
-    await page.click('#presetBtn'); await page.click(`[data-preset-load="${encodeURIComponent('Lib Test.rig.json')}"]`); await sleep(400);
-    const warned = /unsaved changes/.test(await page.textContent('#presetNote')) && await page.textContent('#presetName') === 'clean a';
-    await page.click(`[data-preset-load="${encodeURIComponent('Lib Test.rig.json')}"]`); await sleep(1200);
-    check(warned && await page.textContent('#presetName') === 'Lib Test', 'loading another preset over unsaved edits asks first; the second click loads it');
-    await page.click(`[data-preset-rename="${encodeURIComponent('Clean A.rig.json')}"]`); await sleep(200);
-    await page.fill('[data-preset-rename-input]', 'Crunch B'); await page.keyboard.press('Enter'); await sleep(900);
-    const renamed = await page.evaluate(async () => JSON.parse(await (await window.__rig.library.core.file('presets', 'Crunch B.rig.json')).text()).name);
-    check((await files()) === 'Crunch B.rig.json, Lib Test.rig.json' && renamed === 'Crunch B', `Rename: the file and the name inside it (${await files()})`);
-    await page.click(`[data-preset-del="${encodeURIComponent('Crunch B.rig.json')}"]`); await sleep(200);
-    const askedDel = (await files()).includes('Crunch B');
-    await page.click(`[data-preset-del="${encodeURIComponent('Crunch B.rig.json')}"]`); await sleep(800);
-    check(askedDel && (await files()) === 'Lib Test.rig.json', 'Delete asks for a second click, then deletes');
-    await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-presets.png') });
-    await page.keyboard.press('Escape'); await sleep(200);
-    check(await page.$eval('#presetDlg', (d) => d.hidden), 'Escape closes the window');
-  }
-
-  console.log('11. A restart picks up where you left off; Save with nothing saved yet asks for a name');
-  {
+    const B = () => page.evaluate(() => ({ scene: document.getElementById('sceneName').textContent, name: document.getElementById('presetName').value, edited: !document.getElementById('presetEdited').hidden,
+      sw: [...document.querySelectorAll('#boardSwitches .fsw:not(.add)')].map((b) => (b.classList.contains('on') ? '*' : '') + b.querySelector('small').textContent + (b.classList.contains('ed') ? '!' : '')).join('|'),
+      scenes: window.__rig.board.scenes.map((x) => x.name + ':' + x.presets.length).join(' '), chain: window.__rig.chain.list().map((m) => m.id).join(' ') }));
     const cabMix = () => page.evaluate(() => window.__rig.buildPreset('x').chain.find((c) => c.id === 'cab').params.mix);
+    const knob = (v) => page.evaluate((v) => { const el = document.querySelector('[data-pid="cab.mix"]'); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+    await page.click('#presetSave'); await sleep(900);                        // start clean
     await page.mouse.move(800, 120); await page.keyboard.press('3'); await sleep(300);
-    await page.evaluate(() => { const el = document.querySelector('[data-pid="cab.mix"]'); el.value = 0.42; el.dispatchEvent(new Event('input', { bubbles: true })); }); await sleep(1600);
-    const before = await cabMix();
-    await open(); await sleep(1500);
-    const back = await page.evaluate(() => ({ name: document.getElementById('presetName').textContent, edited: !document.getElementById('presetEdited').hidden }));
-    check(back.name === 'Lib Test' && back.edited && Math.abs((await cabMix()) - before) < 1e-6, `after a reload: “${back.name}”, still marked edited, CAB mix still ${before}`);
-    await page.evaluate(() => localStorage.removeItem('rig01.session')); await open(); await sleep(1200);
-    await page.click('#presetBtn'); await page.click('#presetSave'); await sleep(300);
-    const asked = await page.evaluate(() => [document.getElementById('presetName').textContent, document.activeElement.id, document.getElementById('presetNote').textContent]);
-    await page.keyboard.type('First Save'); await page.click('#presetSave'); await sleep(900);
-    check(asked[0] === 'Ambient Drive' && asked[1] === 'presetInput' && /Type a name/.test(asked[2]) && (await lib()).presets.includes('First Save.rig.json') && await page.textContent('#presetName') === 'First Save',
-      'a fresh rig: Save asks for a name (and puts the cursor there); typing one and Save saves it');
-    await presetClose(page);
+    await knob(0.31); await sleep(1600);
+    const mixEdited = await cabMix(); let b = await B();
+    check(b.edited && /^\*Lib Test!/.test(b.sw), `turning a knob marks the preset edited (“edited” by SAVE, a dot on its footswitch: ${b.sw})`);
+    await boardAdd(page); b = await B();
+    check(b.chain === 'gate amp cab' && /^Lib Test!\|\*/.test(b.sw), `+ adds footswitch 2, its own blank preset (${b.chain}); footswitch 1 keeps its edits (${b.sw})`);
+    await boardSlot(page, 0); b = await B();
+    check(b.edited && Math.abs((await cabMix()) - mixEdited) < 1e-6, `back on 1: the edits are still there (CAB mix ${await cabMix()}), still marked edited`);
+    await page.click('#presetSave'); await sleep(900); b = await B();
+    const onDisk = await page.evaluate(async (f) => JSON.parse(await (await window.__rig.library.core.file('presets', f)).text()).chain.find((c) => c.id === 'cab').params.mix, libFile);
+    check(!b.edited && Math.abs(onDisk - mixEdited) < 1e-6, `SAVE writes it (file: CAB mix ${onDisk}) and clears the mark`);
+    await page.click('#boardTreeBtn'); await sleep(200);
+    await page.click('[data-act="tree-add-scene"]'); await sleep(1500); b = await B();
+    check(b.scene === 'Scene 2' && b.chain === 'gate amp cab' && b.scenes === 'Scene 1:2 Scene 2:1', `the tree's + Scene adds a scene with one blank preset (${b.scenes})`);
+    await page.click('[data-tree="s-rename"][data-s="1"]'); await sleep(200); await page.keyboard.type('Lead'); await page.keyboard.press('Enter'); await sleep(500);
+    await page.click('[data-tree="s-add"][data-s="1"]'); await sleep(1500); b = await B();
+    check(b.scene === 'Lead' && b.scenes === 'Scene 1:2 Lead:2' && /2 presets/.test(await page.textContent('#sceneCount')), `rename a scene, + Preset in it (${b.scenes}; “${await page.textContent('#sceneCount')}”)`);
+    await page.click('#sceneDown'); await sleep(1500); b = await B();
+    check(b.scene === 'Scene 1' && b.name === 'Lib Test', `▼ goes to the previous scene: ${b.scene}, “${b.name}”`);
+    await page.click('[data-tree="s-down"][data-s="0"]'); await sleep(400);
+    await page.click('[data-tree="p-del"][data-s="1"][data-p="1"]'); await sleep(200); const still = (await B()).scenes;
+    await page.click('[data-tree="p-del"][data-s="1"][data-p="1"]'); await sleep(900); b = await B();
+    check(still === 'Lead:2 Scene 1:2' && b.scenes === 'Lead:2 Scene 1:1' && b.scene === 'Scene 1', `move a scene down (${still}); Delete a preset needs a second click (${b.scenes})`);
+    await page.click('[data-tree="p-rename"][data-s="1"][data-p="0"]'); await sleep(200); await page.keyboard.press('Control+A'); await page.keyboard.type('Lib Renamed'); await page.keyboard.press('Enter'); await sleep(700);
+    const inFile = await page.evaluate(async (f) => JSON.parse(await (await window.__rig.library.core.file('presets', f)).text()).name, libFile);
+    check(inFile === 'Lib Renamed' && await page.inputValue('#presetName') === 'Lib Renamed' && /Lib Renamed/.test(await page.textContent('.fsw.on')), 'Rename a preset in the tree: its file, the name box and its footswitch');
+    await page.screenshot({ path: path.join(process.env.SHOTS || path.join(root, 'build'), 'shot-presets.png') });
+    await knob(0.77); await sleep(900);
+    await open(); await sleep(1500); b = await B();
+    check(b.scene === 'Scene 1' && b.name === 'Lib Renamed' && !b.edited && b.scenes === 'Lead:2 Scene 1:1' && Math.abs((await cabMix()) - mixEdited) < 1e-6,
+      `a restart comes back on the same preset (${b.scene}, “${b.name}”) as saved; unsaved edits are dropped (CAB mix ${await cabMix()})`);
+    await page.click('#boardTreeBtn'); await sleep(200);
+    await page.click('[data-tree="s-del"][data-s="0"]'); await page.click('[data-tree="s-del"][data-s="0"]'); await sleep(900); b = await B();
+    check(b.scenes === 'Scene 1:1' && b.scene === 'Scene 1', `Delete a scene (two clicks): ${b.scenes}`);
+    await page.click('[data-act="tree-close"]');
   }
 
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);

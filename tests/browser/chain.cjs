@@ -7,14 +7,10 @@ const root = path.resolve(__dirname, '../..');
 let fails = 0;
 const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// presets: the window opened from the preset name in the top bar (ui/js/70-presets.js)
-const presetSaveNew = async (page, name) => { await page.click('#presetBtn'); await page.fill('#presetInput', name); await page.click('#presetSaveNew'); await sleep(800); };
-const presetLoad = async (page, file) => {                      // unsaved edits: the second click loads
-  if (await page.$eval('#presetDlg', (d) => d.hidden)) await page.click('#presetBtn');
-  const sel = `[data-preset-load="${encodeURIComponent(file)}"]`; await page.click(sel); await sleep(300);
-  if (/again to load/.test(await page.textContent('#presetNote'))) await page.click(sel);
-};
-const presetClose = (page) => page.click('#presetDlg [data-act="preset-close"]');
+// presets: the pedalboard in the bottom-left corner (ui/js/70-presets.js)
+const boardSave = async (page, name) => { await page.fill('#presetName', name); await page.click('#presetSave'); await sleep(900); };
+const boardSlot = async (page, i) => { await page.click(`.fsw[data-slot="${i}"]`); await sleep(1500); };
+const boardAdd = async (page) => { await page.click('#boardAdd'); await sleep(1500); };
 
 (async () => {
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -113,10 +109,13 @@ const presetClose = (page) => page.click('#presetDlg [data-act="preset-close"]')
   await page.click('#vStage'); await sleep(300);
 
   console.log('8. A preset brings its chain back, in order');
-  await presetSaveNew(page, 'Chain Test'); await presetClose(page);
+  await boardSave(page, 'Chain Test');
   const saved = ids((await C()).ui);
-  await page.evaluate(() => { window.__rig.chain.remove('holo2'); window.__rig.chain.remove('cab2'); window.__rig.chain.add('amp', 0); window.__rig.chain.move('tess', 0); }); await sleep(800);
-  await presetLoad(page, 'Chain Test.rig.json'); await presetClose(page); await sleep(1500); await fresh();
+  await boardAdd(page); await fresh();
+  c = await C();
+  check(ids(c.ui) === 'gate amp cab' && inStep(c), `a new footswitch starts blank: ${ids(c.ui)} in the page and the engine`);
+  await page.evaluate(() => { window.__rig.chain.add('amp', 0); window.__rig.chain.move('tess', 0); }); await sleep(800);
+  await boardSlot(page, 0); await fresh();
   c = await C();
   const fb2 = await page.evaluate(() => window.__rig.eff('holo2', 'feedback'));
   check(ids(c.ui) === saved && inStep(c) && Math.abs(fb2 - 0.8) < 1e-3 && c.conns['holo2.halo'] === 'lfo', `loading it restores ${ids(c.ui)} in the page and the engine, HOLOGRAM 2's knobs and its patch`);

@@ -1,5 +1,11 @@
-// 70-presets.js - scenes A-D (in memory, saved inside presets) and preset files in the library's presets folder.
-function snapshot() { return currentSnapshot(); }
+// 70-presets.js - the pedalboard: scenes (banks) of presets, in the bottom-left corner.
+//
+// The board is presets/board.json in the library: scenes in order, each with its presets in order. Each
+// preset is its own .rig.json file in presets/ (the format of 72-preset-format.js), written by SAVE. A
+// slot never saved has no file, and selecting it puts the basic rig on (gate, amp and cab at their
+// defaults, no modulation). Edits stay with each preset while you move around the board, until the page
+// restarts; SAVE writes the one you're on. The tree (Tree button) adds, renames, moves and removes
+// scenes and presets.
 function applySnapshot(s) {
   MODS.forEach((m) => m.params.forEach((p) => { if (s.params && s.params[p.id] !== undefined) p.v = s.params[p.id]; }));
   state.bypass = { ...(s.bypass || {}) };
@@ -14,101 +20,18 @@ function applySnapshot(s) {
   sendAll(); syncCables(); update();
 }
 function setMaster(db) { state.master = db; $('master').value = db; $('masterVal').textContent = db + ' dB'; rig.cmd(`master ${db}`); }
-// ---- preset files: a window in the middle of the page (like the file browser), opened from the preset
-// name in the top bar. What's loaded is presetState.file; its signature (the preset as it would be saved,
-// without its name and date) says whether the rig has been edited since it was loaded or saved.
-const presetState = { file: null, sig: null, armed: null, armT: 0, renaming: null, opener: null };
-rig.presetState = presetState;
-const presetSig = () => { const p = buildPreset(''); delete p.saved; delete p.name; return JSON.stringify(p); };
-const presetEdited = () => presetState.sig !== null && presetSig() !== presetState.sig;
-const presetEntry = (file) => (library.entries.presets || []).find((e) => e.name.toLowerCase() === String(file).toLowerCase());
-const presetLabel = (e) => (e.meta && e.meta.name) || e.name.replace(/\.rig\.json$/i, '');
-const escHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-function presetNote(text, warn) { const n = $('presetNote'); if (n) { n.textContent = text; n.className = 'note' + (warn ? ' warnline' : ''); } presetState.lastNote = [text, !!warn]; }
-// A second click within 4 s confirms (replace, discard changes, delete).
-function armed(key, message) {
-  if (presetState.armed === key) { clearTimeout(presetState.armT); presetState.armed = null; return true; }
-  presetState.armed = key; clearTimeout(presetState.armT);
-  presetState.armT = setTimeout(() => { presetState.armed = null; renderPresetDlg(); }, 4000);
-  presetNote(message, true); renderPresetDlg(); return false;
-}
-function setCurrentPreset(file, name) {
-  presetState.file = file; presetState.sig = presetSig();
-  $('presetName').textContent = name; updatePresetEdited(); saveSession();
-}
-// Where you left off: the preset that's loaded, and the rig as it is now (unsaved changes included), kept
-// in this browser so a restart (of the page, the browser or rig-host) comes back to it. The preset files
-// themselves stay the only saved copies; this is only the working state.
-const SESSION_KEY = 'rig01.session';
-let sessionSig = null;
-function saveSession() {
-  if (presetState.sig === null) return;
-  const name = $('presetName').textContent, now = presetSig(); if (now === sessionSig) return;
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ file: presetState.file, name, base: presetState.sig, rig: buildPreset(name) })); sessionSig = now; } catch (e) { /* storage full or blocked: nothing to restore next time */ }
-}
-async function restoreSession() {
-  let s = null; try { s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { return; }
-  if (!s || !s.rig) return;
-  const r = await applyPreset(s.rig, s.file || 'last session'); if (!r || r.error) return;
-  const file = s.file && presetEntry(s.file) ? presetEntry(s.file).name : null;
-  presetState.file = file; $('presetName').textContent = s.name || r.name || 'Untitled';
-  // edited is measured against the preset file; a rig never saved starts clean; one whose file has gone is unsaved
-  presetState.sig = file ? s.base : s.file ? '' : presetSig();
-  sessionSig = presetSig(); updatePresetEdited();
-  const ed = presetEdited();
-  logLine(`picked up where you left off: “${$('presetName').textContent}”${ed ? ', with unsaved changes' : ''}${s.file && !file ? ` (presets/${s.file} is no longer in the library)` : ''}`);
-  presetNote(`Picked up where you left off${ed ? ', with your unsaved changes' : ''}.`, false);
-}
-function updatePresetEdited() { const ed = presetEdited(); $('presetEdited').hidden = !ed; $('presetBtn').setAttribute('aria-label', `Presets: ${$('presetName').textContent}${ed ? ', edited' : ''}`); }
-
-async function writePreset(file, name) {
-  await library.core.write('presets', file, JSON.stringify(buildPreset(name), null, 2));
-  await refreshLibrary(); setCurrentPreset(file, name);
-  logLine(`preset saved: presets/${file}`);
-}
-// Save: over the preset that's loaded.
-async function savePreset() {
-  if (!library.core) return;
-  if (!presetState.file) { savePresetAs(); return; }            // nothing saved yet: Save needs a name
-  const e = presetEntry(presetState.file), name = e ? presetLabel(e) : $('presetName').textContent;
-  try { await writePreset(presetState.file, name); presetNote(`Saved “${name}”`); }
-  catch (err) { presetNote(`Couldn't save: ${err.message}`, true); }
-  renderPresetDlg();
-}
-// Save as new: a name of its own; an existing name is only replaced on a second click.
-async function savePresetAs() {
-  if (!library.core) return;
-  const name = $('presetInput').value.trim();
-  if (!name) { presetNote(presetState.file ? 'Type a name for the new preset first.' : 'Type a name for this preset below, then Save.', true); $('presetInput').focus(); return; }
-  const file = safeFileName(name) + '.rig.json', had = presetEntry(file);
-  if (had && !armed('new:' + file.toLowerCase(), `“${presetLabel(had)}” already exists. Click Save as new again to replace it.`)) return;
-  try { await writePreset(had ? had.name : file, name); $('presetInput').value = ''; presetNote(`Saved “${name}”`); }
-  catch (err) { presetNote(`Couldn't save: ${err.message}`, true); }
-  renderPresetDlg();
-}
-async function loadPresetFile(file) {
-  let json; try { json = JSON.parse(await (await library.core.file('presets', file)).text()); } catch (e) { presetNote(`Couldn't read ${file}: ${e.message}`, true); return null; }
-  const r = await applyPreset(json, file); if (!r || r.error) return r;
-  const name = r.name || file.replace(/\.rig\.json$/i, '');
-  setCurrentPreset(file, name);
-  r.warnings.forEach((w) => logLine('preset: ' + w, true));
-  presetNote(r.warnings.length ? `Loaded “${name}” with ${r.warnings.length} note${r.warnings.length > 1 ? 's' : ''}: ${r.warnings[0]}${r.warnings.length > 1 ? ' (rest in Engine log)' : ''}` : `Loaded “${name}”`, r.warnings.length > 0);
-  logLine(`preset loaded: presets/${file}`);
-  renderPresetDlg();
-  return r;
-}
-// Put a preset's contents on the rig (from a file, or the last session). `file` only names it in messages.
-async function applyPreset(json, file) {
+// Put a preset's contents on the rig. `label` only names it in messages. Old presets' A-D snapshots
+// (`scenes` in the file) are read but not used: each preset on the board is one sound.
+async function applyPreset(json, label) {
   const r = readPreset(json);
-  if (r.error) { presetNote(`${file}: ${r.error}`, true); return r; }
+  if (r.error) { boardNote(`${label}: ${r.error}`, true); return r; }
   try {
     applyChain(r.chain); applyRack(r.rack); state.sourceExtras = r.sourceExtras;
     // CONTROLLER bindings: a preset that names any sets them; one that names none keeps yours
     if (Object.keys(r.inputs || {}).length) { Object.keys(state.inputs).forEach((id) => bindInput(id, null)); Object.entries(r.inputs).forEach(([id, b]) => bindInput(id, b)); }
     applySnapshot(r.snap);
     if (r.master !== undefined) setMaster(r.master);
-    state.scenes = r.scenes; state.scene = null; state.presetExtras = r.extras;
-    document.querySelectorAll('.scene').forEach((x) => { x.classList.toggle('stored', !!state.scenes[x.dataset.scene]); x.setAttribute('aria-pressed', 'false'); });
+    state.presetExtras = r.extras;
     for (const m of MODS) {
       if (!m.asset) continue;
       const ref = r.assets[m.id];
@@ -123,107 +46,230 @@ async function applyPreset(json, file) {
         assetStatus[m.id] = ' · missing from library (kept in the preset)';
       }
     }
-  } catch (e) { presetNote(`Couldn't load ${file}: ${e.message}. The rig may be part way between presets.`, true); logLine(`preset: ${e.stack || e.message}`, true); renderPresetDlg(); return null; }
+  } catch (e) { boardNote(`couldn't load ${label}: ${e.message}. The rig may be part way between presets.`, true); logLine(`preset: ${e.stack || e.message}`, true); return null; }
   return r;
 }
-// Load from the list: unsaved edits are only thrown away on a second click.
-async function pickPreset(file) {
-  if (presetEdited() && !armed('load:' + file, `“${$('presetName').textContent}” has unsaved changes. Click “${presetLabel(presetEntry(file) || { name: file })}” again to load it anyway, or Save first.`)) return;
-  await loadPresetFile(file);
+
+// ---- the board
+const BLANK_PRESET = () => ({ format: 'rig-preset', version: PRESET_VERSION, name: '',
+  chain: [{ id: 'gate', type: 'gate' }, { id: 'amp', type: 'amp' }, { id: 'cab', type: 'cab' }], sources: [], mods: [] });
+const board = { scenes: [], s: 0, p: 0, work: {}, base: null, savedName: '', renaming: null, armed: null, armT: 0, ready: false };
+rig.board = board;
+const uid = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+const escHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const curScene = () => board.scenes[board.s];
+const curSlot = () => curScene() && curScene().presets[board.p];
+const presetSig = () => { const p = buildPreset(''); delete p.saved; delete p.name; return JSON.stringify(p); };
+const presetEdited = () => board.base !== null && (presetSig() !== board.base || $('presetName').value.trim() !== board.savedName);
+const newSlot = () => ({ id: uid(), file: null, name: '' });
+
+function boardNote(text, warn) { logLine('presets: ' + text, !!warn); const n = $('boardNote'); if (n) { n.textContent = text; n.classList.toggle('warnline', !!warn); } }
+async function writeBoard() {
+  if (!library.core) return;
+  const data = { format: 'rig-board', version: 1, current: { scene: board.s, preset: board.p },
+    scenes: board.scenes.map((sc) => ({ id: sc.id, name: sc.name, presets: sc.presets.map((q) => ({ id: q.id, file: q.file, name: q.name })) })) };
+  try { await library.core.write('presets', 'board.json', JSON.stringify(data, null, 2)); } catch (e) { boardNote(`couldn't write board.json: ${e.message}`, true); }
 }
-async function renamePreset(file, newName) {
-  const e = presetEntry(file); newName = newName.trim();
-  if (!e || !newName) { presetState.renaming = null; renderPresetDlg(); return; }
-  const target = safeFileName(newName) + '.rig.json', clash = presetEntry(target);
-  if (clash && clash.name !== e.name) { presetNote(`“${presetLabel(clash)}” already exists. Pick another name.`, true); return; }
-  try {
-    const json = JSON.parse(await (await library.core.file('presets', e.name)).text()); json.name = newName;
-    await library.core.write('presets', target, JSON.stringify(json, null, 2));
-    if (target !== e.name) await library.core.remove('presets', e.name);
-    presetState.renaming = null; await refreshLibrary();
-    if (presetState.file === e.name) { presetState.file = target; $('presetName').textContent = newName; updatePresetEdited(); sessionSig = null; saveSession(); }
-    presetNote(`Renamed to “${newName}”`); logLine(`preset renamed: presets/${e.name} -> presets/${target}`);
-  } catch (err) { presetNote(`Couldn't rename: ${err.message}`, true); }
-  renderPresetDlg();
+// After the library is read: the board, and the preset that was selected last.
+async function initBoard() {
+  let data = null;
+  try { data = JSON.parse(await (await library.core.file('presets', 'board.json')).text()); } catch (e) { /* no board yet */ }
+  if (data && Array.isArray(data.scenes) && data.scenes.length) {
+    board.scenes = data.scenes.map((sc, i) => ({ id: sc.id || uid(), name: String(sc.name || `Scene ${i + 1}`),
+      presets: (Array.isArray(sc.presets) && sc.presets.length ? sc.presets : [{}]).map((q) => ({ id: q.id || uid(), file: q.file || null, name: String(q.name || '') })) }));
+    const c = data.current || {};
+    board.s = Math.min(Math.max(0, c.scene | 0), board.scenes.length - 1);
+    board.p = Math.min(Math.max(0, c.preset | 0), curScene().presets.length - 1);
+    board.ready = true;
+    await selectSlot(board.s, board.p, true);
+  } else {
+    // a new board: one scene, one preset, holding the rig as it is (not saved yet)
+    board.scenes = [{ id: uid(), name: 'Scene 1', presets: [newSlot()] }]; board.s = 0; board.p = 0;
+    board.base = null; board.savedName = ''; $('presetName').value = ''; board.ready = true;
+  }
+  renderBoard();
 }
-async function deletePreset(file) {
-  const e = presetEntry(file); if (!e) return;
-  if (!armed('del:' + file, `Click Delete again to delete “${presetLabel(e)}”.`)) return;
+// Move to a slot: keep this one's edits, then put the other one on (its edits, its file, or blank).
+async function selectSlot(s, p, first) {
+  const was = curSlot();
+  if (!first && was && board.base !== null && presetEdited()) board.work[was.id] = { json: buildPreset($('presetName').value.trim()), base: board.base, savedName: board.savedName };
+  board.s = s; board.p = p;
+  const q = curSlot(), w = board.work[q.id];
+  let r = null;
+  if (w) { r = await applyPreset(w.json, q.name || 'preset'); board.base = w.base; board.savedName = w.savedName; $('presetName').value = w.json.name || ''; }
+  else if (q.file) {
+    let json = null;
+    try { json = JSON.parse(await (await library.core.file('presets', q.file)).text()); } catch (e) { boardNote(`couldn't read presets/${q.file}: ${e.message}`, true); }
+    if (json) { r = await applyPreset(json, q.file); board.savedName = q.name; $('presetName').value = q.name; board.base = presetSig(); }
+  } else {
+    r = await applyPreset(BLANK_PRESET(), 'blank');
+    MODS.forEach((m) => m.params.forEach((q) => { q.v = q.def; })); state.bypass = {}; sendAll(); update();   // knobs a file doesn't list keep their value; blank means defaults
+    board.savedName = ''; $('presetName').value = ''; board.base = presetSig();
+  }
+  if (r && r.warnings && r.warnings.length) { r.warnings.forEach((x) => logLine('preset: ' + x, true)); boardNote(`${q.name || 'preset'}: ${r.warnings[0]}${r.warnings.length > 1 ? ' (rest in Engine log)' : ''}`, true); }
+  if (!first) writeBoard();
+  renderBoard(); renderTree();
+}
+// SAVE: the preset you're on, under the name in the box.
+async function saveCurrent() {
+  if (!library.core) return;
+  const q = curSlot(), sc = curScene(); if (!q) return;
+  const name = $('presetName').value.trim() || `${sc.name} ${board.p + 1}`;
+  const file = q.file || `${q.id}.rig.json`;
   try {
-    await library.core.remove('presets', e.name); await refreshLibrary();
-    if (presetState.file === e.name) { presetState.file = null; presetState.sig = ''; updatePresetEdited(); sessionSig = null; saveSession(); }
-    presetNote(`Deleted “${presetLabel(e)}”`); logLine(`preset deleted: presets/${e.name}`);
-  } catch (err) { presetNote(`Couldn't delete: ${err.message}`, true); }
-  renderPresetDlg();
+    await library.core.write('presets', file, JSON.stringify(buildPreset(name), null, 2));
+    q.file = file; q.name = name; $('presetName').value = name;
+    delete board.work[q.id]; board.base = presetSig(); board.savedName = name;
+    await writeBoard(); await refreshLibrary();
+    boardNote(`saved “${name}” (presets/${file})`);
+  } catch (e) { boardNote(`couldn't save: ${e.message}`, true); }
+  renderBoard(); renderTree();
+}
+const stepScene = (d) => { const n = board.scenes.length; if (n > 1) selectSlot((board.s + d + n) % n, 0); };
+async function addPreset(si = board.s) {
+  board.scenes[si].presets.push(newSlot());
+  await selectSlot(si, board.scenes[si].presets.length - 1);
+}
+async function addScene() {
+  board.scenes.push({ id: uid(), name: `Scene ${board.scenes.length + 1}`, presets: [newSlot()] });
+  await selectSlot(board.scenes.length - 1, 0);
+}
+// A second click within 4 s confirms a delete.
+function armed(key) {
+  if (board.armed === key) { clearTimeout(board.armT); board.armed = null; return true; }
+  board.armed = key; clearTimeout(board.armT); board.armT = setTimeout(() => { board.armed = null; renderTree(); }, 4000); renderTree(); return false;
+}
+async function removePreset(si, pi) {
+  const sc = board.scenes[si], q = sc.presets[pi];
+  if (!armed('p:' + q.id)) return;
+  if (q.file) { try { await library.core.remove('presets', q.file); } catch (e) { /* already gone */ } }
+  delete board.work[q.id]; sc.presets.splice(pi, 1);
+  if (!sc.presets.length) sc.presets.push(newSlot());                 // a scene always has a footswitch
+  const here = si === board.s && pi === board.p;
+  if (si === board.s && pi < board.p) board.p--;
+  board.p = Math.min(board.p, curScene().presets.length - 1);
+  if (here) { board.base = null; await selectSlot(board.s, board.p, true); }
+  await writeBoard(); await refreshLibrary(); renderBoard(); renderTree();
+}
+async function removeScene(si) {
+  const sc = board.scenes[si];
+  if (!armed('s:' + sc.id)) return;
+  for (const q of sc.presets) { delete board.work[q.id]; if (q.file) { try { await library.core.remove('presets', q.file); } catch (e) { /* gone */ } } }
+  board.scenes.splice(si, 1);
+  if (!board.scenes.length) board.scenes.push({ id: uid(), name: 'Scene 1', presets: [newSlot()] });
+  const here = si === board.s;
+  if (si < board.s) board.s--;
+  board.s = Math.min(board.s, board.scenes.length - 1);
+  if (here) { board.p = 0; board.base = null; await selectSlot(board.s, 0, true); }
+  await writeBoard(); await refreshLibrary(); renderBoard(); renderTree();
+}
+function move(list, i, d) { const j = i + d; if (j < 0 || j >= list.length) return false; [list[i], list[j]] = [list[j], list[i]]; return true; }
+async function moveScene(si, d) {
+  const cur = curScene(); if (!move(board.scenes, si, d)) return;
+  board.s = board.scenes.indexOf(cur); await writeBoard(); renderBoard(); renderTree();
+}
+async function movePreset(si, pi, d) {
+  const list = board.scenes[si].presets, cur = curSlot(); if (!move(list, pi, d)) return;
+  board.p = curScene().presets.indexOf(cur); await writeBoard(); renderBoard(); renderTree();
+}
+async function renameItem(key, name) {
+  name = name.trim(); board.renaming = null;
+  if (name) {
+    const [kind, id] = key.split(':');
+    if (kind === 's') { const sc = board.scenes.find((x) => x.id === id); if (sc) sc.name = name; }
+    else {
+      const q = board.scenes.flatMap((x) => x.presets).find((x) => x.id === id);
+      if (q) {
+        if (q === curSlot()) { $('presetName').value = name; }
+        if (q.file) {                                                       // the name inside the file follows
+          try { const j = JSON.parse(await (await library.core.file('presets', q.file)).text()); j.name = name; await library.core.write('presets', q.file, JSON.stringify(j, null, 2)); } catch (e) { boardNote(`couldn't rename the file: ${e.message}`, true); }
+          if (q === curSlot()) board.savedName = name;
+        }
+        q.name = name;
+      }
+    }
+    await writeBoard();
+  }
+  renderBoard(); renderTree();
 }
 
-// ---- the window
-function refreshPresetList() { renderPresetDlg(); }
-function openPresetDlg(opener) {
-  presetState.opener = opener || document.activeElement; presetState.renaming = null;
-  $('presetDlg').hidden = false; renderPresetDlg();
-  const first = $('presetList').querySelector('[aria-current="true"]') || $('presetInput'); first.focus();
+// ---- drawing
+const slotLabel = (q) => q.name || (q.file ? 'Untitled' : '—');
+function renderBoard() {
+  if (!board.ready) return;
+  const sc = curScene(); if (!sc) return;
+  $('sceneName').textContent = sc.name;
+  $('sceneName').title = `${sc.name}: scene ${board.s + 1} of ${board.scenes.length}`;
+  $('sceneCount').textContent = `${board.s + 1}/${board.scenes.length} · ${sc.presets.length} preset${sc.presets.length === 1 ? '' : 's'}`;
+  $('boardSwitches').innerHTML = sc.presets.map((q, i) => {
+    const on = i === board.p, ed = on ? presetEdited() : !!board.work[q.id];
+    return `<button class="fsw${on ? ' on' : ''}${ed ? ' ed' : ''}${q.file ? '' : ' empty'}" data-slot="${i}" aria-pressed="${on}" aria-label="Preset ${i + 1}: ${escHtml(slotLabel(q))}${ed ? ', edited' : ''}">
+      <span class="led"></span><b>${i + 1}</b><small>${escHtml(slotLabel(q))}</small></button>`;
+  }).join('') + '<button class="fsw add" id="boardAdd" aria-label="Add a preset to this scene" title="Add a preset to this scene">+</button>';
+  updateEdited();
 }
-function closePresetDlg() {
-  if ($('presetDlg').hidden) return;
-  $('presetDlg').hidden = true; presetState.renaming = null;
-  const o = presetState.opener; presetState.opener = null; if (o && o.isConnected && o.focus) o.focus();
+function updateEdited() { const ed = presetEdited(); $('presetEdited').hidden = !ed; const b = document.querySelector('.fsw.on'); if (b) b.classList.toggle('ed', ed); }
+function renderTree() {
+  const t = $('boardTree'); if (!t || t.hidden) return;
+  const nP = board.scenes.reduce((a, sc) => a + sc.presets.length, 0), A = board.armed;
+  const ren = (key, val, label) => `<input class="tren" data-tree-rename-input="${key}" value="${escHtml(val)}" aria-label="New name for ${escHtml(label)}" autocomplete="off">`;
+  $('treeCount').textContent = `${board.scenes.length} scene${board.scenes.length === 1 ? '' : 's'} · ${nP} preset${nP === 1 ? '' : 's'}`;
+  $('treeList').innerHTML = board.scenes.map((sc, si) => `<li class="tscene${si === board.s ? ' here' : ''}">
+      <div class="trow">${board.renaming === 's:' + sc.id ? ren('s:' + sc.id, sc.name, sc.name) : `<span class="tname"><b>${escHtml(sc.name)}</b> <small>${sc.presets.length} preset${sc.presets.length === 1 ? '' : 's'}</small></span>`}
+        <button class="btn mini" data-tree="s-up" data-s="${si}" aria-label="Move ${escHtml(sc.name)} up" ${si ? '' : 'disabled'}>↑</button>
+        <button class="btn mini" data-tree="s-down" data-s="${si}" aria-label="Move ${escHtml(sc.name)} down" ${si < board.scenes.length - 1 ? '' : 'disabled'}>↓</button>
+        <button class="btn mini" data-tree="s-rename" data-s="${si}">Rename</button>
+        <button class="btn mini" data-tree="s-add" data-s="${si}">+ Preset</button>
+        <button class="btn mini" data-tree="s-del" data-s="${si}" aria-label="Delete ${escHtml(sc.name)}">${A === 's:' + sc.id ? 'Confirm' : 'Delete'}</button></div>
+      <ol>${sc.presets.map((q, pi) => `<li class="tpreset${si === board.s && pi === board.p ? ' here' : ''}">
+        ${board.renaming === 'p:' + q.id ? ren('p:' + q.id, q.name, slotLabel(q)) : `<button class="tpick" data-tree="p-pick" data-s="${si}" data-p="${pi}" aria-current="${si === board.s && pi === board.p}"><b>${pi + 1}</b> ${escHtml(slotLabel(q))}${board.work[q.id] || (si === board.s && pi === board.p && presetEdited()) ? ' <span class="edited">· edited</span>' : ''}${q.file ? '' : ' <small>(not saved)</small>'}</button>`}
+        <button class="btn mini" data-tree="p-up" data-s="${si}" data-p="${pi}" aria-label="Move up" ${pi ? '' : 'disabled'}>↑</button>
+        <button class="btn mini" data-tree="p-down" data-s="${si}" data-p="${pi}" aria-label="Move down" ${pi < sc.presets.length - 1 ? '' : 'disabled'}>↓</button>
+        <button class="btn mini" data-tree="p-rename" data-s="${si}" data-p="${pi}">Rename</button>
+        <button class="btn mini" data-tree="p-del" data-s="${si}" data-p="${pi}" aria-label="Delete preset ${pi + 1}">${A === 'p:' + q.id ? 'Confirm' : 'Delete'}</button></li>`).join('')}</ol></li>`).join('');
+  const ri = t.querySelector('[data-tree-rename-input]'); if (ri && document.activeElement !== ri) { ri.focus(); ri.select(); }
 }
-function renderPresetDlg() {
-  if (!$('presetDlg') || $('presetDlg').hidden) return;
-  const list = library.entries.presets || [], ed = presetEdited(), cur = presetState.file, A = presetState.armed;
-  $('presetCount').textContent = `${list.length} saved · in the library's presets folder`;
-  $('presetCur').innerHTML = `<b>${escHtml($('presetName').textContent)}</b><span class="muted">${cur ? `presets/${escHtml(cur)}` : 'not saved as a preset yet'}${ed ? ' · <span class="edited">edited</span>' : ''}</span>`;
-  $('presetSave').title = cur ? `Save over “${$('presetName').textContent}”` : 'Save under the name typed below';
-  const ul = $('presetList'), top = ul.scrollTop, sorted = [...list].sort((a, b) => presetLabel(a).localeCompare(presetLabel(b), undefined, { sensitivity: 'base', numeric: true }));
-  ul.innerHTML = sorted.length ? sorted.map((e) => {
-    const f = encodeURIComponent(e.name), here = e.name === cur;
-    if (presetState.renaming === e.name) return `<li class="filerow"><input data-preset-rename-input="${f}" value="${escHtml(presetLabel(e))}" aria-label="New name for ${escHtml(presetLabel(e))}" autocomplete="off">
-      <button class="btn mini" data-preset-rename-ok="${f}">Rename</button><button class="btn mini" data-preset-rename-cancel>Cancel</button></li>`;
-    return `<li class="filerow"><button data-preset-load="${f}" aria-current="${here}"><span>${escHtml(presetLabel(e))}${here && ed ? ' <span class="edited">· edited</span>' : ''}</span>
-        <span class="meta">${new Date(e.mtime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}${A === 'load:' + e.name ? ' · click again to load' : ''}</span></button>
-      <button class="btn mini" data-preset-rename="${f}" aria-label="Rename ${escHtml(presetLabel(e))}">Rename</button>
-      <button class="btn mini" data-preset-del="${f}" aria-label="Delete ${escHtml(presetLabel(e))}">${A === 'del:' + e.name ? 'Confirm' : 'Delete'}</button></li>`;
-  }).join('') : '<li class="muted">No presets yet. Name the rig below and press Save as new.</li>';
-  ul.scrollTop = top;
-  const ri = ul.querySelector('[data-preset-rename-input]'); if (ri && document.activeElement !== ri) { ri.focus(); ri.select(); }
-  if (presetState.lastNote) presetNote(...presetState.lastNote);
-}
+function refreshPresetList() { renderTree(); }                         // the library calls this after a rescan
+
 function wirePresets() {
-  $('presetBtn').onclick = () => openPresetDlg($('presetBtn'));
-  $('presetSave').onclick = savePreset;
-  $('presetSaveNew').onclick = savePresetAs;
-  $('presetInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); savePresetAs(); } });
-  const dlg = $('presetDlg');
-  dlg.addEventListener('click', (e) => {
-    if (e.target === dlg || e.target.closest('[data-act="preset-close"]')) { closePresetDlg(); return; }
-    const b = e.target.closest('[data-preset-load],[data-preset-rename],[data-preset-del],[data-preset-rename-ok],[data-preset-rename-cancel]'); if (!b) return;
-    const d = b.dataset;
-    if (d.presetLoad) pickPreset(decodeURIComponent(d.presetLoad));
-    else if (d.presetRename) { presetState.renaming = decodeURIComponent(d.presetRename); renderPresetDlg(); }
-    else if (d.presetDel) deletePreset(decodeURIComponent(d.presetDel));
-    else if (d.presetRenameOk) { const f = decodeURIComponent(d.presetRenameOk); renamePreset(f, dlg.querySelector('[data-preset-rename-input]').value); }
-    else { presetState.renaming = null; renderPresetDlg(); }
+  $('presetSave').onclick = saveCurrent;
+  $('presetName').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); saveCurrent(); } });
+  $('presetName').addEventListener('input', () => { updateEdited(); });
+  $('sceneUp').onclick = () => stepScene(1);
+  $('sceneDown').onclick = () => stepScene(-1);
+  $('boardSwitches').addEventListener('click', (e) => {
+    if (e.target.closest('#boardAdd')) { addPreset(); return; }
+    const b = e.target.closest('[data-slot]'); if (b && Number(b.dataset.slot) !== board.p) selectSlot(board.s, Number(b.dataset.slot));
   });
-  dlg.addEventListener('keydown', (e) => {
-    const ri = e.target.dataset && e.target.dataset.presetRenameInput;
-    if (ri && e.key === 'Enter') { e.preventDefault(); renamePreset(decodeURIComponent(ri), e.target.value); return; }
-    if (ri && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); presetState.renaming = null; renderPresetDlg(); return; }
-    if (e.key !== 'Tab') return;                                 // keep Tab inside the window
-    const f = [...$('presetDlgCard').querySelectorAll('button,input')].filter((x) => !x.disabled && x.offsetParent);
-    if (!f.length) return;
-    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f[f.length - 1].focus(); }
-    else if (!e.shiftKey && document.activeElement === f[f.length - 1]) { e.preventDefault(); f[0].focus(); }
+  const tree = $('boardTree');
+  $('boardTreeBtn').onclick = () => { tree.style.bottom = Math.round(innerHeight - $('board').getBoundingClientRect().top + 10) + 'px'; tree.hidden = !tree.hidden; $('boardTreeBtn').setAttribute('aria-expanded', String(!tree.hidden)); board.renaming = null; renderTree(); };
+  tree.addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="tree-close"]')) { tree.hidden = true; $('boardTreeBtn').setAttribute('aria-expanded', 'false'); return; }
+    if (e.target.closest('[data-act="tree-add-scene"]')) { addScene(); return; }
+    const b = e.target.closest('[data-tree]'); if (!b) return;
+    const si = Number(b.dataset.s), pi = Number(b.dataset.p), sc = board.scenes[si];
+    switch (b.dataset.tree) {
+      case 'p-pick': if (si !== board.s || pi !== board.p) selectSlot(si, pi); break;
+      case 's-up': moveScene(si, -1); break;
+      case 's-down': moveScene(si, 1); break;
+      case 'p-up': movePreset(si, pi, -1); break;
+      case 'p-down': movePreset(si, pi, 1); break;
+      case 's-add': addPreset(si); break;
+      case 's-del': removeScene(si); break;
+      case 'p-del': removePreset(si, pi); break;
+      case 's-rename': board.renaming = 's:' + sc.id; renderTree(); break;
+      case 'p-rename': board.renaming = 'p:' + sc.presets[pi].id; renderTree(); break;
+    }
   });
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('presetDlg').hidden) { e.preventDefault(); closePresetDlg(); } });
-  // the "edited" mark, checked now and then (cheap: the preset is a few KB)
-  setInterval(() => {
-    if (presetState.sig === null) { if (rig.meters) presetState.sig = presetSig(); return; }
-    const ed = presetEdited(); if (ed !== !$('presetEdited').hidden) { updatePresetEdited(); renderPresetDlg(); }
-    saveSession();
-  }, 700);
-  refreshPresetList();
+  tree.addEventListener('keydown', (e) => {
+    const k = e.target.dataset && e.target.dataset.treeRenameInput; if (!k) return;
+    if (e.key === 'Enter') { e.preventDefault(); renameItem(k, e.target.value); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); board.renaming = null; renderTree(); }
+  });
+  tree.addEventListener('focusout', (e) => { const k = e.target.dataset && e.target.dataset.treeRenameInput; if (k && board.renaming === k) renameItem(k, e.target.value); });
+  setInterval(() => { if (board.ready && board.base === null && rig.meters) board.base = presetSig(); if (board.ready) updateEdited(); }, 700);
 }
 
 rig.buildPreset = buildPreset;                                     // tests and the console
-rig.loadPresetJson = async (json, name = 'Console.rig.json') => { await library.core.write('presets', name, json); return loadPresetFile(name); };
+// Put a preset's JSON on the slot you're on, as unsaved edits (tests and the console).
+rig.loadPresetJson = async (json) => { const r = await applyPreset(typeof json === 'string' ? JSON.parse(json) : json, 'console'); updateEdited(); renderBoard(); return r; };

@@ -251,7 +251,7 @@ The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins
 
   An envelope can speed up an LFO while you dig in; an orbit can wander an LFO's shape; two LFOs can
   chase each other. The knob shows its setting and where modulation has it right now (`8.0 beats → 3.2 beats`).
-- Presets save the rack and every patch; scenes switch knobs and patches within it.
+- Presets save the rack and every patch. They live on the pedalboard (bottom left): scenes of presets, SAVE, and a tree to arrange them ([docs/LIBRARY.md](docs/LIBRARY.md)).
 - **Adding a new effect or source is one file.** The folders are the registry: put
   `engine/modules/<category>/<id>.h` (or `engine/sources/<category>/<id>.h`) in its category's
   folder and run `./build.sh`; it shows up in that tab. A new tab is one line in `categories.txt`.

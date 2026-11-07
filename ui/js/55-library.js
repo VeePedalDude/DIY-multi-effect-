@@ -32,6 +32,7 @@ async function useLibraryRoot(root, backend) {
   library.core = new LibraryCore(root, library.kinds); library.backend = backend; library.rootName = root.name;
   await library.core.ensure();
   await refreshLibrary();
+  await initBoard();                            // the pedalboard lives in this library (70-presets.js)
 }
 async function refreshLibrary() {
   if (!library.core) return;

@@ -67,28 +67,31 @@ In the browser, loading a capture briefly pauses audio (about 0.1 s for a large 
 about half a second) because the engine runs on the audio thread there. The swap itself is
 a click-free crossfade. The Linux host loads on a background thread instead.
 
-## Saving and loading presets
+## The pedalboard: scenes and presets
 
-Click the preset name at the top left (**Preset ▾**). The presets window opens in the middle of the page:
+Presets live on the pedalboard in the bottom-left corner. **Scenes** are banks of presets; you build
+each one with as many presets as you want.
 
-- **Save** writes over the preset that's loaded. On a rig that has never been saved, it asks for a name
-  in the box below; type one and press Save again.
-- **Save as new** takes a name of its own (type it, then Enter). If a preset of that name already
-  exists, in any capitals, the first click says so and a second click replaces it.
-- **The list:** click a preset to load it. **Rename** changes both the file and the name inside it.
-  **Delete** asks for a second click.
-- **Edited:** after you turn something, the top bar says *edited*. Loading another preset then asks
-  for a second click, so unsaved changes aren't lost by accident.
+- **▼ / ▲** step to the previous / next scene. The board shows the scene's name, its position and how
+  many presets it has.
+- **The footswitches** are the scene's presets: click one to put it on. Its LED lights; an orange dot
+  means it has unsaved edits. **+** adds a preset to the scene.
+- **Name and SAVE**: type the preset's name in the box (Enter saves too). **SAVE** writes the preset
+  you're on, under that name.
+- **Every preset is its own sound.** A new one starts blank: gate, amp and cab with their knobs at
+  defaults, no modulation. Edit it as you like.
+- **Edits stay with each preset** while you move around the board, so you can try one, step to another
+  and come back. They last until the page restarts; only **SAVE** keeps them.
+- **The tree** (**Tree**) shows every scene with its presets. There you can rename scenes and presets,
+  move them up and down, add presets (**+ Preset**) and scenes (**+ Scene**), and delete them.
+  Deleting asks for a second click.
 
-**Picking up where you left off:** the rig comes back as you left it after a restart of the page, the
-browser or rig-host: the preset you were on, with any unsaved changes still marked *edited*. This is
-kept in the browser (one per page address), not in the library; only **Save** writes preset files.
+After a restart the board comes back on the preset you were on, as saved.
 
-**A library folder** has to be allowed again after a browser restart. Pressing **Start** does that, so
-presets in the folder show up and saves go to it.
-
-Scenes A–D live inside the preset that's loaded: **Store**, then a letter, keeps the knobs and patches
-in that scene; **Save** keeps the scenes in the preset file.
+The board is `presets/board.json` in the library: the scenes in order, each preset's name and file,
+and where you were. Each preset is its own `.rig.json` file beside it, in the format below. Preset
+files from before the board stay in the folder but aren't on it. Their A–D `scenes` still read, but
+aren't used.
 
 ## Preset files
 
@@ -122,7 +125,7 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
   migrate to it with every source at its default, which is exactly how they sounded.
 - **Version 3** made `sources` the modulation rack: every instance in order, with its `type`
   (several of one type is fine), and `mods` targets can be source knobs (`lfo2.rate`:
-  cross-modulation). The rack belongs to the preset; scenes change the knobs and patches of the
+  cross-modulation). The rack belongs to the preset; scenes (in older files) change the knobs and patches of the
   instances in it. Version 2 files migrate to the six fixed sources they were made with.
 - **Version 4** made `chain` the effect chain in order: every instance with its `type` (several of
   one type is fine, any order, any subset). Version 3 files migrate to the five fixed modules in the

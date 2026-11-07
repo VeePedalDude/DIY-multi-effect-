@@ -7,14 +7,10 @@ const root = path.resolve(__dirname, '../..');
 let fails = 0;
 const check = (ok, msg) => { console.log(`  [${ok ? 'PASS' : 'FAIL'}] ${msg}`); if (!ok) fails++; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// presets: the window opened from the preset name in the top bar (ui/js/70-presets.js)
-const presetSaveNew = async (page, name) => { await page.click('#presetBtn'); await page.fill('#presetInput', name); await page.click('#presetSaveNew'); await sleep(800); };
-const presetLoad = async (page, file) => {                      // unsaved edits: the second click loads
-  if (await page.$eval('#presetDlg', (d) => d.hidden)) await page.click('#presetBtn');
-  const sel = `[data-preset-load="${encodeURIComponent(file)}"]`; await page.click(sel); await sleep(300);
-  if (/again to load/.test(await page.textContent('#presetNote'))) await page.click(sel);
-};
-const presetClose = (page) => page.click('#presetDlg [data-act="preset-close"]');
+// presets: the pedalboard in the bottom-left corner (ui/js/70-presets.js)
+const boardSave = async (page, name) => { await page.fill('#presetName', name); await page.click('#presetSave'); await sleep(900); };
+const boardSlot = async (page, i) => { await page.click(`.fsw[data-slot="${i}"]`); await sleep(1500); };
+const boardAdd = async (page) => { await page.click('#boardAdd'); await sleep(1500); };
 
 (async () => {
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -108,10 +104,12 @@ const presetClose = (page) => page.click('#presetDlg [data-act="preset-close"]')
   for (const id of ['orbit2', 'orbit3', 'orbit4', 'orbit5', 'orbit6', 'orbit7', 'orbit8', 'orbit9', 'orbit10', 'orbit11']) await page.evaluate((id) => window.__rig.rack.remove(id), id);
   await sleep(600);
   const before = (await R()).ui.map((s) => s.id).join();
-  await presetSaveNew(page, 'Rack Test'); await presetClose(page);
-  for (const id of ['lfo3', 'orbit12', 'orbit13', 'heart']) await page.evaluate((id) => window.__rig.rack.remove(id), id);
+  await boardSave(page, 'Rack Test');
+  await boardAdd(page); await fresh();
+  r = await R();
+  check(r.ui.length === 0 && r.engine.length === 0, 'a new footswitch starts with no modulation: an empty rack in the page and the engine');
   await page.evaluate(() => window.__rig.rack.add('env')); await sleep(600);
-  await presetLoad(page, 'Rack Test.rig.json'); await presetClose(page); await sleep(1500); await fresh();
+  await boardSlot(page, 0); await fresh();
   r = await R();
   const after = r.ui.map((s) => s.id).join();
   check(after === before && r.engine.length === r.ui.length && r.ui.every((s) => r.engine.some((e) => e.id === s.id && e.slot === s.slot)) && r.conns['lfo.shape'] === 'adsr' && r.conns['lfo2.rate'] === undefined,

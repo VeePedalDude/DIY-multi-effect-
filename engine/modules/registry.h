@@ -4,6 +4,7 @@
 #pragma once
 #include "dynamics/gate.h"
 #include "drive/amp.h"
+#include "drive/hyped.h"
 #include "cab/cab.h"
 #include "filter/tilt.h"
 #include "filter/bax.h"
@@ -27,6 +28,7 @@
 #define RIG_MODULES(X) \
   X(Gate,      gate, dynamics) \
   X(Amp,       amp, drive) \
+  X(Hyped,     hyped, drive) \
   X(Cab,       cab, cab) \
   X(Tilt,      tilt, filter) \
   X(Bax,       bax, filter) \

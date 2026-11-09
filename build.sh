@@ -10,7 +10,7 @@ mkdir -p build/obj/native build/obj/wasm dist
 CXX="${CXX:-g++}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 NAM_SRC="$(ls third_party/NeuralAmpModelerCore/NAM/*.cpp third_party/NeuralAmpModelerCore/NAM/wavenet/*.cpp)"
-INC="-DNDEBUG -DNAM_SAMPLE_FLOAT -include engine/core/json_assert.h -isystem third_party/NeuralAmpModelerCore -isystem third_party/NeuralAmpModelerCore/NAM -isystem third_party/eigen -isystem third_party/nlohmann -isystem third_party/q -isystem third_party/q/infra"
+INC="-DNDEBUG -DNAM_SAMPLE_FLOAT -include engine/core/json_assert.h -isystem third_party/NeuralAmpModelerCore -isystem third_party/NeuralAmpModelerCore/NAM -isystem third_party/eigen -isystem third_party/nlohmann -isystem third_party/q -isystem third_party/q/infra -isystem third_party/hypedfuzz"
 export ZIG_GLOBAL_CACHE_DIR="$PWD/build/zig-cache" ZIG_LOCAL_CACHE_DIR="$PWD/build/zig-cache"
 ZIGCXX="python3 -m ziglang c++"
 WASM="-target wasm32-wasi -fwasm-exceptions -mexception-handling"

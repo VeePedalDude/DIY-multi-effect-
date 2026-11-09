@@ -1,5 +1,14 @@
 # Engine protocol
 
+The commands below are parsed by the engine itself (`rig_exec` in `engine/api/rig_api.cpp`): the
+browser's worklet and `hosts/rig-host` both pass lines to it, so every host speaks the same protocol.
+rig-host adds two of its own: `host_input riff|interface` (the built-in test riff, or the input) and
+`latency_test` (five clicks out and back through a loopback cable; answered with a
+`{type:'latency', ok, samples, ms, runs}` message). Over rig-host's WebSocket (`/ws`), the page sends
+`{type:'cmd', id, line}`, `{type:'asset', inst, ref, bytes}` followed by the file as one binary
+message, and `{type:'asset_clear', inst}`; the host sends `host`, `describe`, `rack`, `chain`, `resp`,
+`asset`, `meters` and `latency` messages (`ui/js/31-host.js` reads them).
+
 One text line per command. The browser sends them to the worklet; the Linux host will
 accept the same lines over a WebSocket. Modeled on mod-host.
 

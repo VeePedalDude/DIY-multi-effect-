@@ -1,6 +1,6 @@
 // ui/worklet/engine-worklet.js - runs rig.wasm inside an AudioWorklet.
-// The protocol is built from the engine's own description (rig_describe), so new
-// modules and sources need no changes here. Same text commands as the future Linux host:
+// The text protocol is parsed by the engine itself (rig_exec), the same code rig-host runs, so new
+// modules and sources need no changes here. The commands:
 //
 //   param_set <inst> <symbol> <0..1>          bypass <inst> <0|1>
 //   mod_connect <inst> <symbol> <source> <depth> [phase] [div]
@@ -48,8 +48,6 @@ class RigEngine extends AudioWorkletProcessor {
     if (this.x._initialize) this.x._initialize();
     this.x.rig_init(sampleRate);
     this.desc = JSON.parse(cString(this.x.memory, this.x.rig_describe()));
-    this.types = Object.fromEntries(this.desc.sourceTypes.map((t) => [t.type, t]));
-    this.mtypes = Object.fromEntries(this.desc.moduleTypes.map((t) => [t.type, t]));
     this.readRack(); this.readChain();
     this.mlen = this.x.rig_meters_len();
     this.inCh = 0;
@@ -75,90 +73,20 @@ class RigEngine extends AudioWorkletProcessor {
     if (Number.isInteger(i)) return i >= 0 && i < this.chain.length ? this.chain[i].slot : -1;
     const m = this.chain.find((x) => x.id === tok); return m ? m.slot : -1;
   }
-  modParams(slot) { const m = this.chain.find((x) => x.slot === slot); return m ? this.mtypes[m.type].params : []; }
   modId(slot) { const m = this.chain.find((x) => x.slot === slot); return m ? m.id : null; }
-  writeText(line) { const buf = new Uint8Array(this.x.memory.buffer, this.x.rig_text(), 64); for (let i = 0; i < 64; i++) buf[i] = i < line.length ? line.charCodeAt(i) & 0x7f : 0; }
   readRack() { this.rack = JSON.parse(cString(this.x.memory, this.x.rig_rack())).sources; }
   sendRack() { this.port.postMessage({ type: 'rack', rack: this.rack }); }
-  source(tok) { const r = this.rack.find((s) => s.id === tok); return r ? r.slot : -1; }      // rack slot of an instance id
-  sourceType(slot) { const r = this.rack.find((s) => s.slot === slot); return r ? this.types[r.type] : null; }
-  sourceKnob(slot, sym) { const r = this.rack.find((s) => s.slot === slot), t = r && this.types[r.type]; return t ? t.params.findIndex((q) => q.symbol === sym) : -1; }
-  // [phase] [div] after a patch's depth: degrees, and a multiple of the cycle written 3/2 or 1.5.
-  tapArgs(a, b) {
-    const deg = a === undefined ? 0 : Number(a);
-    let div = 1; if (b !== undefined) { const f = /^(\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/.exec(b); div = f ? Number(f[1]) / Number(f[2]) : Number(b); }
-    return Number.isFinite(deg) && Number.isFinite(div) && div > 0 ? [deg, div] : null;
-  }
+  // The protocol itself is in the engine (rig_exec, engine/api/rig_api.cpp), shared with rig-host.
   exec(line) {
-    const t = String(line).trim().split(/\s+/), c = t[0], X = this.x;
-    if (c === 'param_set' || c === 'mod_connect' || c === 'mod_disconnect') {
-      const m = this.inst(t[1]); if (m < 0) return ERR.INSTANCE_INVALID;
-      const p = this.modParams(m).findIndex((q) => q.symbol === t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
-      if (c === 'param_set') { const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE; X.rig_param(m, p, v); return 0; }
-      if (c === 'mod_disconnect') { X.rig_mod(m, p, -1, 0); return 0; }
-      const s = this.source(t[3]), d = Number(t[4]), tap = this.tapArgs(t[5], t[6]);
-      if (s < 0 || !(d >= 0 && d <= 1) || !tap) return ERR.VALUE_OUT_OF_RANGE;
-      X.rig_mod(m, p, s, d); X.rig_mod_tap(m, p, tap[0], tap[1]); return 0;
-    }
-    if (c === 'tuner') {                         // tuner <0|1> [mute 0|1]: strobe tuner on the dry input
-      if (t[1] !== '0' && t[1] !== '1') return ERR.VALUE_OUT_OF_RANGE;
-      X.rig_tuner(t[1] === '1' ? 1 : 0, t[2] === '0' ? 0 : 1); return 0;
-    }
-    if (c === 'tuner_ref') { const v = Number(t[1]); if (!(v >= 400 && v <= 480)) return ERR.VALUE_OUT_OF_RANGE; X.rig_tuner_ref(v); return 0; }
-    if (c === 'fx_add') {                        // fx_add <type> [id] [position]
-      if (!this.mtypes[t[1]]) return ERR.INSTANCE_INVALID;
-      if (t[3] !== undefined && !/^\d+$/.test(t[3])) return ERR.VALUE_OUT_OF_RANGE;
-      this.writeText(`${t[1]} ${t[2] || '-'} ${t[3] || ''}`.slice(0, 60));
-      const k = X.rig_fx_add(); if (k < 0) return k === -2 ? ERR.RACK_FULL : k === -3 ? ERR.ID_TAKEN : ERR.INSTANCE_INVALID;
-      this.readChain(); this.sendChain(); return 0;
-    }
-    if (c === 'fx_remove') { const m = this.inst(t[1]); if (m < 0) return ERR.INSTANCE_INVALID; X.rig_fx_remove(m); this.readChain(); this.sendChain(); return 0; }
-    if (c === 'fx_move') {                       // fx_move <inst> <position>
-      const m = this.inst(t[1]), pos = Number(t[2]); if (m < 0) return ERR.INSTANCE_INVALID;
-      if (!Number.isInteger(pos) || pos < 0) return ERR.VALUE_OUT_OF_RANGE;
-      X.rig_fx_move(m, pos); this.readChain(); this.sendChain(); return 0;
-    }
-    if (c === 'src_add') {                       // src_add <type> [id]
-      if (!this.types[t[1]]) return ERR.INSTANCE_INVALID;
-      this.writeText(`${t[1]} ${t[2] || ''}`.slice(0, 60));
-      const k = X.rig_src_add(); if (k < 0) return k === -2 ? ERR.RACK_FULL : k === -3 ? ERR.ID_TAKEN : ERR.INSTANCE_INVALID;
-      this.readRack(); this.sendRack(); return 0;
-    }
-    if (c === 'src_remove') { const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID; X.rig_src_remove(k); this.readRack(); this.sendRack(); return 0; }
-    if (c === 'src_mod' || c === 'src_unmod') {  // src_mod <source> <symbol> <from source> <depth> | src_unmod <source> <symbol>
-      const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
-      const p = this.sourceKnob(k, t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
-      if (c === 'src_unmod') { X.rig_src_mod(k, p, -1, 0); return 0; }
-      const f = this.source(t[3]), d = Number(t[4]), tap = this.tapArgs(t[5], t[6]); if (f < 0 || !(d >= 0 && d <= 1) || !tap) return ERR.VALUE_OUT_OF_RANGE;
-      if (X.rig_src_mod(k, p, f, d) !== 0) return ERR.INSTANCE_INVALID;
-      X.rig_src_tap(k, p, tap[0], tap[1]); return 0;
-    }
-    if (c === 'src_cfg') {                       // src_cfg <source> <symbol> <0..1>
-      const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
-      const i = (this.sourceType(k).settings || []).findIndex((q) => q.symbol === t[2]); if (i < 0) return ERR.INVALID_PARAM_SYMBOL;
-      const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE;
-      X.rig_src_cfg(k, i, v); return 0;
-    }
-    if (c === 'src_cell') {                      // src_cell <source> <row> <symbol> <0..1>
-      const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
-      const tb = this.sourceType(k).table || { rows: 0, cols: [] }, row = Number(t[2]), j = tb.cols.findIndex((q) => q.symbol === t[3]);
-      if (!Number.isInteger(row) || row < 0 || row >= tb.rows) return ERR.VALUE_OUT_OF_RANGE;
-      if (j < 0) return ERR.INVALID_PARAM_SYMBOL;
-      const v = Number(t[4]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE;
-      X.rig_src_cell(k, row, j, v); return 0;
-    }
-    if (c === 'src_set') {                       // src_set <source> <symbol> <0..1>
-      const k = this.source(t[1]); if (k < 0) return ERR.INSTANCE_INVALID;
-      const p = this.sourceKnob(k, t[2]); if (p < 0) return ERR.INVALID_PARAM_SYMBOL;
-      const v = Number(t[3]); if (!(v >= 0 && v <= 1)) return ERR.VALUE_OUT_OF_RANGE;
-      X.rig_src_param(k, p, v); return 0;
-    }
-    if (c === 'bypass') { const m = this.inst(t[1]); if (m < 0) return ERR.INSTANCE_INVALID; X.rig_bypass(m, t[2] === '1' ? 1 : 0); return 0; }
-    if (c === 'set_bpm') { const v = Number(t[1]); if (!(v >= 30 && v <= 300)) return ERR.VALUE_OUT_OF_RANGE; X.rig_tempo(v); return 0; }
-    if (c === 'master') { const v = Number(t[1]); if (!(v >= -60 && v <= 6)) return ERR.VALUE_OUT_OF_RANGE; X.rig_master(v); return 0; }
-    if (c === 'ext') { const s = this.source(t[1]), v = Number(t[2]); if (s < 0 || !Number.isFinite(v)) return ERR.VALUE_OUT_OF_RANGE; X.rig_ext(s, v); return 0; }
-    if (c === 'input_channel') { this.inCh = t[1] === '1' ? 1 : 0; return 0; }
-    return ERR.INVALID_OPERATION;
+    const X = this.x, max = X.rig_cmd_len() - 1, buf = new Uint8Array(X.memory.buffer, X.rig_cmd_buf(), max + 1);
+    const str = String(line); let n = 0;
+    for (let i = 0; i < str.length && n < max; i++) { const c = str.charCodeAt(i); buf[n++] = c < 0x80 ? c : 0x3f; }
+    buf[n] = 0;
+    const status = X.rig_exec(), changed = X.rig_exec_changed();
+    if (changed & 1) { this.readRack(); this.sendRack(); }
+    if (changed & 2) { this.readChain(); this.sendChain(); }
+    this.inCh = X.rig_input_channel();
+    return status;
   }
   onMsg(d) {
     if (d.type === 'cmd') {

@@ -2,6 +2,7 @@
 let inputNode = null, mediaStream = null, loopSrc = null, riffBuf = null;
 
 async function startAudio(source) {
+  if (HOST) return hostStart(source);                        // served by rig-host: the engine runs natively (31-host.js)
   // 48 kHz, the rate NAM captures are made at (the browser converts if the interface runs at another rate).
   let ctx; try { ctx = new AudioContext({ latencyHint: 0, sampleRate: 48000 }); } catch (e) { ctx = new AudioContext({ latencyHint: 0 }); }
   rig.ctx = ctx;
@@ -32,6 +33,7 @@ function disconnectInput() {
   if (mediaStream) { mediaStream.getTracks().forEach((t) => t.stop()); mediaStream = null; }
 }
 async function setSource(kind, deviceId) {
+  if (HOST) { host.want = kind; rig.cmd(`host_input ${kind === 'riff' ? 'riff' : 'interface'}`); $('srcSel').value = kind; return; }
   const ctx = rig.ctx; disconnectInput();
   $('srcSel').value = kind;
   if (kind === 'device') {
@@ -65,7 +67,7 @@ async function listDevices() {
   if (!rig.ctx.setSinkId) { $('outSel').disabled = true; $('outSel').title = 'This browser cannot choose an output device'; }
 }
 function updateLatency() {
-  const ctx = rig.ctx; if (!ctx) return;
+  const ctx = rig.ctx; if (!ctx || HOST) return;
   let inLat = 0;
   if (mediaStream) { const s = mediaStream.getAudioTracks()[0].getSettings(); inLat = s.latency || 0; }
   const total = (inLat + (ctx.baseLatency || 0) + (ctx.outputLatency || 0)) * 1000;

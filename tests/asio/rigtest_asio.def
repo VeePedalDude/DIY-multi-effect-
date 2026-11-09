@@ -1,0 +1,4 @@
+LIBRARY rigtest_asio.dll
+EXPORTS
+  DllGetClassObject PRIVATE
+  DllCanUnloadNow PRIVATE

@@ -5,7 +5,7 @@ const FILES = ['00-core.js', '04-skin-core.js', '10-model.js', '12-inputs-core.j
 const EXPORTS = ['state', 'DEPTH', 'MODS', 'PARAMS', 'SRCMAP', 'loadModel', 'extOf', 'kindForName', 'parseWavInfo', 'parseNamMeta', 'metaLine',
   'matchesQuery', 'uniqueName', 'safeFileName', 'fnv1a', 'KvDir', 'memStore', 'LibraryCore', 'buildPreset', 'readPreset', 'currentSnapshot',
   'PRESET_VERSION', 'PRESET_RENAMES', 'DEFAULT_SKIN', 'CLASSIC_SKIN', 'readSkinJson', 'mergeSkin', 'tileStyle', 'tileNameFor', 'skinFiles',
-  'zipFiles', 'unzip', 'readSkinPacket', 'crc32', 'midiDecode', 'midiMatches', 'padRaw', 'inputValue', 'padSnapshot', 'padLearn', 'midiLearn', 'newBinding', 'sanitizeBinding', 'describeBinding', 'chordName', 'chordHeard', 'midiName', 'chordSpell', 'chordOptions', 'chordVoicings', 'fretsText', 'CB_TUNINGS', 'CB_FORMULAS', 'scaleSpell', 'scaleChords', 'SC_SCALES'];
+  'zipFiles', 'unzip', 'readSkinPacket', 'crc32', 'midiDecode', 'midiMatches', 'padRaw', 'inputValue', 'padSnapshot', 'padLearn', 'midiLearn', 'newBinding', 'sanitizeBinding', 'describeBinding', 'chordName', 'chordHeard', 'midiName', 'chordSpell', 'chordOptions', 'chordVoicings', 'fretsText', 'CB_TUNINGS', 'CB_FORMULAS', 'scaleSpell', 'scaleChords', 'SC_SCALES', 'SC_EXOTIC'];
 export async function loadUi() {
   const stubEl = { textContent: '', appendChild() {}, removeChild() {}, childNodes: [], scrollTop: 0 };
   const ctx = vm.createContext({

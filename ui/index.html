@@ -232,6 +232,9 @@ body.panel-hidden .ptoggle{right:16px}
 .cfoot #chartTuning{flex:1.7}.cfoot #chartPos{flex:1}
 .cfoot #atlasTuning{flex:1.7}.cfoot #atlasLabels{flex:.8}.cfoot #atlasInfo{flex:1.4;overflow:hidden;text-overflow:ellipsis}
 .crow.scales .cchip{width:101px;font-size:12px;padding:0 4px}
+.crow.hl .cchip{min-width:32px;padding:0 6px}
+.cexotic{position:absolute;left:214px;top:316px;width:422px!important;min-height:28px!important;font-size:12px;padding:0 6px}
+.cexotic.on{border-color:var(--accent);color:var(--accent)}
 .achords .cchip{position:absolute;min-height:22px;height:22px;min-width:0;padding:0 4px;font-size:12px;overflow:hidden;white-space:nowrap}
 .cfoot .cpage{font-size:12px;white-space:nowrap;color:var(--fg);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:7px 8px}
 .cfoot .btn.icon{width:30px;padding:0;font-size:16px}
@@ -330,7 +333,7 @@ body.panel-hidden .ptoggle{right:16px}
 
 <section class="hud chart" id="atlas" hidden aria-label="Scale atlas">
   <div class="cboard" id="atlasBoard">
-    <div class="ccard"><canvas id="atlasPickCv" aria-hidden="true"></canvas><div id="atlasPick"></div></div>
+    <div class="ccard"><canvas id="atlasPickCv" aria-hidden="true"></canvas><div id="atlasPick"></div><select id="atlasExotic" class="cexotic" aria-label="Exotic scales"></select></div>
     <div class="ccard" id="atlasNeckCard"><canvas id="atlasNeckCv" role="img" aria-label="Fretboard"></canvas><div id="atlasChords"></div>
       <div class="cfoot">
         <select id="atlasTuning" aria-label="Tuning"></select>

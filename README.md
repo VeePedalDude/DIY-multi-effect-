@@ -244,7 +244,9 @@ The picks are remembered in the browser. Skins colour it (the `chart` section).
 
 **Scale Atlas** in the top bar (or **S**) puts a scale on the fretboard, on the same two cards.
 - **The left card:** key, scale (the major modes, harmonic and melodic minor, Phrygian dominant,
-  Hungarian minor, major and minor pentatonic, blues, Hirajōshi, whole tone, both diminished scales), and
+  Hungarian minor, major and minor pentatonic, blues, Hirajōshi, whole tone, both diminished scales), an
+  **Exotic** menu of 37 rarer scales (double harmonic, enigmatic, Persian, Neapolitan, Prometheus, the
+  Japanese in / insen / iwato / yo / kumoi, bebop, altered, Messiaen mode 3, ...), and
   **Highlight**: click degrees to light them on the neck and dim the rest.
 - **The right card:** every note of the scale on frets 0-15, high string at the top, the root in colour,
   labelled by degree or by note name. Under it, a column per degree of the chords on it that use only

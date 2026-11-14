@@ -6,7 +6,7 @@
 // The music is 16-scales.js. Picks are remembered in this browser; the highlight isn't.
 // Colours: the skin's `chart` section, shared with the Chord Chart (docs/SKINS.md).
 const AT_FRETS = 15;
-const AT_ROWS = [['key', 'KEY', 104], ['scale', 'SCALE', 142], ['hl', 'HIGHLIGHT', 318]];
+const AT_ROWS = [['key', 'KEY', 104], ['scale', 'SCALE', 142], ['hl', 'HIGHLIGHT', 352]];   // the Exotic menu sits at 316 (#atlasExotic)
 const AT_NECK = { x0: 154, x1: 630, open: 136, y0: 120, sp: 24 };          // the nut, the 15th fret, open notes, top string, string spacing
 const atlas = { k: 1, dpr: 1, notes: [], chords: [], hl: [], chord: null };
 const atPick = (() => {
@@ -30,13 +30,15 @@ function atControls() {
     scale: SC_SCALES.map(([id, name, , short]) => chChip(short, atPick.scale === id, 'scale', id).replace('<button', `<button title="${name}"`)).join(''),
     hl: atlas.notes.map((x, i) => chChip(x.deg, atlas.hl.includes(i), 'hl', i)).join('') + chChip('clear', false, 'clear', 0, !atlas.hl.length),
   };
-  $('atlasPick').innerHTML = AT_ROWS.map(([id, label, y]) => `<div class="crow${id === 'scale' ? ' scales' : ''}" style="top:${y}px" role="group" aria-label="${label.toLowerCase()}">${rows[id]}</div>`).join('');
+  $('atlasPick').innerHTML = AT_ROWS.map(([id, label, y]) => `<div class="crow${id === 'scale' ? ' scales' : id === 'hl' ? ' hl' : ''}" style="top:${y}px" role="group" aria-label="${label.toLowerCase()}">${rows[id]}</div>`).join('');
   // the chords: a column per degree under the neck, a button per chord
   const n = atlas.chords.length, cw = 530 / n;
   $('atlasChords').innerHTML = atlas.chords.map((d, i) => d.chords.map((c, j) =>
     `<button class="cchip" style="left:${Math.round(112 + i * cw + 3)}px;top:${304 + j * 25}px;width:${Math.round(cw - 6)}px" aria-pressed="${atlas.chord === c.name}" data-at="chord" data-v="${i}.${j}" title="${c.name}: ${c.idx.map((k) => atlas.notes[k].name).join(' ')}">${c.name}</button>`).join('')).join('');
   $('atlasChords').className = 'achords';
   $('atlasTuning').value = atTuning()[0]; $('atlasLabels').value = atPick.labels;
+  const ex = SC_EXOTIC.some((x) => x[0] === atPick.scale);
+  $('atlasExotic').value = ex ? atPick.scale : ''; $('atlasExotic').classList.toggle('on', ex);
   const ch = atlas.chord && atlas.chords.flatMap((d) => d.chords).find((c) => c.name === atlas.chord);
   $('atlasInfo').textContent = ch ? `${ch.name}: ${ch.idx.map((k) => atlas.notes[k].name).join(' ')}` : atlas.hl.length ? `${atlas.hl.length} of ${atlas.notes.length} highlighted` : `${atlas.notes.length} notes`;
 }
@@ -67,8 +69,9 @@ function atDraw() {
   c.textAlign = 'right'; c.fillStyle = st.card.text; c.font = `500 17px ${SKIN.ui.fontMono}`; c.fillText(atTuning()[1].split(' (')[0], 626, 86);
   c.font = `600 13px ${SKIN.ui.fontDisplay}`; c.textAlign = 'left';
   AT_ROWS.forEach(([, label, y]) => c.fillText(label, 128, y + 19));
+  c.fillText('EXOTIC', 128, 316 + 19);
   c.font = `500 14px ${SKIN.ui.fontMono}`;
-  c.fillText(atlas.notes.map((x) => x.name).join('  '), 214, 380); c.fillText(atlas.notes.map((x) => x.deg).join('  '), 214, 404);
+  c.fillText(atlas.notes.map((x) => x.name).join('  '), 214, 412); c.fillText(atlas.notes.map((x) => x.deg).join('  '), 214, 434);
   // the right card: the scale's name and notes, the neck, and the degree over each column of chords
   c = chCanvas($('atlasNeckCv'), atlas);
   chCardFrame(c, st);
@@ -114,6 +117,8 @@ function wireAtlas() {
   $('atlasPick').addEventListener('click', atClick); $('atlasChords').addEventListener('click', atClick);
   $('atlasTuning').onchange = (e) => { atPick.tuning = e.target.value; atChanged(true); };
   $('atlasLabels').onchange = (e) => { atPick.labels = e.target.value; atChanged(true); };
+  $('atlasExotic').innerHTML = `<option value="">${SC_EXOTIC.length} exotic scales…</option>` + SC_EXOTIC.map(([id, name, ds]) => `<option value="${id}">${name}  (${ds.map(([n, a]) => cbAcc(a) + n).join(' ')})</option>`).join('');
+  $('atlasExotic').onchange = (e) => { if (e.target.value) { atPick.scale = e.target.value; atChanged(); } };
   $('vAtlas').onclick = () => setView('atlas');
   window.addEventListener('keydown', (e) => {
     if (e.target.closest && e.target.closest('input,textarea,select')) return;

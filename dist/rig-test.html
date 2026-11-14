@@ -232,6 +232,9 @@ body.panel-hidden .ptoggle{right:16px}
 .cfoot #chartTuning{flex:1.7}.cfoot #chartPos{flex:1}
 .cfoot #atlasTuning{flex:1.7}.cfoot #atlasLabels{flex:.8}.cfoot #atlasInfo{flex:1.4;overflow:hidden;text-overflow:ellipsis}
 .crow.scales .cchip{width:101px;font-size:12px;padding:0 4px}
+.crow.hl .cchip{min-width:32px;padding:0 6px}
+.cexotic{position:absolute;left:214px;top:316px;width:422px!important;min-height:28px!important;font-size:12px;padding:0 6px}
+.cexotic.on{border-color:var(--accent);color:var(--accent)}
 .achords .cchip{position:absolute;min-height:22px;height:22px;min-width:0;padding:0 4px;font-size:12px;overflow:hidden;white-space:nowrap}
 .cfoot .cpage{font-size:12px;white-space:nowrap;color:var(--fg);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:7px 8px}
 .cfoot .btn.icon{width:30px;padding:0;font-size:16px}
@@ -330,7 +333,7 @@ body.panel-hidden .ptoggle{right:16px}
 
 <section class="hud chart" id="atlas" hidden aria-label="Scale atlas">
   <div class="cboard" id="atlasBoard">
-    <div class="ccard"><canvas id="atlasPickCv" aria-hidden="true"></canvas><div id="atlasPick"></div></div>
+    <div class="ccard"><canvas id="atlasPickCv" aria-hidden="true"></canvas><div id="atlasPick"></div><select id="atlasExotic" class="cexotic" aria-label="Exotic scales"></select></div>
     <div class="ccard" id="atlasNeckCard"><canvas id="atlasNeckCv" role="img" aria-label="Fretboard"></canvas><div id="atlasChords"></div>
       <div class="cfoot">
         <select id="atlasTuning" aria-label="Tuning"></select>
@@ -1575,7 +1578,7 @@ function chordVoicings(c, tuning, pos) {
 const fretsText = (frets) => frets.map((x) => x < 0 ? 'x' : x > 9 ? `(${x})` : String(x)).join('');
 
 // ===== ui/js/16-scales.js =====
-// 16-scales.js - the Scale Atlas's music (its view is 65-atlas.js). scaleSpell() spells a scale from a key
+// 16-scales.js - the Scale Atlas's music (SC_SCALES on the buttons, SC_EXOTIC in the Exotic menu) (its view is 65-atlas.js). scaleSpell() spells a scale from a key
 // (degrees from the root's letter, as 15-chordbook.js spells chords); scaleChords() lists, for each note
 // of the scale as a root, the chords whose notes all lie in the scale: triads first, then sevenths, then
 // sus, sixths and power chords, at most SC_PER_DEG each.
@@ -1600,12 +1603,53 @@ const SC_SCALES = [
   ['dimwh', 'Diminished (whole-half)', [[1, 0], [2, 0], [3, -1], [4, 0], [5, -1], [6, -1], [6, 0], [7, 0]], 'Dim. W-H'],
   ['dimhw', 'Diminished (half-whole)', [[1, 0], [2, -1], [3, -1], [3, 0], [4, 1], [5, 0], [6, 0], [7, -1]], 'Dim. H-W'],
 ];
+// The Exotic menu: rarer and non-Western scales, by name (formulas as in Wikipedia's List of musical scales
+// and modes and common guitar references; a scale with two names of the same notes is listed once)
+const SC_EXOTIC = [
+  ['altered', 'Altered (Super Locrian)', [[1, 0], [2, -1], [3, -1], [4, -1], [5, -1], [6, -1], [7, -1]]],
+  ['augmented', 'Augmented', [[1, 0], [3, -1], [3, 0], [5, 0], [5, 1], [7, 0]]],
+  ['balinese', 'Balinese (Pelog)', [[1, 0], [2, -1], [3, -1], [5, 0], [6, -1]]],
+  ['bebopdom', 'Bebop dominant', [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, -1], [7, 0]]],
+  ['bebopmaj', 'Bebop major', [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [5, 1], [6, 0], [7, 0]]],
+  ['bebopmin', 'Bebop minor', [[1, 0], [2, 0], [3, -1], [3, 0], [4, 0], [5, 0], [6, 0], [7, -1]]],
+  ['chinese', 'Chinese', [[1, 0], [3, 0], [4, 1], [5, 0], [7, 0]]],
+  ['dblharm', 'Double harmonic (Byzantine)', [[1, 0], [2, -1], [3, 0], [4, 0], [5, 0], [6, -1], [7, 0]]],
+  ['egyptian', 'Egyptian', [[1, 0], [2, 0], [4, 0], [5, 0], [7, -1]]],
+  ['enigmatic', 'Enigmatic', [[1, 0], [2, -1], [3, 0], [4, 1], [5, 1], [6, 1], [7, 0]]],
+  ['harmmaj', 'Harmonic major', [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, -1], [7, 0]]],
+  ['hungmaj', 'Hungarian major', [[1, 0], [2, 1], [3, 0], [4, 1], [5, 0], [6, 0], [7, -1]]],
+  ['in', 'In', [[1, 0], [2, -1], [4, 0], [5, 0], [6, -1]]],
+  ['insen', 'Insen', [[1, 0], [2, -1], [4, 0], [5, 0], [7, -1]]],
+  ['istrian', 'Istrian', [[1, 0], [2, -1], [3, -1], [4, -1], [5, -1], [5, 0]]],
+  ['iwato', 'Iwato', [[1, 0], [2, -1], [4, 0], [5, -1], [7, -1]]],
+  ['kumoi', 'Kumoi', [[1, 0], [2, 0], [3, -1], [5, 0], [6, 0]]],
+  ['leadwhole', 'Leading whole tone', [[1, 0], [2, 0], [3, 0], [4, 1], [5, 1], [6, 1], [7, 0]]],
+  ['locnat2', 'Locrian ♮2 (half diminished)', [[1, 0], [2, 0], [3, -1], [4, 0], [5, -1], [6, -1], [7, -1]]],
+  ['locnat6', 'Locrian ♮6', [[1, 0], [2, -1], [3, -1], [4, 0], [5, -1], [6, 0], [7, -1]]],
+  ['lydaug', 'Lydian augmented', [[1, 0], [2, 0], [3, 0], [4, 1], [5, 1], [6, 0], [7, 0]]],
+  ['lyddim', 'Lydian diminished', [[1, 0], [2, 0], [3, -1], [4, 1], [5, 0], [6, 0], [7, 0]]],
+  ['lyddom', 'Lydian dominant', [[1, 0], [2, 0], [3, 0], [4, 1], [5, 0], [6, 0], [7, -1]]],
+  ['majloc', 'Major Locrian (Arabian)', [[1, 0], [2, 0], [3, 0], [4, 0], [5, -1], [6, -1], [7, -1]]],
+  ['messiaen3', 'Messiaen mode 3', [[1, 0], [2, 0], [3, -1], [3, 0], [4, 1], [5, 0], [6, -1], [7, -1], [7, 0]]],
+  ['neapmaj', 'Neapolitan major', [[1, 0], [2, -1], [3, -1], [4, 0], [5, 0], [6, 0], [7, 0]]],
+  ['neapmin', 'Neapolitan minor', [[1, 0], [2, -1], [3, -1], [4, 0], [5, 0], [6, -1], [7, 0]]],
+  ['oriental', 'Oriental', [[1, 0], [2, -1], [3, 0], [4, 0], [5, -1], [6, 0], [7, -1]]],
+  ['persian', 'Persian', [[1, 0], [2, -1], [3, 0], [4, 0], [5, -1], [6, -1], [7, 0]]],
+  ['prometheus', 'Prometheus', [[1, 0], [2, 0], [3, 0], [4, 1], [6, 0], [7, -1]]],
+  ['romani', 'Romani minor', [[1, 0], [2, 0], [3, -1], [4, 1], [5, 0], [6, -1], [7, -1]]],
+  ['harmonics', 'Scale of harmonics', [[1, 0], [3, -1], [3, 0], [4, 0], [5, 0], [6, 0]]],
+  ['spanish8', 'Spanish 8-tone', [[1, 0], [2, -1], [3, -1], [3, 0], [4, 0], [5, -1], [6, -1], [7, -1]]],
+  ['tritone', 'Tritone', [[1, 0], [2, -1], [3, 0], [5, -1], [5, 0], [7, -1]]],
+  ['tritone2', 'Two-semitone tritone', [[1, 0], [2, -1], [2, 0], [4, 1], [5, 0], [6, -1]]],
+  ['ukrdorian', 'Ukrainian Dorian (Romanian minor)', [[1, 0], [2, 0], [3, -1], [4, 1], [5, 0], [6, 0], [7, -1]]],
+  ['yo', 'Yo', [[1, 0], [2, 0], [4, 0], [5, 0], [6, 0]]],
+];
 // [suffix, intervals above the root], in the order they're listed under a root
 const SC_CHORDS = [['', [0, 4, 7]], ['m', [0, 3, 7]], ['dim', [0, 3, 6]], ['aug', [0, 4, 8]],
   ['maj7', [0, 4, 7, 11]], ['7', [0, 4, 7, 10]], ['m7', [0, 3, 7, 10]], ['m7♭5', [0, 3, 6, 10]], ['dim7', [0, 3, 6, 9]], ['mMaj7', [0, 3, 7, 11]],
   ['sus2', [0, 2, 7]], ['sus4', [0, 5, 7]], ['6', [0, 4, 7, 9]], ['m6', [0, 3, 7, 9]], ['5', [0, 7]]];
 const SC_PER_DEG = 4;
-const scScale = (id) => SC_SCALES.find((s) => s[0] === id) || SC_SCALES[0];
+const scScale = (id) => SC_SCALES.find((s) => s[0] === id) || SC_EXOTIC.find((s) => s[0] === id) || SC_SCALES[0];
 
 // The scale's notes: [{ deg: '♭3', name: 'E♭', pc }], low to high from the root.
 function scaleSpell(root, id) {
@@ -5650,7 +5694,7 @@ rig.chart = {
 // The music is 16-scales.js. Picks are remembered in this browser; the highlight isn't.
 // Colours: the skin's `chart` section, shared with the Chord Chart (docs/SKINS.md).
 const AT_FRETS = 15;
-const AT_ROWS = [['key', 'KEY', 104], ['scale', 'SCALE', 142], ['hl', 'HIGHLIGHT', 318]];
+const AT_ROWS = [['key', 'KEY', 104], ['scale', 'SCALE', 142], ['hl', 'HIGHLIGHT', 352]];   // the Exotic menu sits at 316 (#atlasExotic)
 const AT_NECK = { x0: 154, x1: 630, open: 136, y0: 120, sp: 24 };          // the nut, the 15th fret, open notes, top string, string spacing
 const atlas = { k: 1, dpr: 1, notes: [], chords: [], hl: [], chord: null };
 const atPick = (() => {
@@ -5674,13 +5718,15 @@ function atControls() {
     scale: SC_SCALES.map(([id, name, , short]) => chChip(short, atPick.scale === id, 'scale', id).replace('<button', `<button title="${name}"`)).join(''),
     hl: atlas.notes.map((x, i) => chChip(x.deg, atlas.hl.includes(i), 'hl', i)).join('') + chChip('clear', false, 'clear', 0, !atlas.hl.length),
   };
-  $('atlasPick').innerHTML = AT_ROWS.map(([id, label, y]) => `<div class="crow${id === 'scale' ? ' scales' : ''}" style="top:${y}px" role="group" aria-label="${label.toLowerCase()}">${rows[id]}</div>`).join('');
+  $('atlasPick').innerHTML = AT_ROWS.map(([id, label, y]) => `<div class="crow${id === 'scale' ? ' scales' : id === 'hl' ? ' hl' : ''}" style="top:${y}px" role="group" aria-label="${label.toLowerCase()}">${rows[id]}</div>`).join('');
   // the chords: a column per degree under the neck, a button per chord
   const n = atlas.chords.length, cw = 530 / n;
   $('atlasChords').innerHTML = atlas.chords.map((d, i) => d.chords.map((c, j) =>
     `<button class="cchip" style="left:${Math.round(112 + i * cw + 3)}px;top:${304 + j * 25}px;width:${Math.round(cw - 6)}px" aria-pressed="${atlas.chord === c.name}" data-at="chord" data-v="${i}.${j}" title="${c.name}: ${c.idx.map((k) => atlas.notes[k].name).join(' ')}">${c.name}</button>`).join('')).join('');
   $('atlasChords').className = 'achords';
   $('atlasTuning').value = atTuning()[0]; $('atlasLabels').value = atPick.labels;
+  const ex = SC_EXOTIC.some((x) => x[0] === atPick.scale);
+  $('atlasExotic').value = ex ? atPick.scale : ''; $('atlasExotic').classList.toggle('on', ex);
   const ch = atlas.chord && atlas.chords.flatMap((d) => d.chords).find((c) => c.name === atlas.chord);
   $('atlasInfo').textContent = ch ? `${ch.name}: ${ch.idx.map((k) => atlas.notes[k].name).join(' ')}` : atlas.hl.length ? `${atlas.hl.length} of ${atlas.notes.length} highlighted` : `${atlas.notes.length} notes`;
 }
@@ -5711,8 +5757,9 @@ function atDraw() {
   c.textAlign = 'right'; c.fillStyle = st.card.text; c.font = `500 17px ${SKIN.ui.fontMono}`; c.fillText(atTuning()[1].split(' (')[0], 626, 86);
   c.font = `600 13px ${SKIN.ui.fontDisplay}`; c.textAlign = 'left';
   AT_ROWS.forEach(([, label, y]) => c.fillText(label, 128, y + 19));
+  c.fillText('EXOTIC', 128, 316 + 19);
   c.font = `500 14px ${SKIN.ui.fontMono}`;
-  c.fillText(atlas.notes.map((x) => x.name).join('  '), 214, 380); c.fillText(atlas.notes.map((x) => x.deg).join('  '), 214, 404);
+  c.fillText(atlas.notes.map((x) => x.name).join('  '), 214, 412); c.fillText(atlas.notes.map((x) => x.deg).join('  '), 214, 434);
   // the right card: the scale's name and notes, the neck, and the degree over each column of chords
   c = chCanvas($('atlasNeckCv'), atlas);
   chCardFrame(c, st);
@@ -5758,6 +5805,8 @@ function wireAtlas() {
   $('atlasPick').addEventListener('click', atClick); $('atlasChords').addEventListener('click', atClick);
   $('atlasTuning').onchange = (e) => { atPick.tuning = e.target.value; atChanged(true); };
   $('atlasLabels').onchange = (e) => { atPick.labels = e.target.value; atChanged(true); };
+  $('atlasExotic').innerHTML = `<option value="">${SC_EXOTIC.length} exotic scales…</option>` + SC_EXOTIC.map(([id, name, ds]) => `<option value="${id}">${name}  (${ds.map(([n, a]) => cbAcc(a) + n).join(' ')})</option>`).join('');
+  $('atlasExotic').onchange = (e) => { if (e.target.value) { atPick.scale = e.target.value; atChanged(); } };
   $('vAtlas').onclick = () => setView('atlas');
   window.addEventListener('keydown', (e) => {
     if (e.target.closest && e.target.closest('input,textarea,select')) return;

@@ -54,6 +54,18 @@ const near = (px, hex, tol = 40) => hexRgb(hex).every((v, i) => Math.abs(v - px[
   const cols = await V(`document.querySelectorAll('#atlasChords .cchip').length`);
   check(cols === ch.flat().length, `${cols} chord buttons under the neck, a column per degree`);
 
+  console.log('3b. The Exotic menu');
+  const opts = await V(`Array.from(document.getElementById('atlasExotic').options).map((o) => o.value)`);
+  await select('#atlasExotic', 'dblharm'); await sleep(200);
+  notes = await V('window.__rig.atlas.notes()');
+  const exOn = await V(`[document.getElementById('atlasExotic').value, document.getElementById('atlasExotic').classList.contains('on'), document.querySelectorAll('[data-ch="scale"][aria-pressed="true"]').length]`);
+  check(opts.length > 30 && notes.map((x) => x.split(':')[0]).join(' ') === 'C D♭ E F G A♭ B' && exOn[0] === 'dblharm' && exOn[1] && exOn[2] === 0,
+    `${opts.length - 1} exotic scales; double harmonic in C: ${notes.join(' ')}; the menu shows it and no scale button is pressed`);
+  await select('#atlasExotic', 'messiaen3'); await sleep(200);
+  check((await V('window.__rig.atlas.chords()')).length === 9 && (await V(`document.querySelectorAll('#atlasChords .cchip').length`)) > 9, 'a nine-note scale (Messiaen mode 3) gets nine chord columns');
+  await page.click('[data-ch="scale"][data-v="major"]'); await sleep(150);
+  check((await V(`document.getElementById('atlasExotic').value`)) === '', 'a scale button puts the menu back to its placeholder');
+
   console.log('4. Highlighting: a degree, a chord, clear');
   await page.click('[data-ch="hl"][data-v="2"]'); await sleep(150);
   const e0 = await dot(0, 0), g = await dot(0, 3);

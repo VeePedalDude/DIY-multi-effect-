@@ -11,7 +11,7 @@ check(!r.error && r.warnings.length === 0, `loads with no notes${r.warnings && r
 check(close(r.snap.params['holo.feedback'], 42.75 / 95) && close(r.snap.params['gate.thresh'], (-59 + 80) / 60) && close(r.snap.params['cab.locut'], 0.25, 1e-5), 'real units map back to the same knob positions');
 check(r.snap.conns['holo.feedback'] === 'lfo' && r.snap.conns['amp.input'] === 'env' && close(r.snap.depths['tess.fold'], 0.3), 'modulations and their depths');
 check(r.assets.cab && r.assets.cab.name === 'V30 SM57.wav' && r.assets.amp && r.assets.amp.kind === 'nam', 'file references for the cab IR and the NAM capture');
-check(r.scenes.A && close(r.scenes.A.params['holo.halo'], 0.9) && r.master === -12 && r.snap.bpm === 120, 'scene A, master and tempo');
+check(r.scenes.A && close(r.scenes.A.params['holo.halo'], 0.9) && r.level === -12 && r.snap.bpm === 120, 'scene A, tempo, and the file\'s master as the preset\'s level (format 5)');
 check(Object.keys(r.snap.srcParams).length === 0 && Object.keys(r.scenes.A.srcParams).length === 0, 'migrated from format 1: modulation sources stay at their defaults (what format 1 meant)');
 
 console.log('golden file (format 2: source knobs, written by hand in real units)');
@@ -58,6 +58,7 @@ r = u.readPreset(g4);
 const mreal = (snap, id, sym) => { const t = r.chain.find((x) => x.id === id).type, q = u.MTYPES[t].params.find((x) => x.symbol === sym), v = snap.params[`${id}.${sym}`]; return q.curve === 'log' ? q.min * Math.pow(q.max / q.min, v) : q.min + (q.max - q.min) * v; };
 check(!r.error && r.warnings.length === 0, `loads with no notes${r.warnings && r.warnings.length ? ': ' + r.warnings.join(' | ') : ''}`);
 check(r.chain.map((x) => `${x.id}:${x.type}`).join() === 'amp:amp,holo:holo,echo:holo,cab:cab,tess:tess', `the chain, in order: ${r.chain.map((x) => x.id).join(' → ')}`);
+check(r.level === -8, `format 4 → 5: the file's master (-8 dB) is now the preset's own level (${r.level} dB)`);
 check(close(mreal(r.snap, 'echo', 'feedback'), 70, 1e-3) && close(mreal(r.snap, 'holo', 'feedback'), 30, 1e-3) && r.snap.bypass.echo === true && r.snap.bypass.holo === false, 'each HOLOGRAM has its own knobs and bypass');
 check(r.snap.conns['echo.feedback'] === 'lfo' && close(r.snap.depths['echo.feedback'], 0.25) && r.snap.conns['holo.halo'] === 'env', 'patches to the second delay');
 check(r.scenes.A.bypass.echo === false && close(mreal(r.scenes.A, 'echo', 'feedback'), 85, 1e-3), 'scene A turns “echo” on with more feedback');
@@ -81,7 +82,7 @@ u.setRack([...u.SRC.map((x) => ({ id: x.id, type: x.type })), { id: 'lfo2', type
 Object.values(u.PARAMS).forEach((p, i) => { p.v = (i * 0.137) % 1; });
 u.SRC.forEach((s, i) => s.params.forEach((q, j) => { q.v = ((i + 1) * 0.211 + j * 0.37) % 1; }));
 u.state.conns = { 'holo.halo': 'orbit', 'cab.mix': 'ctrl', 'lfo2.rate': 'wobble', 'wobble.speed': 'lfo2', 'lfo.shape': 'lfo' }; u.state.depths = { 'cab.mix': 0.5, 'lfo2.rate': 0.7 }; u.state.bypass = { amp: true };
-u.state.assets = { cab: { kind: 'ir', name: 'x.wav', size: 10, hash: 'abcd1234' } }; u.state.scenes = { B: u.currentSnapshot() }; u.state.bpm = 97; u.state.master = -7;
+u.state.assets = { cab: { kind: 'ir', name: 'x.wav', size: 10, hash: 'abcd1234' } }; u.state.scenes = { B: u.currentSnapshot() }; u.state.bpm = 97; u.state.level = -7; u.state.master = 9;
 const built = JSON.parse(JSON.stringify(u.buildPreset('Round Trip')));
 r = u.readPreset(built);
 const worst = Math.max(...Object.values(u.PARAMS).map((p) => Math.abs(r.snap.params[p.id] - p.v)));
@@ -91,7 +92,8 @@ check(qs.length > 0 && worstSrc < 1e-5 && Object.keys(r.scenes.B.srcParams).leng
 check(r.chain.map((x) => x.id).join() === 'tess,amp,holo,holo2,cab,gate' && r.chain[3].type === 'holo' && close(r.snap.params['holo2.feedback'], u.PARAMS['holo2.feedback'].v, 1e-5), 'the chain (reordered, with holo2) survives, with holo2’s own knobs');
 check(r.rack.map((x) => x.id).join() === 'lfo,env,adsr,orbit,heart,ctrl,lfo2,wobble' && r.rack[7].type === 'orbit' && r.snap.conns['lfo2.rate'] === 'wobble' && r.snap.conns['wobble.speed'] === 'lfo2' && r.snap.conns['lfo.shape'] === 'lfo' && r.snap.depths['lfo2.rate'] === 0.7,
   'the rack (with lfo2 and an orbit called wobble) and its cross-patches, including a self-patch, survive');
-check(r.snap.bypass.amp === true && r.snap.conns['cab.mix'] === 'ctrl' && r.snap.depths['cab.mix'] === 0.5 && r.snap.bpm === 97 && r.master === -7 && r.assets.cab.hash === 'abcd1234' && !!r.scenes.B, 'bypass, patches, depth, tempo, master, file reference, scene');
+check(r.snap.bypass.amp === true && r.snap.conns['cab.mix'] === 'ctrl' && r.snap.depths['cab.mix'] === 0.5 && r.snap.bpm === 97 && r.level === -7 && built.master === undefined && r.assets.cab.hash === 'abcd1234' && !!r.scenes.B, 'bypass, patches, depth, tempo, the preset\'s level (not the master), file reference, scene');
+check(u.readPreset({ ...built, level: 40 }).level === 24 && u.readPreset({ ...built, level: 40 }).warnings.some((w) => /outside/.test(w)) && u.readPreset({ ...built, level: undefined }).level === 0, 'a level out of range is clamped and named; none means 0 dB');
 check(built.format === 'rig-preset' && built.version === u.PRESET_VERSION && typeof built.chain[0].params === 'object', `file says format rig-preset version ${built.version}`);
 
 console.log('older and stranger files');

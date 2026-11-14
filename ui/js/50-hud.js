@@ -111,7 +111,8 @@ function wireHud() {
   let taps = [];
   $('tap').onclick = () => { const n = performance.now(); taps = taps.filter((x) => n - x < 3000); taps.push(n);
     if (taps.length > 1) { const d = (taps[taps.length - 1] - taps[0]) / (taps.length - 1); state.bpm = clamp(Math.round(60000 / d), 30, 300); $('bpm').textContent = state.bpm; rig.cmd(`set_bpm ${state.bpm}`); } };
-  $('master').oninput = (e) => { state.master = Number(e.target.value); $('masterVal').textContent = state.master + ' dB'; rig.cmd(`master ${state.master}`); };
+  $('master').oninput = (e) => { state.master = Number(e.target.value); $('masterVal').textContent = fmtDb(state.master); lsSet('rig01.master', String(state.master)); rig.cmd(`master ${state.master}`); };
+  $('level').oninput = (e) => setLevel(Number(e.target.value));
 
   // settings drawer: audio
   $('srcSel').onchange = async (e) => {

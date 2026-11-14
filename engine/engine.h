@@ -29,7 +29,12 @@ constexpr int M_SRCM = M_MOD + MAXMOD * MAXMODMETERS;       // MAXSRC x MAXSRCME
 constexpr int M_SEFF = M_SRCM + MAXSRC * MAXSRCMETERS;      // MAXSRC x MAXPAR source knobs after cross-modulation, 0..1
 constexpr int M_TUN  = M_SEFF + MAXSRC * MAXPAR;            // the tuner (core/tuner.h TunerMeter)
 constexpr int M_NOTE = M_TUN + T_LEN;                       // the notes being played (core/listen.h ListenMeter)
-constexpr int M_LEN  = M_NOTE + L_LEN;
+// Output levels (LevelMeter): the patch (after its own level, before the master) and the output (after
+// the master and the limiter), each a peak that falls back at 20 dB/s and an RMS over about 300 ms, in
+// dBFS (floor -120), and how far the limiter is pulling the output down (dB, held the same way).
+enum LevelMeter { LV_PATCH_PK, LV_PATCH_RMS, LV_OUT_PK, LV_OUT_RMS, LV_LIMIT, LV_LEN };
+constexpr int M_LVL  = M_NOTE + L_LEN;
+constexpr int M_LEN  = M_LVL + LV_LEN;
 
 // Small allocation-free JSON writer (no printf, so the WebAssembly build needs no imports).
 struct JsonOut {
@@ -78,7 +83,8 @@ struct Engine {
   float wet[MAXMOD];
   float inBuf[MAXBLOCK], outL[MAXBLOCK], outR[MAXBLOCK];
   float aL[MAXBLOCK], aR[MAXBLOCK], bL[MAXBLOCK], bR[MAXBLOCK];
-  float masterDb = 0.f; OnePole masterS;
+  float masterDb = 0.f, patchDb = 0.f; OnePole masterS;      // gain after the chain: the patch's level, then the master (one smoothed gain)
+  float lvPk[2] = {0, 0}, lvMs[2] = {0, 0}, lvLim = 0.f;       // the level meters' state (linear peak, mean square, limiter dB)
   Tuner tuner; NoteListener listen; float muteG = 1.f, muteStep = 0.f;          // tuner on the dry input; output fades out while tuning with mute
   DCBlock dcL, dcR;
   int nanResets = 0;
@@ -103,7 +109,8 @@ struct Engine {
     for (int i = 0; i < nd; i++) addModule(ids[i], nullptr, -1, false);
     runWord = wantOrder.load(); curOrder.store(runWord); dipG = dipTarget = 1.f; dipStep = 1.f / (0.010f * sr);
     rack.init(sr); tuner.init(sr); listen.init(sr); muteG = 1.f; muteStep = 1.f / (0.010f * sr);
-    masterS.setMs(sr, 30); masterS.y = db2lin(masterDb);
+    masterS.setMs(sr, 30); masterS.y = db2lin(masterDb + patchDb);
+    lvPk[0] = lvPk[1] = lvMs[0] = lvMs[1] = lvLim = 0.f;
     memset(meters, 0, sizeof meters);
     describe(); writeRack(); writeChain();
   }
@@ -248,14 +255,22 @@ struct Engine {
     tuner.process(inBuf, n);
     listen.process(inBuf, n, tuner.a4);
     const float muteTarget = tuner.on && tuner.mute ? 0.f : 1.f;
-    float g = db2lin(masterDb);
+    float g = db2lin(masterDb + patchDb);
+    const float ig = 1.f / db2lin(masterDb);                               // the patch's meter: the gain without the master's
+    float pk0 = 0.f, pk1 = 0.f, ss0 = 0.f, ss1 = 0.f, lim = 0.f;
     for (int i = 0; i < n; i++) {
       muteG += muteG < muteTarget ? fminf(muteStep, muteTarget - muteG) : -fminf(muteStep, muteG - muteTarget);
-      float mg = masterS.next(g) * muteG;
-      float l = limit(dcL.tick(aL[i]) * mg), r = limit(dcR.tick(aR[i]) * mg);
+      const float gs = masterS.next(g), mg = gs * muteG;
+      const float xl = dcL.tick(aL[i]), xr = dcR.tick(aR[i]);
+      const float pl = xl * gs * ig, pr = xr * gs * ig;                    // the patch, before the master
+      const float ul = xl * mg, ur = xr * mg, l = limit(ul), r = limit(ur);
       if (!(fabsf(l) <= 1.f) || !(fabsf(r) <= 1.f)) bad = true;   // catches NaN/Inf
       outL[i] = l; outR[i] = r;
+      const float ap = fmaxf(fabsf(pl), fabsf(pr)), ao = fmaxf(fabsf(l), fabsf(r)), au = fmaxf(fabsf(ul), fabsf(ur));
+      pk0 = fmaxf(pk0, ap); pk1 = fmaxf(pk1, ao); ss0 += 0.5f * (pl * pl + pr * pr); ss1 += 0.5f * (l * l + r * r);
+      if (au > 0.8f && ao > 0.f) lim = fmaxf(lim, 20.f * log10f(au / ao));
     }
+    levels(n, pk0, pk1, ss0, ss1, lim);
     if (bad) {
       for (int i = 0; i < ord.n; i++) mods[ord.s[i]]->reset();
       dcL.reset(); dcR.reset();
@@ -265,9 +280,21 @@ struct Engine {
     publish();
     blocks.fetch_add(1, std::memory_order_acq_rel);
   }
+  // The level meters: a peak that falls back at 20 dB/s, an RMS over ~300 ms, the limiter's pull held the same way.
+  void levels(int n, float pk0, float pk1, float ss0, float ss1, float lim) {
+    if (n <= 0) return;
+    const float fall = powf(10.f, -20.f * (float)n / sr / 20.f), a = 1.f - expf(-(float)n / (0.3f * sr));
+    const float pk[2] = {pk0, pk1}, ms[2] = {ss0 / (float)n, ss1 / (float)n};
+    for (int k = 0; k < 2; k++) { lvPk[k] = fmaxf(pk[k], lvPk[k] * fall); lvMs[k] += a * (ms[k] - lvMs[k]); if (!(lvMs[k] >= 0.f)) lvMs[k] = 0.f; if (!(lvPk[k] >= 0.f)) lvPk[k] = 0.f; }
+    lvLim = fmaxf(lim, lvLim - 20.f * (float)n / sr);
+    if (lvLim < 0.f) lvLim = 0.f;
+  }
   void publish() {
     tuner.meters(&meters[M_TUN]);
     listen.meters(&meters[M_NOTE]);
+    auto dB = [](float x) { return x > 1e-6f ? 20.f * log10f(x) : -120.f; };
+    meters[M_LVL + LV_PATCH_PK] = dB(lvPk[0]); meters[M_LVL + LV_PATCH_RMS] = dB(sqrtf(lvMs[0]));
+    meters[M_LVL + LV_OUT_PK] = dB(lvPk[1]); meters[M_LVL + LV_OUT_RMS] = dB(sqrtf(lvMs[1])); meters[M_LVL + LV_LIMIT] = lvLim;
     meters[M_NAN] = (float)nanResets;
     for (int k = 0; k < MAXSRC; k++) meters[M_SRC + k] = rack.slot[k].val;
     for (int m = 0; m < MAXMOD; m++) {
@@ -351,7 +378,8 @@ struct Engine {
     j.key("mod"); j.num(M_MOD); j.ch(','); j.key("srcm"); j.num(M_SRCM); j.ch(','); j.key("len"); j.num(M_LEN); j.ch(',');
     j.key("perMod"); j.num(MAXMODMETERS); j.ch(','); j.key("perSrc"); j.num(MAXSRCMETERS); j.ch(','); j.key("seff"); j.num(M_SEFF); j.ch(',');
     j.key("tun"); j.num(M_TUN); j.ch(','); j.key("tunLen"); j.num(T_LEN); j.ch(','); j.key("tunBands"); j.num(TUN_BANDS); j.ch(',');
-    j.key("notes"); j.num(M_NOTE); j.ch(','); j.key("notesMax"); j.num(LISTEN_NOTES);
+    j.key("notes"); j.num(M_NOTE); j.ch(','); j.key("notesMax"); j.num(LISTEN_NOTES); j.ch(',');
+    j.key("lvl"); j.num(M_LVL);
     j.raw("},");
     j.key("maxModules"); j.num(MAXMOD); j.ch(',');
     j.key("moduleCategories"); j.ch('[');                   // the tabs of the add panel, in order

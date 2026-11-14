@@ -133,6 +133,10 @@ label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute
 .bottom{left:0;right:0;bottom:0;display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;padding:10px 16px 10px 476px;background:var(--glass);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
 @media (max-width:900px){.board{position:static;width:auto}.bottom{padding-left:16px}}
 .slider{display:flex;flex-direction:column;gap:4px;width:150px;font:500 11px/1.2 var(--mono);letter-spacing:.1em;color:var(--muted)}
+.levels{display:flex;flex-direction:column;gap:3px;font-size:11px;letter-spacing:.06em;color:var(--muted);min-width:150px}
+.levels b{font-weight:500;color:var(--fg)}
+.levels b.hot{color:var(--warn)}.levels b.clip{color:var(--bad)}
+#autoLevel.busy{border-color:var(--accent);color:var(--accent)}
 .hint{flex:1 1 240px;min-width:0;text-align:right;font-size:14px;color:var(--muted)}
 .hint.carry{color:var(--fg)}
 
@@ -389,7 +393,10 @@ body.panel-hidden .ptoggle{right:16px}
     </div>
   </div>
   <button class="btn" id="tap">Tap <span class="mono" id="bpm">120</span></button>
-  <div class="slider"><label for="master" style="color:inherit;font:inherit">MASTER <span id="masterVal">-12 dB</span></label><input type="range" id="master" min="-60" max="6" step="1" value="-12"></div>
+  <div class="slider"><label for="level" style="color:inherit;font:inherit">PATCH <span id="levelVal">0 dB</span></label><input type="range" id="level" min="-24" max="24" step="0.5" value="0"></div>
+  <button class="btn" id="autoLevel" title="Play for a few seconds: sets this preset's level so it plays at the target loudness">Level</button>
+  <div class="slider"><label for="master" style="color:inherit;font:inherit">MASTER <span id="masterVal">-12 dB</span></label><input type="range" id="master" min="-60" max="12" step="1" value="-12"></div>
+  <div class="levels mono" id="levels" aria-live="off"><span>PATCH <b id="lvPatch">–</b></span><span>OUT <b id="lvOut">–</b></span></div>
   <div class="hint" id="hint"></div>
 </footer>
 

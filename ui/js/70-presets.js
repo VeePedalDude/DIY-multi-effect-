@@ -19,7 +19,7 @@ function applySnapshot(s) {
   if (s.bpm) { state.bpm = s.bpm; $('bpm').textContent = Math.round(s.bpm); }
   sendAll(); syncCables(); update();
 }
-function setMaster(db) { state.master = db; $('master').value = db; $('masterVal').textContent = db + ' dB'; rig.cmd(`master ${db}`); }
+function setLevel(db) { state.level = db; $('level').value = db; $('levelVal').textContent = fmtDb(db); rig.cmd(`patch_level ${db}`); }
 // Put a preset's contents on the rig. `label` only names it in messages. Old presets' A-D snapshots
 // (`scenes` in the file) are read but not used: each preset on the board is one sound.
 async function applyPreset(json, label) {
@@ -30,7 +30,7 @@ async function applyPreset(json, label) {
     // CONTROLLER bindings: a preset that names any sets them; one that names none keeps yours
     if (Object.keys(r.inputs || {}).length) { Object.keys(state.inputs).forEach((id) => bindInput(id, null)); Object.entries(r.inputs).forEach(([id, b]) => bindInput(id, b)); }
     applySnapshot(r.snap);
-    if (r.master !== undefined) setMaster(r.master);
+    setLevel(r.level);
     state.presetExtras = r.extras;
     for (const m of MODS) {
       if (!m.asset) continue;

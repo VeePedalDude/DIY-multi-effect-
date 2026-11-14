@@ -12,6 +12,9 @@ Linux iMac.
    **Chrome or Edge**, not in an app preview, which blocks the microphone.
 3. **Start audio**, allow the microphone, then in the menu (top left) pick the Focusrite for
    input and output. Raise **MASTER** slowly from −12 dB.
+   For each preset, press **Level** and play for five seconds: it sets the preset's **PATCH** level so
+   every preset plays at about −18 dB RMS, and **MASTER** sets how loud they all are. The readouts beside
+   them show the patch and the output (RMS and peak) and when the limiter is pulling the output down.
 
 4. Optional but recommended: menu → **Library → Choose folder…** and pick or create a folder such as
    `Documents/RIG Library`. Your IRs, NAM captures and presets live there as normal files

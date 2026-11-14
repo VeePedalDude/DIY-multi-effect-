@@ -129,10 +129,12 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
                { "id": "lfo2", "type": "lfo", "params": { "rate": 0.5 } } ],
   "mods": [ { "target": "holo.feedback", "source": "lfo", "depth": 0.22 },
             { "target": "lfo2.rate", "source": "env", "depth": 0.3 } ],
-  "tempo": 120, "master": -12,
+  "tempo": 120, "level": -6,
   "scenes": { "A": { "chain": [ ... ], "mods": [ ... ], "sources": [ ... ], "tempo": 120 } } }
 ```
 
+- **Each preset has its own level** (`level`, dB, -24..+24: the PATCH control and **Level**); the MASTER is
+  the rig's, not the preset's. Format 4 files' `master` becomes their level when they load.
 - **Matched by name, not position:** modules by `id`, knobs by `symbol`. Reordering or adding
   modules doesn't scramble a preset.
 - **Real units** (%, ms, dB, Hz, s). If a knob's range changes later, the sound stays the same.

@@ -55,7 +55,7 @@ function loop() {
   if (frame % 3 === 0) {
     document.querySelectorAll('[data-disp]').forEach((el) => { const p = PARAMS[el.dataset.disp]; if (p) el.textContent = p.fmt(effOf(p)); });
     refreshSourceReadouts();
-    if (meters) { meterBar($('mIn'), meters.inPk); meterBar($('mOut'), meters.outPk); $('dspLoad').textContent = (meters.load * 100).toFixed(1) + '%'; }
+    if (meters) { meterBar($('mIn'), meters.inPk); meterBar($('mOut'), meters.outPk); $('dspLoad').textContent = (meters.load * 100).toFixed(1) + '%'; drawLevels(); }
   }
   if (state.view === 'viz') drawViz(); else if (!vizOn) renderer.render(scene, camera);
   viewTick();
@@ -84,11 +84,12 @@ function wireStart() {
 (async function boot() {
   try { await loadModel(); }
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
-  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireChart(); wireViews(); wireHost(); wireControllers(); wirePresets(); wireTags(); wireFileDlg(); wireStart();
+  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireChart(); wireViews(); wireLevels(); wireHost(); wireControllers(); wirePresets(); wireTags(); wireFileDlg(); wireStart();
   const libraryReady = initLibrary().catch((e) => logLine('library: ' + e.message, true));
   restoreSkin(libraryReady).catch((e) => logLine('skin: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();
-  $('master').value = state.master; canvas.style.cursor = 'grab';
+  state.master = clamp(Number(lsGet('rig01.master', String(state.master))) || 0, -60, 12);       // the master is this rig's, kept in this browser (presets keep their own level)
+  $('master').value = state.master; $('masterVal').textContent = fmtDb(state.master); canvas.style.cursor = 'grab';
   drawPill(inLbl); drawPill(outLbl);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { drawPill(inLbl); drawPill(outLbl); });
   rig.ready = true;

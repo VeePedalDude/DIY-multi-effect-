@@ -19,7 +19,8 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `mod_connect <inst> <symbol> <source> <depth> [phase] [div]` | patch a source; the knob swings ±depth. From a source that taps (the LFO), `phase` (degrees, default 0) and `div` (`1/4 1/3 1/2 2/3 1 3/2 2 3 4 8`, or a number; default 1) give this patch its own offset and multiple of the source's cycle: `mod_connect holo feedback lfo 0.3 90 3/2`. Other sources ignore them. Leaving them out means 0 and 1 |
 | `mod_disconnect <inst> <symbol>` | unpatch |
 | `set_bpm <30..300>` | tempo for synced effects and the LFO |
-| `master <-60..6>` | master gain in dB |
+| `master <-60..12>` | master gain in dB (the rig's, not saved in presets) |
+| `patch_level <-24..24>` | the patch's output level in dB, before the master (saved in each preset) |
 | `src_set <source> <symbol> <0..1>` | set a modulation source's knob (`src_set lfo rate 0.25`) |
 | `src_add <type> [id]` | add a source to the modulation rack (`src_add lfo lfo2`). Without an id the engine picks the next free one (`lfo2`, `lfo3`...) |
 | `src_remove <source>` | take a source out of the rack, with every patch to and from it |

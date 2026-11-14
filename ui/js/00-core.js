@@ -15,7 +15,7 @@ const MODDATA = {};                       // per-module UI data shared between p
 function screen(id, fn) { SCREENS[id] = fn; }
 
 const state = {
-  carrying: null, focus: null, view: 'stage', bpm: 120, master: -12,
+  carrying: null, focus: null, view: 'stage', bpm: 120, master: -12, level: 0,
   conns: { 'amp.input': 'env', 'holo.feedback': 'lfo', 'holo.halo': 'orbit', 'tess.fold': 'heart' },
   bypass: {}, scenes: {},
   inputs: {},                             // CONTROLLER instance id -> its hardware binding (12-inputs-core.js)

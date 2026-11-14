@@ -23,7 +23,7 @@ Native (low latency):  ui/ in a browser ──WebSocket──▶ hosts/rig-host 
 | `tools/gen_registry.py` | makes both `registry.h` files from the folders and checks them (tested by `tests/tools/gen_registry.test.py`) | the folders |
 | `engine/fx_chain.h` | the effect chain's building blocks: module types as a table, the chain order packed into one atomic word | the modules registry, never a specific module |
 | `engine/mod_rack.h` | the modulation rack: source instances added and removed while it plays, cross-modulation, safe freeing | the sources registry, never a specific source |
-| `engine/engine.h` | the chain: module instances added, removed and moved while it plays (fade in, fade out, dip on a move), routing, modulation, bypass, master, limiter, meters, `describe()` | the chain and the rack, never a specific effect or source |
+| `engine/engine.h` | the chain: module instances added, removed and moved while it plays (fade in, fade out, dip on a move), routing, modulation, bypass, the patch level and master, limiter, meters (with the patch and output levels), `describe()` | the chain and the rack, never a specific effect or source |
 | `engine/api/` | flat C API used by WebAssembly and future hosts | `engine.h` |
 | `ui/worklet/` | runs `rig.wasm` in the browser, parses the text protocol | the engine's description |
 | `ui/js/` | page logic, one file per job (model, bridge, audio, stage, faces, HUD, controllers, presets, main) | the engine's description |

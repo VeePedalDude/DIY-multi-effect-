@@ -16,10 +16,10 @@
 //                 { "target": "tess.fold", "source": "lfo", "depth": 0.3, "phase": 90, "div": 1.5 },   this patch's own PHASE (degrees)
 //                                                                                              and DIV, only when not 0 / 1 (a tapping source)
 //                 { "target": "lfo.rate", "source": "env", "depth": 0.3 } ],                 a source knob (cross-modulation)
-//     "tempo": 120, "master": -12,
+//     "tempo": 120, "level": -6,                                                           the patch's output level, dB (version 5; the master is the rig's, not the preset's)
 //     "scenes": { "A": { "chain": [...without assets], "mods": [...], "sources": [ { "id": "lfo", "params": {...} } ], "tempo": 120 } } }
 // The chain and the rack belong to the preset; scenes change knobs, bypass and patches of the instances in them.
-const PRESET_FORMAT = 'rig-preset', PRESET_VERSION = 4;
+const PRESET_FORMAT = 'rig-preset', PRESET_VERSION = 5;
 // When a module type, source type or knob is renamed, add the old name here so older files still load:
 //   modules: { oldType: 'newType' },  params: { 'type.oldSymbol': 'type.newSymbol' },
 //   sourceTypes: { oldType: 'newType' },  sourceKnobs: { 'type.oldSymbol': 'newSymbol' }
@@ -48,6 +48,9 @@ const PRESET_MIGRATIONS = {
       .concat(old.filter((e) => e && typeof e.id === 'string' && !V3_CHAIN.includes(e.id)).map((e) => ({ ...e, type: e.id })));
     return { ...j, version: 4, chain };
   },
+  // 4 -> 5: the master stopped being saved in presets; each preset has its own level instead. A file's
+  // master was how loud that preset played, so it becomes the preset's level (the master starts at 0 dB).
+  4: (j) => { const { master, ...rest } = j; return { ...rest, version: 5, level: typeof master === 'number' ? master : 0 }; }
 };
 const SOURCE_ID = /^[a-z][a-z0-9_]{0,14}$/;
 
@@ -95,7 +98,7 @@ function buildPreset(name) {
   sec.sources.forEach((e) => { const p = TYPES[e.type] && TYPES[e.type].plugin; if (p) e.plugin = { file: p.file, version: p.version }; });
   return {
     format: PRESET_FORMAT, version: PRESET_VERSION, name, saved: new Date().toISOString(),
-    chain: sec.chain.concat(state.presetExtras), mods: sec.mods, sources: sec.sources.concat(state.sourceExtras || []), tempo: sec.tempo, master: state.master,
+    chain: sec.chain.concat(state.presetExtras), mods: sec.mods, sources: sec.sources.concat(state.sourceExtras || []), tempo: sec.tempo, level: state.level,
     scenes: Object.fromEntries(Object.entries(state.scenes).map(([k, s]) => { const x = sectionFromSnapshot(s, false); return [k, { chain: x.chain, mods: x.mods, sources: x.sources, tempo: x.tempo }]; })),
   };
 }
@@ -202,7 +205,7 @@ function readSection(sec, renames, warn, ctx) {
   if (typeof sec.tempo === 'number' && sec.tempo >= 30 && sec.tempo <= 300) snap.bpm = sec.tempo;
   return { snap, assets };
 }
-// -> { name, snap, assets, chain, extras, rack, sourceExtras, scenes, master, warnings }  or  { error }
+// -> { name, snap, assets, chain, extras, rack, sourceExtras, scenes, level, warnings }  or  { error }
 function readPreset(json, renames = PRESET_RENAMES) {
   renames = { modules: {}, params: {}, sourceTypes: {}, sourceKnobs: {}, ...renames };
   if (!json || typeof json !== 'object' || json.format !== PRESET_FORMAT) return { error: 'not a RIG preset file' };
@@ -220,6 +223,7 @@ function readPreset(json, renames = PRESET_RENAMES) {
     const b = sanitizeBinding(e.input); if (b) inputs[e.id] = b; else warn(`source ${e.id}: its input isn't one this build can read; left unbound`);
   }
   for (const [k, s] of Object.entries(json.scenes || {})) if (/^[A-D]$/.test(k) && s && typeof s === 'object') scenes[k] = readSection(s, renames, (w) => warn(`scene ${k}: ${w}`), ctx).snap;
-  const master = typeof json.master === 'number' && json.master >= -60 && json.master <= 6 ? json.master : undefined;
-  return { name: typeof json.name === 'string' ? json.name : '', snap: main.snap, assets: main.assets, chain, extras, rack, sourceExtras, scenes, master, inputs, warnings };
+  let level = 0;
+  if (typeof json.level === 'number' && isFinite(json.level)) { level = clamp(json.level, -24, 24); if (level !== json.level) warn(`level ${json.level} dB is outside -24..+24; using ${level} dB`); }
+  return { name: typeof json.name === 'string' ? json.name : '', snap: main.snap, assets: main.assets, chain, extras, rack, sourceExtras, scenes, level, inputs, warnings };
 }

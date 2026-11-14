@@ -54,7 +54,7 @@ function sendAll() {
   SRC.forEach((s) => s.settings.forEach((q) => rig.cmd(`src_cfg ${s.id} ${q.sym} ${q.v.toFixed(6)}`)));
   SRC.forEach((s) => s.table && s.table.v.forEach((row, r) => row.forEach((v, j) => rig.cmd(`src_cell ${s.id} ${r} ${s.table.cols[j].sym} ${v.toFixed(6)}`))));
   Object.keys(PARAMS).concat(Object.keys(SPARAMS)).forEach((pid) => sendPatch(pid));
-  rig.cmd(`set_bpm ${state.bpm}`); rig.cmd(`master ${state.master}`);
+  rig.cmd(`set_bpm ${state.bpm}`); rig.cmd(`master ${state.master}`); rig.cmd(`patch_level ${state.level}`);
   rig.afterSend.forEach((f) => f());
 }
 function setSrcSetting(q, v) { q.v = clamp(v, 0, 1); rig.cmd(`src_cfg ${q.src.id} ${q.sym} ${q.v.toFixed(6)}`); }

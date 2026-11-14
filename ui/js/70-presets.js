@@ -69,7 +69,7 @@ async function applyPreset(json, label) {
 // ---- the board
 const BLANK_PRESET = () => ({ format: 'rig-preset', version: PRESET_VERSION, name: '',
   chain: [{ id: 'gate', type: 'gate' }, { id: 'amp', type: 'amp' }, { id: 'cab', type: 'cab' }], sources: [], mods: [] });
-const board = { scenes: [], s: 0, p: 0, work: {}, base: null, savedName: '', renaming: null, armed: null, armT: 0, ready: false };
+const board = { switching: null, scenes: [], s: 0, p: 0, work: {}, base: null, savedName: '', renaming: null, armed: null, armT: 0, ready: false };
 rig.board = board;
 const uid = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const escHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
@@ -110,6 +110,12 @@ async function selectSlot(s, p, first) {
   const was = curSlot();
   if (!first && was && board.base !== null && presetEdited()) board.work[was.id] = { json: buildPreset($('presetName').value.trim()), base: board.base, savedName: board.savedName };
   board.s = s; board.p = p;
+  // the footswitch lights at once; the preset follows (a held change takes ~0.2 s, longer while a capture loads)
+  let done; board.switching = new Promise((ok) => { done = ok; }); board.base = null;
+  if (!first) renderBoard();
+  try { await putSlotOn(first); } finally { board.switching = null; done(); }
+}
+async function putSlotOn(first) {
   const q = curSlot(), w = board.work[q.id];
   let r = null;
   if (w) { r = await applyPresetHeld(w.json, q.name || 'preset'); board.base = w.base; board.savedName = w.savedName; $('presetName').value = w.json.name || ''; }
@@ -128,6 +134,7 @@ async function selectSlot(s, p, first) {
 // SAVE: the preset you're on, under the name in the box.
 async function saveCurrent() {
   if (!library.core) return;
+  if (board.switching) await board.switching;           // a footswitch pressed just before: save the preset it put on
   const q = curSlot(), sc = curScene(); if (!q) return;
   const name = $('presetName').value.trim() || `${sc.name} ${board.p + 1}`;
   const file = q.file || `${q.id}.rig.json`;
@@ -135,6 +142,7 @@ async function saveCurrent() {
     await library.core.write('presets', file, JSON.stringify(buildPreset(name), null, 2));
     q.file = file; q.name = name; $('presetName').value = name;
     delete board.work[q.id]; board.base = presetSig(); board.savedName = name;
+    renderBoard();                                      // its footswitch shows the name now, not after the library is read again
     await writeBoard(); await refreshLibrary();
     boardNote(`saved “${name}” (presets/${file})`);
   } catch (e) { boardNote(`couldn't save: ${e.message}`, true); }
@@ -282,9 +290,10 @@ function wirePresets() {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); board.renaming = null; renderTree(); }
   });
   tree.addEventListener('focusout', (e) => { const k = e.target.dataset && e.target.dataset.treeRenameInput; if (k && board.renaming === k) renameItem(k, e.target.value); });
-  setInterval(() => { if (board.ready && board.base === null && rig.meters) board.base = presetSig(); if (board.ready) updateEdited(); }, 700);
+  setInterval(() => { if (board.switching) return; if (board.ready && board.base === null && rig.meters) board.base = presetSig(); if (board.ready) updateEdited(); }, 700);
 }
 
 rig.buildPreset = buildPreset;                                     // tests and the console
+rig.presetVersion = () => PRESET_VERSION;                         // (a function: 72-preset-format.js loads after this file)
 // Put a preset's JSON on the slot you're on, as unsaved edits (tests and the console).
 rig.loadPresetJson = async (json) => { const r = await applyPresetHeld(typeof json === 'string' ? JSON.parse(json) : json, 'console'); updateEdited(); renderBoard(); return r; };

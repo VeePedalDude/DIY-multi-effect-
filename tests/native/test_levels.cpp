@@ -26,3 +26,27 @@ TEST("179 levels: patch level and master add, the meters read the patch before t
   Engine q; dry(q); q.masterDb = 0; std::vector<float> z((size_t)SR, 0.f); render(q, z);
   CHECK(q.meters[M_LVL + LV_OUT_RMS] <= -119.f && q.meters[M_LVL + LV_PATCH_PK] <= -119.f, "silence reads -120 dB (the floor)");
 }
+
+TEST("180 hold: a preset change fades out, resets the modules while silent, and fades back in without a step") {
+  Engine e; e.init(SR); e.masterDb = 0; e.masterS.y = 1;
+  const auto& g = riffSignal(); const int B = 128, n = 48000 * 3;
+  std::vector<float> out; int silentAt = -1, backAt = -1, holdAt = 48000, releaseAt = 48000 + 38 * 128;   // block boundaries
+  for (int i = 0; i + B <= n; i += B) {
+    if (i == holdAt) { e.hold(true); }
+    if (i == holdAt + 1920) { e.patchDb = 18; for (int m = 0; m < MAXMOD; m++) if (e.used(m) && !strcmp(e.mid[m], "amp")) { e.base[m][0] = 1.f; e.base[m][1] = 1.f; } }   // hot amp, +18 dB, while silent
+    if (i == releaseAt) e.hold(false);
+    memcpy(e.inBuf, &g[i], B * sizeof(float)); e.process(B);
+    for (int k = 0; k < B; k++) out.push_back(e.outL[k]);
+    if (silentAt < 0 && e.holdState == Engine::HOLD_SILENT) silentAt = i + B;
+    if (backAt < 0 && i > releaseAt && e.holdState == Engine::HOLD_NONE) backAt = i + B;
+  }
+  double gap = 0; for (int i = silentAt; i < releaseAt; i++) gap = fmax(gap, fabs(out[i]));
+  CHECK(silentAt > 0 && silentAt - holdAt <= 0.012f * SR, "silent %.1f ms after hold 1 (fade 10 ms)", (silentAt - holdAt) * 1000.f / SR);
+  CHECK(gap == 0.0, "nothing at all comes out while it's held (peak %.2g), even with the hot amp and +18 dB set meanwhile", gap);
+  CHECK(backAt > 0 && fabsf((backAt - releaseAt) * 1000.f / SR - 100.f) < 6.f, "back to full level %.1f ms after hold 0 (80 ms settle + 20 ms fade)", (backAt - releaseAt) * 1000.f / SR);
+  double step = 0; for (int i = releaseAt + 1; i < backAt; i++) step = fmax(step, fabs(out[i] - out[i - 1]));
+  double steady = 0; for (int i = backAt + 4800; i < backAt + 48000 && i < (int)out.size(); i++) steady = fmax(steady, fabs(out[i] - out[i - 1]));
+  CHECK(step <= steady, "the fade back in steps no more than the new preset's own playing (%.3f vs %.3f)", step, steady);
+  Engine t; t.init(SR); t.hold(true); std::vector<float> z((size_t)(3.2f * SR), 0.f); render(t, z);
+  CHECK(t.holdState != Engine::HOLD_SILENT && t.holdState != Engine::HOLD_FADING, "a hold nobody releases ends by itself after 3 s");
+}

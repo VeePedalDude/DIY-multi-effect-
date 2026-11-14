@@ -109,6 +109,7 @@ EXPORT(rig_ext)    void rig_ext(int src, float v) { if (E().rack.used(src)) E().
 EXPORT(rig_tempo)  void rig_tempo(float bpm) { E().bpm = rig::clampf(bpm, 30.f, 300.f); }
 EXPORT(rig_master) void rig_master(float db) { E().masterDb = rig::clampf(db, -60.f, 12.f); }
 EXPORT(rig_patch_level) void rig_patch_level(float db) { E().patchDb = rig::clampf(db, -24.f, 24.f); }
+EXPORT(rig_hold) void rig_hold(int on) { E().hold(on != 0); }
 // File slots (IRs, NAM captures...): p = rig_asset_buf(m, bytes) reserves room, the host writes the
 // payload there, then rig_asset_commit(m, bytes). rig_asset_status(m) says what loaded, or why not.
 // Loading allocates and parses: call these between rig_process calls (the browser does), or from a
@@ -133,7 +134,7 @@ EXPORT(rig_asset_status) const char* rig_asset_status(int m) { return E().used(m
 // browser that is the audio thread itself, which is fine too.
 //   param_set <inst> <symbol> <0..1>          bypass <inst> <0|1>
 //   mod_connect <inst> <symbol> <source> <depth> [phase] [div]     mod_disconnect <inst> <symbol>
-//   set_bpm <bpm>   master <dB>   patch_level <dB>   ext <source> <value>   input_channel <0|1>
+//   set_bpm <bpm>   master <dB>   patch_level <dB>   hold <0|1>   ext <source> <value>   input_channel <0|1>
 //   tuner <0|1> [mute 0|1]   tuner_ref <A4 Hz, 400..480>   listen <0|1>
 //   src_add <type> [id]   src_remove <source>   src_set <source> <symbol> <0..1>
 //   src_mod <source> <symbol> <from source> <depth> [phase] [div]   src_unmod <source> <symbol>
@@ -224,6 +225,7 @@ int exec(char* line) {
   if (!strcmp(c, "bypass")) { const int m = inst(t[1]); if (m < 0 || !E().used(m)) return ERR_INSTANCE; rig_bypass(m, t[2] && !strcmp(t[2], "1")); return 0; }
   if (!strcmp(c, "set_bpm")) { const double v = num(t[1]); if (!(v >= 30 && v <= 300)) return ERR_RANGE; rig_tempo((float)v); return 0; }
   if (!strcmp(c, "master")) { const double v = num(t[1]); if (!(v >= -60 && v <= 12)) return ERR_RANGE; rig_master((float)v); return 0; }
+  if (!strcmp(c, "hold")) { const double v = num(t[1]); if (v != 0 && v != 1) return ERR_RANGE; rig_hold((int)v); return 0; }
   if (!strcmp(c, "patch_level")) { const double v = num(t[1]); if (!(v >= -24 && v <= 24)) return ERR_RANGE; rig_patch_level((float)v); return 0; }
   if (!strcmp(c, "ext")) { const int s = E().sourceIndex(t[1] ? t[1] : ""); const double v = num(t[2]); if (s < 0 || !std::isfinite(v)) return ERR_RANGE; rig_ext(s, (float)v); return 0; }
   if (!strcmp(c, "input_channel")) { g_inCh = (t[1] && !strcmp(t[1], "1")) ? 1 : 0; return 0; }

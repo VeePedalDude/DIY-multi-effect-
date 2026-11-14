@@ -85,6 +85,17 @@ struct Engine {
   float aL[MAXBLOCK], aR[MAXBLOCK], bL[MAXBLOCK], bR[MAXBLOCK];
   float masterDb = 0.f, patchDb = 0.f; OnePole masterS;      // gain after the chain: the patch's level, then the master (one smoothed gain)
   float lvPk[2] = {0, 0}, lvMs[2] = {0, 0}, lvLim = 0.f;       // the level meters' state (linear peak, mean square, limiter dB)
+  // A preset change (`hold 1` ... `hold 0`): the output fades out (HOLD_OUT_MS); once silent every module is
+  // reset, so nothing of the old preset rings into the new one; the page puts the new preset on and loads its
+  // files meanwhile; on release the output stays silent HOLD_SETTLE_MS more (4 time constants of the 20 ms knob smoothing: within 2% of the new
+  // values) and fades back in (HOLD_IN_MS). A hold nobody releases ends by itself after HOLD_MAX_MS.
+  static constexpr float HOLD_OUT_MS = 10.f, HOLD_SETTLE_MS = 80.f, HOLD_IN_MS = 20.f, HOLD_MAX_MS = 3000.f;
+  enum HoldState { HOLD_NONE, HOLD_FADING, HOLD_SILENT, HOLD_SETTLING };
+  int holdState = HOLD_NONE; float holdG = 1.f; long holdN = 0; bool holdReset = false;   // gain, samples spent in this state, modules reset yet
+  void hold(bool on) {
+    if (on) { if (holdState == HOLD_NONE || holdState == HOLD_SETTLING) { holdState = HOLD_FADING; holdN = 0; } }
+    else if (holdState == HOLD_FADING || holdState == HOLD_SILENT) { holdState = HOLD_SETTLING; holdN = 0; }
+  }
   Tuner tuner; NoteListener listen; float muteG = 1.f, muteStep = 0.f;          // tuner on the dry input; output fades out while tuning with mute
   DCBlock dcL, dcR;
   int nanResets = 0;
@@ -111,6 +122,7 @@ struct Engine {
     rack.init(sr); tuner.init(sr); listen.init(sr); muteG = 1.f; muteStep = 1.f / (0.010f * sr);
     masterS.setMs(sr, 30); masterS.y = db2lin(masterDb + patchDb);
     lvPk[0] = lvPk[1] = lvMs[0] = lvMs[1] = lvLim = 0.f;
+    holdState = HOLD_NONE; holdG = 1.f; holdN = 0;
     memset(meters, 0, sizeof meters);
     describe(); writeRack(); writeChain();
   }
@@ -256,11 +268,18 @@ struct Engine {
     listen.process(inBuf, n, tuner.a4);
     const float muteTarget = tuner.on && tuner.mute ? 0.f : 1.f;
     float g = db2lin(masterDb + patchDb);
+    if (holdState == HOLD_SILENT && holdN >= (long)(HOLD_MAX_MS * 1e-3f * sr)) { holdState = HOLD_SETTLING; holdN = 0; }   // nobody released it
+    if (holdState == HOLD_SETTLING && holdN == 0) masterS.y = g;          // the new level from the start, no glide from the old one
+    const float holdOut = 1.f / (HOLD_OUT_MS * 1e-3f * sr), holdIn = 1.f / (HOLD_IN_MS * 1e-3f * sr);
+    const long settleN = (long)(HOLD_SETTLE_MS * 1e-3f * sr);
     const float ig = 1.f / db2lin(masterDb);                               // the patch's meter: the gain without the master's
     float pk0 = 0.f, pk1 = 0.f, ss0 = 0.f, ss1 = 0.f, lim = 0.f;
     for (int i = 0; i < n; i++) {
       muteG += muteG < muteTarget ? fminf(muteStep, muteTarget - muteG) : -fminf(muteStep, muteG - muteTarget);
-      const float gs = masterS.next(g), mg = gs * muteG;
+      if (holdState == HOLD_FADING) { holdG -= holdOut; if (holdG <= 0.f) { holdG = 0.f; holdState = HOLD_SILENT; holdN = 0; } }
+      else if (holdState == HOLD_SETTLING && holdN >= settleN) { holdG += holdIn; if (holdG >= 1.f) { holdG = 1.f; holdState = HOLD_NONE; } }
+      holdN++;
+      const float gs = masterS.next(g), mg = gs * muteG * holdG;
       const float xl = dcL.tick(aL[i]), xr = dcR.tick(aR[i]);
       const float pl = xl * gs * ig, pr = xr * gs * ig;                    // the patch, before the master
       const float ul = xl * mg, ur = xr * mg, l = limit(ul), r = limit(ur);
@@ -271,6 +290,8 @@ struct Engine {
       if (au > 0.8f && ao > 0.f) lim = fmaxf(lim, 20.f * log10f(au / ao));
     }
     levels(n, pk0, pk1, ss0, ss1, lim);
+    if (holdState == HOLD_SILENT && !holdReset) { for (int i = 0; i < ord.n; i++) mods[ord.s[i]]->reset(); dcL.reset(); dcR.reset(); holdReset = true; }
+    if (holdState != HOLD_SILENT) holdReset = false;
     if (bad) {
       for (int i = 0; i < ord.n; i++) mods[ord.s[i]]->reset();
       dcL.reset(); dcR.reset();

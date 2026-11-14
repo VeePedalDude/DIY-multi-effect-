@@ -20,6 +20,22 @@ function applySnapshot(s) {
   sendAll(); syncCables(); update();
 }
 function setLevel(db) { state.level = db; $('level').value = db; $('levelVal').textContent = fmtDb(db); rig.cmd(`patch_level ${db}`); }
+// A preset change while the rig plays: the engine fades the output out and, once it's silent, resets every
+// module (`hold 1`); the new preset goes on, and the files it names (NAM captures, IRs) load, while it's
+// silent; then the engine lets the new knobs settle and fades back in (`hold 0`). So nothing jumps,
+// clicks or rings over from the old preset, and a capture never plays late at another level. Without
+// a running engine it's just applyPreset.
+const HOLD_FADE_MS = 15, HOLD_FILE_MS = 2500;          // a little over the engine's 10 ms fade; the longest a file is waited for
+async function applyPresetHeld(json, label, then) {
+  if (!rig.node) { const r = await applyPreset(json, label); if (then) then(); return r; }
+  rig.cmd('hold 1');
+  try {
+    await new Promise((ok) => setTimeout(ok, HOLD_FADE_MS));
+    const r = await applyPreset(json, label); if (then) then();
+    await Promise.all(MODS.filter((m) => m.asset).map((m) => assetLoaded(m.id, HOLD_FILE_MS)));
+    return r;
+  } finally { rig.cmd('hold 0'); }
+}
 // Put a preset's contents on the rig. `label` only names it in messages. Old presets' A-D snapshots
 // (`scenes` in the file) are read but not used: each preset on the board is one sound.
 async function applyPreset(json, label) {
@@ -96,14 +112,13 @@ async function selectSlot(s, p, first) {
   board.s = s; board.p = p;
   const q = curSlot(), w = board.work[q.id];
   let r = null;
-  if (w) { r = await applyPreset(w.json, q.name || 'preset'); board.base = w.base; board.savedName = w.savedName; $('presetName').value = w.json.name || ''; }
+  if (w) { r = await applyPresetHeld(w.json, q.name || 'preset'); board.base = w.base; board.savedName = w.savedName; $('presetName').value = w.json.name || ''; }
   else if (q.file) {
     let json = null;
     try { json = JSON.parse(await (await library.core.file('presets', q.file)).text()); } catch (e) { boardNote(`couldn't read presets/${q.file}: ${e.message}`, true); }
-    if (json) { r = await applyPreset(json, q.file); board.savedName = q.name; $('presetName').value = q.name; board.base = presetSig(); }
+    if (json) { r = await applyPresetHeld(json, q.file); board.savedName = q.name; $('presetName').value = q.name; board.base = presetSig(); }
   } else {
-    r = await applyPreset(BLANK_PRESET(), 'blank');
-    MODS.forEach((m) => m.params.forEach((q) => { q.v = q.def; })); state.bypass = {}; sendAll(); update();   // knobs a file doesn't list keep their value; blank means defaults
+    r = await applyPresetHeld(BLANK_PRESET(), 'blank', () => { MODS.forEach((m) => m.params.forEach((q) => { q.v = q.def; })); state.bypass = {}; sendAll(); update(); });   // knobs a file doesn't list keep their value; blank means defaults
     board.savedName = ''; $('presetName').value = ''; board.base = presetSig();
   }
   if (r && r.warnings && r.warnings.length) { r.warnings.forEach((x) => logLine('preset: ' + x, true)); boardNote(`${q.name || 'preset'}: ${r.warnings[0]}${r.warnings.length > 1 ? ' (rest in Engine log)' : ''}`, true); }
@@ -272,4 +287,4 @@ function wirePresets() {
 
 rig.buildPreset = buildPreset;                                     // tests and the console
 // Put a preset's JSON on the slot you're on, as unsaved edits (tests and the console).
-rig.loadPresetJson = async (json) => { const r = await applyPreset(typeof json === 'string' ? JSON.parse(json) : json, 'console'); updateEdited(); renderBoard(); return r; };
+rig.loadPresetJson = async (json) => { const r = await applyPresetHeld(typeof json === 'string' ? JSON.parse(json) : json, 'console'); updateEdited(); renderBoard(); return r; };

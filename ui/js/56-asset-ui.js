@@ -47,8 +47,12 @@ function clearAsset(m) {
 // Read the chosen file and hand it to the engine. A .nam goes as its text; an IR is decoded by the
 // browser (any WAV it can read, resampled to the engine's rate) and sent as RIR1 header + planar floats.
 const IR_MAX_SECONDS = 20;
+// The engine's answer to each module's latest file, as a promise (a preset change waits for them: 70-presets.js)
+const assetWaits = {};
+function assetLoaded(id, ms) { const w = assetWaits[id]; return w ? Promise.race([w.p, new Promise((ok) => setTimeout(ok, ms))]) : Promise.resolve(); }
 async function pushAsset(m) {
   const ref = state.assets[m.id]; if (!ref || ref.missing || !m.asset.ready || !rig.node) return;
+  if (!assetWaits[m.id]) { let ok; const p = new Promise((r) => { ok = r; }); assetWaits[m.id] = { p, ok }; }
   const d = MODDATA[m.id] || (MODDATA[m.id] = {});
   try {
     const file = await library.core.file(ref.kind, ref.name), raw = await file.arrayBuffer();
@@ -60,7 +64,7 @@ async function pushAsset(m) {
       d.namMeta = parseNamMeta(new TextDecoder().decode(raw));
     }
     rig.node.port.postMessage({ type: 'asset', inst: m.inst, data, ref: `${ref.kind}/${ref.name}` }, [data]);
-  } catch (e) { assetStatus[m.id] = ' · couldn’t load: ' + e.message; logLine(`asset ${ref.name}: ${e.message}`, true); renderPanel(); }
+  } catch (e) { if (assetWaits[m.id]) { assetWaits[m.id].ok(); delete assetWaits[m.id]; } assetStatus[m.id] = ' · couldn’t load: ' + e.message; logLine(`asset ${ref.name}: ${e.message}`, true); renderPanel(); }
 }
 async function irPayload(raw, d) {
   const buf = await rig.ctx.decodeAudioData(raw.slice(0)), sr = buf.sampleRate;
@@ -85,6 +89,7 @@ async function removeAssetFile(m) {
 function pushAllAssets() { MODS.forEach((m) => { if (m.asset && m.asset.ready && state.assets[m.id] && !state.assets[m.id].missing) pushAsset(m); }); }
 function onAssetReply(d) {
   const m = MODS.find((x) => x.id === d.id); if (!m) return;
+  if (d.ref && assetWaits[m.id]) { assetWaits[m.id].ok(); delete assetWaits[m.id]; }
   const md = MODDATA[m.id] || (MODDATA[m.id] = {});
   if (d.ref) {
     md.engineNote = d.status === 0 ? d.note : '';

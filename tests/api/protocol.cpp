@@ -26,7 +26,7 @@ int main() {
     {"mod_connect holo halo lfo 0.3", 0, 0}, {"mod_connect holo halo lfo 0.3 90 3/2", 0, 0}, {"mod_connect holo halo lfo 0.3 0 0", -207, 0},
     {"mod_connect holo halo nobody 0.3", -207, 0}, {"mod_disconnect holo halo", 0, 0},
     {"bypass gate 1", 0, 0}, {"bypass gate 0", 0, 0}, {"bypass 99 1", -1, 0},
-    {"set_bpm 90", 0, 0}, {"set_bpm 20", -207, 0}, {"master -6", 0, 0}, {"master 12", 0, 0}, {"master 13", -207, 0}, {"patch_level 9", 0, 0}, {"patch_level -24", 0, 0}, {"patch_level 25", -207, 0}, {"patch_level", -207, 0},
+    {"set_bpm 90", 0, 0}, {"set_bpm 20", -207, 0}, {"master -6", 0, 0}, {"master 12", 0, 0}, {"master 13", -207, 0}, {"patch_level 9", 0, 0}, {"patch_level -24", 0, 0}, {"patch_level 25", -207, 0}, {"patch_level", -207, 0}, {"hold 1", 0, 0}, {"hold 0", 0, 0}, {"hold 2", -207, 0},
     {"ext ctrl 0.5", 0, 0}, {"ext nobody 0.5", -207, 0}, {"input_channel 1", 0, 0},
     {"tuner 1", 0, 0}, {"tuner 1 mute 0", 0, 0}, {"tuner 2", -207, 0}, {"tuner 0", 0, 0}, {"tuner_ref 432", 0, 0}, {"tuner_ref 500", -207, 0}, {"listen 1", 0, 0}, {"listen 2", -207, 0}, {"listen", -207, 0}, {"listen 0", 0, 0}, {"plugin_remove", -207, 0}, {"plugin_remove holo", -1, 0}, {"plugin_remove nosuch", -1, 0},
     {"src_add lfo", 0, 1}, {"src_add lfo wobble", 0, 1}, {"src_add lfo wobble", -2, 0}, {"src_add nosuch", -1, 0},

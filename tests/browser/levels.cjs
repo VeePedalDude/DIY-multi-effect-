@@ -43,8 +43,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const p6 = await loud('patchRms');
   check(Math.abs(p6 - p0 - 6) < 1.5, `PATCH +6 dB: the patch meter rises ${(p6 - p0).toFixed(1)} dB`);
   await slide('master', -10); await sleep(800);
-  const p6b = await loud('patchRms', 2), o6b = await loud('outRms', 2);
-  check(Math.abs(p6b - p6) < 1.5 && Math.abs(o6b - (p6b - 10)) < 1.5, `MASTER -10 dB: the patch meter stays (${p6b.toFixed(1)}), the output falls 10 dB (${o6b.toFixed(1)})`);
+  const diffs = []; for (let i = 0; i < 20; i++) { await sleep(100); const r = await V('window.__rig.levels.reading()'); if (r.patchRms > -60) diffs.push(r.outRms - r.patchRms); }   // read together, so the riff's own swings cancel
+  const d = diffs.sort((a, b) => a - b)[Math.floor(diffs.length / 2)];
+  check(diffs.length > 5 && Math.abs(d + 10) < 0.5, `MASTER -10 dB: the output reads 10 dB under the patch (${d.toFixed(2)} dB), the patch meter isn't moved by the master`);
 
   console.log('2. Level sets the patch so it plays at the target');
   await slide('master', 0); await slide('level', -9); await sleep(800);

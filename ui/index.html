@@ -216,11 +216,12 @@ body.panel-hidden .ptoggle{right:16px}
 .tunctl{position:absolute;left:15%;right:15%;top:81.5%;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
 .tunref{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 4px}
 .tunref .btn.icon{width:26px;min-height:26px;border:0;background:transparent}
-/* the Chord Chart and Scale Atlas views: one sideways card each, stretched to the window's shape, over a veil (cardFit in 64-chart.js) */
+/* the Chord Chart and views (66-views.js): one sideways card each, stretched to the window's shape, over a veil (cardFit in 64-chart.js) */
 .chart{inset:0;z-index:1}
 .cboard{position:absolute;left:0;top:0;transform-origin:0 0}
 .ccard{position:absolute;left:0;top:0;height:518px;filter:drop-shadow(0 18px 40px var(--overlay))}
 .ccard canvas{position:absolute;inset:0;width:100%;height:100%}
+.vframe{position:absolute;left:0;top:0;border:0;background:transparent;color-scheme:dark}
 .crow{position:absolute;left:214px;width:428px;display:flex;flex-wrap:wrap;gap:6px}
 .cchip{min-height:28px;min-width:38px;padding:0 9px;border:1px solid var(--line2);border-radius:8px;background:var(--raise);color:var(--soft);font:600 13px/1 var(--display)}
 .cchip:hover:not(:disabled){border-color:var(--accent)}
@@ -230,12 +231,6 @@ body.panel-hidden .ptoggle{right:16px}
 .cfoot{position:absolute;top:410px;display:flex;align-items:center;gap:8px}
 .cfoot select{min-height:30px;font-size:12px;padding:0 6px}
 .cfoot #chartTuning{flex:1.7}.cfoot #chartPos{flex:1}
-.cfoot #atlasTuning{flex:1.7}.cfoot #atlasLabels{flex:.8}.cfoot #atlasInfo{flex:1.4;overflow:hidden;text-overflow:ellipsis}
-.crow.scales .cchip{width:101px;font-size:12px;padding:0 4px}
-.crow.hl .cchip{min-width:32px;padding:0 6px}
-.cexotic{position:absolute;left:214px;top:316px;width:422px!important;min-height:28px!important;font-size:12px;padding:0 6px}
-.cexotic.on{border-color:var(--accent);color:var(--accent)}
-.achords .cchip{position:absolute;min-height:22px;height:22px;min-width:0;padding:0 4px;font-size:12px;overflow:hidden;white-space:nowrap}
 .cfoot .cpage{font-size:12px;white-space:nowrap;color:var(--fg);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:7px 8px}
 .cfoot .btn.icon{width:30px;padding:0;font-size:16px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -284,7 +279,6 @@ body.panel-hidden .ptoggle{right:16px}
     <button id="vStage" aria-pressed="true">3D Stage</button>
     <button id="vViz" aria-pressed="false" title="Visualizer (V): every modulation source as a ring">Visualizer</button>
     <button id="vChart" aria-pressed="false" title="Chord Chart (C): any chord, spelled and shown as shapes on the fretboard">Chord Chart</button>
-    <button id="vAtlas" aria-pressed="false" title="Scale Atlas (S): a scale on the fretboard, its degrees to highlight, and the chords that fit it">Scale Atlas</button>
   </div>
   <button class="btn" id="overview">Overview</button>
   <button class="btn" id="driverBtn" hidden aria-controls="drawer" title="Audio driver and buffer size (opens Settings, Audio)">Driver</button>
@@ -325,18 +319,6 @@ body.panel-hidden .ptoggle{right:16px}
         <select id="chartPos" aria-label="Fret position"></select>
         <span class="mono cpage" id="chartPage"></span>
         <button class="btn mini icon" id="chartPrev" aria-label="Previous page">‹</button><button class="btn mini icon" id="chartNext" aria-label="Next page">›</button>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="hud chart" id="atlas" hidden aria-label="Scale atlas">
-  <div class="cboard" id="atlasBoard">
-    <div class="ccard" id="atlasCard"><canvas id="atlasCv" role="img" aria-label="Fretboard"></canvas><div id="atlasPick"></div><select id="atlasExotic" class="cexotic" aria-label="Exotic scales"></select><div id="atlasChords"></div>
-      <div class="cfoot" id="atlasFoot">
-        <select id="atlasTuning" aria-label="Tuning"></select>
-        <select id="atlasLabels" aria-label="Labels on the notes"><option value="deg">Degrees</option><option value="note">Notes</option></select>
-        <span class="mono cpage" id="atlasInfo"></span>
       </div>
     </div>
   </div>

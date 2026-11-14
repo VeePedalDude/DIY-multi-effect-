@@ -1,0 +1,13 @@
+{
+  "format": "rigview",
+  "formatVersion": 1,
+  "id": "scale-atlas",
+  "name": "Scale Atlas",
+  "tab": "Scale Atlas",
+  "key": "s",
+  "version": "1.0.0",
+  "author": "RIG/01",
+  "description": "A scale on the fretboard, degrees to highlight, and the chords that fit it.",
+  "hint": "pick a key and a scale on the left of the card, and degrees to highlight · the neck shows every note of the scale, the root in colour · click a chord under it to light its notes · S back to the stage",
+  "feeds": []
+}

@@ -1,0 +1,9 @@
+/* the Scale Atlas view: what it adds to the shared card styles (docs/VIEWS.md) */
+.crow.scales .cchip{width:101px;font-size:12px;padding:0 4px}
+.crow.hl .cchip{min-width:32px;padding:0 6px}
+.cexotic{position:absolute;left:214px;top:316px;width:422px;min-height:28px;font-size:12px;padding:0 6px}
+.cexotic.on{border-color:var(--accent);color:var(--accent)}
+.achords .cchip{position:absolute;min-height:22px;height:22px;min-width:0;padding:0 4px;font-size:12px;overflow:hidden;white-space:nowrap}
+.cfoot{left:662px}
+.cfoot #tuning{flex:1.7}.cfoot #labels{flex:.8}.cfoot #info{flex:1.4;overflow:hidden;text-overflow:ellipsis}
+canvas{position:absolute;left:0;top:0}

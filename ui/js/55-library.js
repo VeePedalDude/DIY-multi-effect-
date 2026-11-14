@@ -12,9 +12,10 @@ function libraryKinds() {
   k.presets = ['.rig.json'];
   k.skins = ['.rigskin'];
   k.plugins = ['.rigfx', '.clap'];                             // effects and sources as files (61-plugins.js)
+  k.views = ['.rigview'];                                      // screens as files (66-views.js)
   return k;
 }
-const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets', skins: 'skins', plugins: 'plugins' }[k] || k);
+const kindLabel = (k) => ({ ir: 'IRs', nam: 'NAM captures', presets: 'presets', skins: 'skins', plugins: 'plugins', views: 'views' }[k] || k);
 
 async function initLibrary() {
   library.kinds = libraryKinds();
@@ -66,8 +67,8 @@ async function refreshLibrary() {
     try { library.entries[k] = await library.core.list(k); } catch (e) { library.entries[k] = []; logLine(`library: couldn't read ${k}/: ${e.message}`, true); }
   }
   const where = {
-    folder: `Folder “${library.rootName}”. Files you put in its ir, nam, presets, skins and plugins folders show up after Rescan.`,
-    host: `Folder ${library.rootName}. Put files in its NAM, IR, Effects, Mod Sources, Skins and Presets folders: they show up when you come back to this page.`,
+    folder: `Folder “${library.rootName}”. Files you put in its ir, nam, presets, skins, plugins and views folders show up after Rescan.`,
+    host: `Folder ${library.rootName}. Put files in its NAM, IR, Effects, Mod Sources, Views, Skins and Presets folders: they show up when you come back to this page.`,
     browser: 'Stored in this browser. Choose a folder to keep the library as normal files you can open, back up and share.',
     memory: 'Temporary: this page can’t store files where it’s open, so imports are lost on reload.',
   }[library.backend];
@@ -78,6 +79,7 @@ async function refreshLibrary() {
   await loadTagIndex();                                       // library.json: tags, favorites, notes (62-tags.js)
   renderPluginList();
   syncPlugins();                                 // not awaited: loading can take a moment (61-plugins.js)
+  syncViews();                                   // tabs for the views in the library (66-views.js)
   refreshPresetList();
   renderSkinList();
   renderPanel();

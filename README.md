@@ -92,7 +92,7 @@ ui/
   sources/     a source type's own picture in its panel (geo.js: GEO PULSE's 3D view; seq.js: GATE SEQ's squares and lanes; ctrl.js: CONTROLLER's input and LEARN)
   js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 47-va-plot 49-picker 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner 59-viz
-               64-chart (the Chord Chart; 15-chordbook spells chords and finds their shapes) 65-atlas (the Scale Atlas; 16-scales)
+               64-chart (the Chord Chart; 15-chordbook spells chords and finds their shapes) 66-views (views: .rigview tabs; 16-scales)
                60-controllers (USB gamepads, joysticks and MIDI for CONTROLLER sources; 12-inputs-core reads them) 70-presets 72-preset-format 90-main
   screens/     one face display per module type: gate.js amp.js cab.js holo.js tess.js, and the EQs' curves
                tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js, and the synth filters'
@@ -146,7 +146,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs`, `viz.cjs`, `chart.cjs` and `atlas.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs`, `viz.cjs`, `chart.cjs` and `views.cjs`.
 
 ## Current effects and sources
 
@@ -228,7 +228,7 @@ The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins
 ### The Chord Chart
 
 **Chord Chart** in the top bar (or **C**) swaps the 3D stage for a chord dictionary on one card, stretched to
-the shape of the space it has (a wider window shows more shapes a row; the Scale Atlas more frets).
+the shape of the space it has (a wider window shows more shapes a row).
 - **The left of the card picks the chord:** key (with ♭ / ♯), formula (maj, m, aug, dim, 5, 6, m6, 7, maj7, m7,
   m7♭5, dim7, mMaj7), extension (9, 11, 13), additions (add2 … add11), alterations (♭5, ♯5, ♭9, ♯9, ♯11,
   ♭13, sus2, sus4) and the bass note for a slash chord. What a formula can't take is greyed out.
@@ -241,9 +241,15 @@ the shape of the space it has (a wider window shows more shapes a row; the Scale
 
 The picks are remembered in the browser. Skins colour it (the `chart` section).
 
-### The Scale Atlas
+### Views, and the Scale Atlas
 
-**Scale Atlas** in the top bar (or **S**) puts a scale on the fretboard, on the same kind of card.
+A **view** is a screen that comes as a `.rigview` file: put it in the library's **Views** folder (or drop it
+on the page) and it becomes a tab in the top bar, with one card like the Chord Chart's. Its code runs
+sandboxed: it can't reach the page, your files, this browser's storage or the network. Views don't ship
+with the rig; see [docs/VIEWS.md](docs/VIEWS.md) to write one.
+
+The **Scale Atlas** is the first, built from `views/scale-atlas/` into `dist/views/scale-atlas.rigview`.
+With it in the library, **Scale Atlas** in the top bar (or **S**) puts a scale on the fretboard.
 - **The left:** key, scale (the major modes, harmonic and melodic minor, Phrygian dominant,
   Hungarian minor, major and minor pentatonic, blues, Hirajōshi, whole tone, both diminished scales), an
   **Exotic** menu of 37 rarer scales (double harmonic, enigmatic, Persian, Neapolitan, Prometheus, the

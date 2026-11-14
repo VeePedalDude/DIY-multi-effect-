@@ -8,7 +8,7 @@ function resize() {
   document.documentElement.style.setProperty('--topH', $('top').offsetHeight + 'px');
   document.documentElement.style.setProperty('--botH', $('bottom').offsetHeight + 'px');
   if (state.view === 'chart') chLayout();
-  if (state.view === 'atlas') atLayout();
+  if (viewOf(state.view)) viewLayout(viewOf(state.view));
 }
 // The skin's background image is a flat picture behind the 3D canvas. To sit in the scene it shifts
 // a little against the cards as the camera orbits, tilts and zooms (SKIN.stage.parallax; off for
@@ -27,7 +27,7 @@ function fillCurve(curve, attr) { const arr = attr.array; for (let i = 0; i < CN
 function loop() {
   requestAnimationFrame(loop);              // schedule first, so one bad frame can never freeze the stage
   const dt = Math.min(clock.getDelta(), .05); T += dt; frame++;
-  const vizOn = state.view !== 'stage';       // the Visualizer, Chord Chart and Scale Atlas replace the 3D stage: none of it is drawn meanwhile
+  const vizOn = state.view !== 'stage';       // the Visualizer, Chord Chart and views replace the 3D stage: none of it is drawn meanwhile
   if (!vizOn) {
     cam.r += (camGoal.r - cam.r) * .06; cam.target.lerp(camGoal.target, .06); placeCamera();
     const level = meters ? clamp((20 * Math.log10(meters.outPk + 1e-9) + 50) / 50, 0, 1) : 0;
@@ -58,6 +58,7 @@ function loop() {
     if (meters) { meterBar($('mIn'), meters.inPk); meterBar($('mOut'), meters.outPk); $('dspLoad').textContent = (meters.load * 100).toFixed(1) + '%'; }
   }
   if (state.view === 'viz') drawViz(); else if (!vizOn) renderer.render(scene, camera);
+  viewTick();
 }
 function wireStart() {
   $('startBtn').onclick = async () => {
@@ -83,7 +84,7 @@ function wireStart() {
 (async function boot() {
   try { await loadModel(); }
   catch (err) { $('startErr').hidden = false; $('startErr').textContent = 'Engine could not load: ' + err.message; $('startBtn').disabled = true; return; }
-  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireChart(); wireAtlas(); wireHost(); wireControllers(); wirePresets(); wireTags(); wireFileDlg(); wireStart();
+  buildStage(); wireStageInput(); wireHud(); wireSourcePanel(); wirePicker(); wireAssetUi(); wireLibrary(); wireSkins(); wireTuner(); wireViz(); wireChart(); wireViews(); wireHost(); wireControllers(); wirePresets(); wireTags(); wireFileDlg(); wireStart();
   const libraryReady = initLibrary().catch((e) => logLine('library: ' + e.message, true));
   restoreSkin(libraryReady).catch((e) => logLine('skin: ' + e.message, true));
   addEventListener('resize', resize); resize(); overview(); update();

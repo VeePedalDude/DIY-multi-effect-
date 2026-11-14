@@ -12,6 +12,7 @@ Documents/RIG01/
   IR/            cabinet impulse responses (.wav)
   Effects/       effect plugins (.rigfx bundles, or plain .clap)
   Mod Sources/   modulation source plugins (.rigfx); one imported through the rig goes here by its manifest
+  Views/         screens as tabs (.rigview, docs/VIEWS.md)
   Skins/         looks for the page (.rigskin)
   Presets/       the pedalboard (board.json) and its presets (.rig.json)
   library.json   your tags, favorites and notes (below)

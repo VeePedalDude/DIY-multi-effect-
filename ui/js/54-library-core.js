@@ -10,6 +10,7 @@ class LibraryCore {
     if (kind === 'nam') return parseNamMeta(await file.text());
     if (kind === 'skins') { const r = await readSkinPacket(new Uint8Array(await file.arrayBuffer())); return r.error ? null : { name: r.skin.name || '', author: r.skin.author || '', description: r.skin.description || '' }; }
     if (kind === 'plugins') return pluginMeta(file.name, new Uint8Array(await file.arrayBuffer()));
+    if (kind === 'views') return viewMeta(new Uint8Array(await file.arrayBuffer()));
     if (kind === 'presets') { try { const j = JSON.parse(await file.text()); return j && j.format === 'rig-preset' ? { name: j.name || '', version: j.version } : null; } catch (e) { return null; } }
     return null;
   }
@@ -42,12 +43,13 @@ class LibraryCore {
     if (!kind) return { status: 'skipped', name: file.name, reason: 'not a file type the rig uses' };
     if (wantKind && kind !== wantKind) return { status: 'skipped', name: file.name, reason: `this slot takes ${this.kinds[wantKind].join(', ')} files` };
     const bytes = new Uint8Array(await file.arrayBuffer());
-    let skinErr = '', pluginErr = '';
+    let skinErr = '', pluginErr = '', viewErr = '';
     const check = kind === 'ir' ? parseWavInfo(bytes.buffer) : kind === 'nam' ? parseNamMeta(new TextDecoder().decode(bytes))
       : kind === 'skins' ? await readSkinPacket(bytes).then((r) => { skinErr = r.error || ''; return !r.error; })
       : kind === 'plugins' ? await pluginMeta(file.name, bytes).then((m) => { pluginErr = m && m.error ? m.error : ''; return !!m && !m.error; })
+      : kind === 'views' ? await viewMeta(bytes).then((m) => { viewErr = m.error || ''; return !m.error; })
       : (() => { try { return JSON.parse(new TextDecoder().decode(bytes)).format === 'rig-preset'; } catch (e) { return false; } })();
-    if (!check) return { status: 'skipped', name: file.name, reason: kind === 'plugins' ? `not a usable plugin: ${pluginErr}` : kind === 'skins' ? `not a usable skin: ${skinErr}` : `couldn't read it as a ${kind === 'ir' ? 'WAV' : kind === 'nam' ? 'NAM capture' : 'RIG preset'}` };
+    if (!check) return { status: 'skipped', name: file.name, reason: kind === 'plugins' ? `not a usable plugin: ${pluginErr}` : kind === 'views' ? `not a usable view: ${viewErr}` : kind === 'skins' ? `not a usable skin: ${skinErr}` : `couldn't read it as a ${kind === 'ir' ? 'WAV' : kind === 'nam' ? 'NAM capture' : 'RIG preset'}` };
     const h = fnv1a(bytes), existing = await this.list(kind);
     for (const e of existing) if (e.size === bytes.length && (await this.hash(kind, e.name)) === h) return { status: 'duplicate', kind, name: e.name };
     const name = uniqueName(new Set(existing.map((e) => e.name)), safeFileName(file.name));
@@ -91,6 +93,17 @@ async function pluginMeta(name, bytes) {
     if (j.format !== 'rigfx' || !j.description || !j.description.id) return { error: 'not a RIG plugin bundle' };
     return { name: j.name, id: j.id, kind: j.kind, category: j.category, tags: j.tags || [], author: j.author || '', version: j.pluginVersion || '', sub: j.sub || '',
              browser: files.has('module.wclap'), description: j.description };
+  } catch (e) { return { error: e.message }; }
+}
+
+// A .rigview's manifest for the library (docs/VIEWS.md; 66-views.js reads the whole bundle when it's opened).
+async function viewMeta(bytes) {
+  try {
+    const files = await unzip(bytes), m = files.get('manifest.json');
+    if (!m) return { error: 'no manifest.json inside' };
+    const j = JSON.parse(new TextDecoder().decode(m));
+    if (j.format !== 'rigview' || !/^[a-z0-9-]{1,40}$/.test(j.id || '') || !files.has('view.js')) return { error: 'not a RIG view bundle' };
+    return { id: j.id, name: j.name || j.tab, tab: j.tab, author: j.author || '', version: j.version || '', description: j.description || '' };
   } catch (e) { return { error: e.message }; }
 }
 

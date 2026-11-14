@@ -2,7 +2,7 @@
 // folder per kind of file. The page reads and writes it over HTTP (/lib/..., see net.h) with the same
 // keys its other libraries use ("nam/x.nam", "plugins/x.rigfx", "library.json"); this file maps them
 // to folders people recognise:
-//   nam -> NAM   ir -> IR   skins -> Skins   presets -> Presets
+//   nam -> NAM   ir -> IR   skins -> Skins   presets -> Presets   views -> Views (docs/VIEWS.md)
 //   plugins -> Effects or Mod Sources (a .rigfx goes by its manifest's "kind"; both are read)
 // Paths are UTF-8; on Windows they go through the wide-character API so any file name works.
 #pragma once
@@ -30,10 +30,10 @@ static const char* const SOURCES = "Mod Sources";
 static const char* const EFFECTS = "Effects";
 
 inline std::string folderFor(const std::string& kind) {
-  return kind == "nam" ? "NAM" : kind == "ir" ? "IR" : kind == "skins" ? "Skins" : kind == "presets" ? "Presets" : kind;                                                   // a kind added later keeps its own name
+  return kind == "nam" ? "NAM" : kind == "ir" ? "IR" : kind == "skins" ? "Skins" : kind == "presets" ? "Presets" : kind == "views" ? "Views" : kind;                                                   // a kind added later keeps its own name
 }
 inline const char* kindOf(const std::string& folder) {
-  return folder == "NAM" ? "nam" : folder == "IR" ? "ir" : folder == "Skins" ? "skins" : folder == "Presets" ? "presets"
+  return folder == "NAM" ? "nam" : folder == "IR" ? "ir" : folder == "Skins" ? "skins" : folder == "Presets" ? "presets" : folder == "Views" ? "views"
        : folder == EFFECTS || folder == SOURCES ? "plugins" : nullptr;
 }
 
@@ -105,7 +105,7 @@ struct Library {
   std::string root;                                              // no trailing separator
   bool ensure() {
     if (!mkdirs(root)) return false;
-    for (const char* f : { "NAM", "IR", EFFECTS, SOURCES, "Skins", "Presets" }) mkdirs(root + SEP + f);
+    for (const char* f : { "NAM", "IR", EFFECTS, SOURCES, "Views", "Skins", "Presets" }) mkdirs(root + SEP + f);
     return true;
   }
   // key -> where it is now (or "" if nowhere). kind is set ("" for a file at the top, like library.json).
@@ -133,7 +133,7 @@ struct Library {
       char b[64]; snprintf(b, sizeof b, "\",\"s\":%llu,\"m\":%.0f}", (unsigned long long)sz, mt);
       j += std::string(first ? "" : ",") + "{\"k\":\"" + jsonEsc(key) + b; first = false; seen.push_back(key);
     };
-    for (const char* f : { "NAM", "IR", EFFECTS, SOURCES, "Skins", "Presets" })
+    for (const char* f : { "NAM", "IR", EFFECTS, SOURCES, "Views", "Skins", "Presets" })
       for (const auto& n : files(root + SEP + f)) if (okName(n)) add(std::string(kindOf(f)) + "/" + n, root + SEP + f + SEP + n);
     add("library.json", root + SEP + "library.json");
     return j + "]}";

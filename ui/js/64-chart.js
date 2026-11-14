@@ -1,5 +1,5 @@
 // 64-chart.js - the Chord Chart view (C): a chord dictionary on one card turned sideways, like the tuner's,
-// and stretched to the shape of the space it has (cardFit, shared with the Scale Atlas). The left of the
+// and stretched to the shape of the space it has (cardFit, shared with views, 66-views.js). The left of the
 // card picks the chord: key, formula, extension, additions, alterations, bass note. The right names it,
 // spells it (degrees = notes, optional ones in brackets) and shows its shapes on the fretboard for a
 // tuning and a fret position, best first, four rows of as many as the width holds (six or more) to a page.
@@ -136,7 +136,7 @@ function chDiagram(c, v, i, P, rootPc) {
 }
 
 // ------------------------------------------------------------------ layout, show / hide
-// Lays out a one-card view (the Chord Chart's, the Scale Atlas's) between the bars and the panel: the card
+// Lays out a one-card view (the Chord Chart's, a view's) between the bars and the panel: the card
 // is stretched to the shape of that space (between CH_LMIN and CH_LMAX long) and scaled to fill it.
 // Returns { k, dpr, L }; the right part of the card is chRW(L) wide.
 function cardFit(board, card) {

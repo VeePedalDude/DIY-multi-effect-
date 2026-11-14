@@ -48,7 +48,7 @@ const DEFAULT_SKIN = {
   // the strobe tuner: a card turned sideways (`tile` names one of `tiles`), and the face-down mini card that opens it
   tuner: { tile: 'teal', glass: '#070A14', stripe: '#4FE3F0', inTune: '#9BE15D', flat: '#FFB547', sharp: '#FF5FA2', text: '#94A3BD', bright: '#E6ECF5',
     back: '#151030', backLine: '#7B5BD6', backMark: '#4FE3F0' },
-  // the Chord Chart (C) and Scale Atlas (S) views: one card each (`tile` names one of `tiles`) over a veil, shapes and the neck on its display
+  // the Chord Chart (C) and views (66-views.js, the Scale Atlas's for one): one card each (`tile` names one of `tiles`) over a veil, shapes and the neck on its display
   chart: { tile: 'teal', bg: 'rgba(6,4,14,.62)', glass: '#070A14', grid: '#5E6B85', dot: '#E6ECF5', root: '#4FE3F0', hi: '#FFB547', open: '#9BE15D', mute: '#FF5FA2',
     text: '#94A3BD' },
   fonts: [],                                              // [{ family, file, weight?, style? }]

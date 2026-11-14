@@ -70,6 +70,8 @@ echo "== native vs WebAssembly parity"
 $CXX -O2 $STRICT -o build/dump tests/parity/dump.cpp build/obj/native/*.o
 ./build/dump
 node tests/parity/parity.mjs
+echo "== views (views/<id>/ -> dist/views/<id>.rigview; docs/VIEWS.md)"
+for d in views/*/; do python3 tools/build_view.py "$d"; done
 echo "== web page"
 python3 tools/build_web.py
 node --check build/app.js

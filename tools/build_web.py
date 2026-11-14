@@ -3,7 +3,7 @@
 
 Script order: ui/js/*.js by name, with every ui/screens/*.js and ui/sources/*.js inserted before
 the first ui/js file numbered 50 or higher. All of it runs inside one function scope.
-Images in ui/assets/ are embedded as data: URLs in UI_ASSETS (keyed by file name), so the
+The view runtime and theory kit go in UI_VIEWKIT (66-views.js). Images in ui/assets/ are embedded as data: URLs in UI_ASSETS (keyed by file name), so the
 page stays a single file that works offline and from disk.
 """
 import base64, pathlib, re, sys
@@ -19,6 +19,11 @@ mime = {'.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg'
 assets = {p.name: f"data:{mime[p.suffix]};base64,{base64.b64encode(p.read_bytes()).decode()}"
           for p in sorted((ui / 'assets').glob('*')) if p.suffix in mime}
 assets_js = "const UI_ASSETS = {" + ",".join(f"'{k}':'{v}'" for k, v in assets.items()) + "};\n"
+# what every view's frame gets (66-views.js, docs/VIEWS.md): the runtime, then the theory kit as plain scripts
+import json
+viewkit = json.dumps({'runtime': (ui / 'views/runtime.js').read_text(),
+                      'theory': (ui / 'js/15-chordbook.js').read_text() + '\n' + (ui / 'js/16-scales.js').read_text()})
+assets_js += "const UI_VIEWKIT = " + viewkit.replace('</', '<\\/') + ";\n"
 app = "(function () {\n'use strict';\n" + assets_js + "\n".join(f"// ===== {p.relative_to(root)} =====\n{p.read_text()}" for p in parts) + "\n})();\n"
 worklet = (ui / 'worklet/wclap-host.js').read_text() + '\n' + (ui / 'worklet/engine-worklet.js').read_text()   # the WebCLAP host first: the engine uses it
 wasm = base64.b64encode((root / 'build/rig.wasm').read_bytes()).decode()

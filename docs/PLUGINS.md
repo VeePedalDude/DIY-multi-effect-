@@ -1,5 +1,7 @@
 # Plugins: effects and sources as files
 
+(Screens come as files too: views, `.rigview` — see [VIEWS.md](VIEWS.md).)
+
 A plugin is an effect or a modulation source that comes as one file, a `.rigfx` bundle, instead of being
 compiled into the rig. Load it with **Load effect file (.rigfx)…** at the bottom of the **Add an effect**
 panel (**Load source file…** in **Add a source**): it is copied into the library's `plugins/` folder,

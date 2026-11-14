@@ -39,9 +39,10 @@ const near = (px, hex, tol = 40) => hexRgb(hex).every((v, i) => Math.abs(v - px[
   check(shown[0] && shown[1] === 'hidden' && shown[2] === 'true' && shown[3] && shown[4] === 'false', 'the cards show, the 3D stage is hidden, the button is pressed (Visualizer not), Overview is off');
   const f0 = await V('window.__rig.viz.stageFrames()'); await sleep(1200); const f1 = await V('window.__rig.viz.stageFrames()');
   check(f1 === f0, `the 3D stage isn't drawn meanwhile (${f1 - f0} frames in 1.2 s)`);
-  const boxes = await V(`['chartPickCard', 'chartShapeCard'].map((id) => { const r = document.getElementById(id).getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; })`);
+  const box = await V(`(() => { const r = document.getElementById('chartCard').getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; })()`);
   const topB = await V(`document.getElementById('top').getBoundingClientRect().bottom`), panelL = await V(`document.getElementById('panel').getBoundingClientRect().left`), boardT = await V(`document.getElementById('board').getBoundingClientRect().top`);
-  check(boxes.every((b) => b[1] > topB && b[2] < panelL && b[3] < boardT) && boxes[0][2] < boxes[1][0], `side by side, between the top bar, the panel and the pedalboard (scale ${(await V('window.__rig.chart.layout().k')).toFixed(2)})`);
+  const L0 = await V('window.__rig.chart.layout()');
+  check(box[1] > topB && box[2] < panelL && box[3] < boardT && L0.L >= 1300, `one card, ${L0.L} units long, between the top bar, the panel and the pedalboard (scale ${L0.k.toFixed(2)}, ${L0.cols} shapes a row)`);
 
   console.log('2. C major to start: spelled, and its open shapes, best first');
   let c = await chord(), s = await shapes();
@@ -51,7 +52,7 @@ const near = (px, hex, tol = 40) => hexRgb(hex).every((v, i) => Math.abs(v - px[
   const px = async (i, st) => { const p = await V(`window.__rig.chart.noteAt(${i}, ${st})`); return { ...p, px: await V(`window.__rig.chart.pixel(${p.x}, ${p.y})`) }; };
   const rootN = await px(0, 1), third = await px(0, 2), mute = await px(0, 0);
   check(rootN.fret === 3 && near(rootN.px, P.root) && third.fret === 2 && near(third.px, P.dot), `x32010 drawn: C on the A string's 3rd fret in the root colour (${rootN.px.slice(0, 3)}), E on the D string's 2nd in the dot colour (${third.px.slice(0, 3)})`);
-  const label = await V(`document.getElementById('chartShapeCv').getAttribute('aria-label')`);
+  const label = await V(`document.getElementById('chartCv').getAttribute('aria-label')`);
   check(mute.fret === -1 && /^C: C-E-\(G\)\. Shapes, low string first: x32010/.test(label), `screen readers get the chord and its shapes (“${label.slice(0, 60)}…”)`);
   await page.screenshot({ path: path.join(shots, 'shot-chart.png') });
 
@@ -87,11 +88,11 @@ const near = (px, hex, tol = 40) => hexRgb(hex).every((v, i) => Math.abs(v - px[
   c = await chord(); s = await shapes();
   check(c.name === 'D5' && s.includes('000xxx'), `Drop D: ${c.name} has the open 000xxx`);
   await select('#chartPos', '3'); await chip('formula', 'dim7'); await sleep(200);
-  const empty = await V(`document.getElementById('chartShapeCv').getAttribute('aria-label')`);
+  const empty = await V(`document.getElementById('chartCv').getAttribute('aria-label')`);
   check((await V('window.__rig.chart.count()')) > 0 || /No shapes/.test(empty), 'a position with no shapes says so');
 
   console.log('5. A skin change redraws the cards; C goes back to the stage; the picks are remembered');
-  const [gx, gy] = [120, 250], g0 = await V(`window.__rig.chart.pixel(${gx}, ${gy})`);
+  const gl = await V('window.__rig.chart.glass()'), [gx, gy] = [gl[0] + 8, gl[1] + gl[3] - 10], g0 = await V(`window.__rig.chart.pixel(${gx}, ${gy})`);
   await page.keyboard.press('k'); await sleep(1200);
   const g1 = await V(`window.__rig.chart.pixel(${gx}, ${gy})`), P1 = await V('window.__rig.chart.colors()');
   check(near(g1, P1.glass, 30) && (g0.join() !== g1.join() || P.glass === P1.glass), `K: the display is drawn in the new skin's glass (${g1.slice(0, 3)} for ${P1.glass})`);
@@ -104,10 +105,18 @@ const near = (px, hex, tol = 40) => hexRgb(hex).every((v, i) => Math.abs(v - px[
   await open(); await page.keyboard.press('c'); await sleep(500);
   check((await V('JSON.stringify(window.__rig.chart.pick())')) === before && (await chord()).name === 'Ddim7', `after a reload the chart opens where it was left (${(await chord()).name}, Drop D, fret 3)`);
 
-  console.log('6. A narrow window stacks the cards');
+  console.log('6. The card follows the space it has');
+  await page.keyboard.press('p'); await sleep(500);
+  const L1 = await V('window.__rig.chart.layout()');
+  await page.keyboard.press('p'); await sleep(400);
+  check(L1.k > L0.k * 1.1 && L1.L >= L0.L, `P hides the panel: the card grows (scale ${L0.k.toFixed(2)} → ${L1.k.toFixed(2)}, ${L0.L} → ${L1.L} units, ${L1.cols} shapes a row)`);
+  await page.setViewportSize({ width: 2400, height: 800 }); await sleep(500);
+  const Lw = await V('window.__rig.chart.layout()');
+  check(Lw.L > L0.L && Lw.cols > L0.cols, `a wide window stretches it instead (2400 x 800: ${Lw.L} units, ${Lw.cols} shapes a row)`);
+  await page.setViewportSize({ width: 1600, height: 900 }); await sleep(400);
   await page.setViewportSize({ width: 900, height: 1100 }); await sleep(500);
-  const L = await V('window.__rig.chart.layout()');
-  check(L.stacked, `900 x 1100: stacked, at scale ${L.k.toFixed(2)}`);
+  const L = await V('window.__rig.chart.layout()'), b2 = await V(`(() => { const r = document.getElementById('chartCard').getBoundingClientRect(); return [r.left, r.right]; })()`);
+  check(L.L === 1300 && b2[0] >= 0 && b2[1] <= 900, `900 x 1100: the card keeps its shortest length and fits the width (scale ${L.k.toFixed(2)})`);
   await page.screenshot({ path: path.join(shots, 'shot-chart-stacked.png') });
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   await browser.close();

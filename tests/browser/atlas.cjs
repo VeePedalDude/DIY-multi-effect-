@@ -39,6 +39,11 @@ const near = (px, hex, tol = 40) => hexRgb(hex).every((v, i) => Math.abs(v - px[
   const f0 = await V('window.__rig.viz.stageFrames()'); await sleep(1000);
   check((await V('window.__rig.viz.stageFrames()')) === f0, 'the 3D stage isn\'t drawn meanwhile');
 
+  const f15 = await V('window.__rig.atlas.frets()');
+  await page.setViewportSize({ width: 2400, height: 800 }); await sleep(500); const f22 = await V('window.__rig.atlas.frets()');
+  await page.setViewportSize({ width: 1600, height: 900 }); await sleep(400);
+  check(f15 >= 15 && f22 > f15 && f22 <= 22, `one card stretched to the space: frets 0-${f15} at 1600 x 900, 0-${f22} in a wide window`);
+
   console.log('2. A minor pentatonic to start, on the neck');
   let notes = await V('window.__rig.atlas.notes()');
   check(notes.join(' ') === 'A:1 C:♭3 D:4 E:5 G:♭7', `notes and degrees: ${notes.join(' ')}`);
@@ -82,15 +87,15 @@ const near = (px, hex, tol = 40) => hexRgb(hex).every((v, i) => Math.abs(v - px[
 
   console.log('5. Labels, tunings, the skin, S, and a reload');
   await select('#atlasLabels', 'note'); await sleep(100);
-  const lab = await V(`document.getElementById('atlasNeckCv').getAttribute('aria-label')`);
+  const lab = await V(`document.getElementById('atlasCv').getAttribute('aria-label')`);
   check(/^C Major \(Ionian\): C \(1\), D \(2\)/.test(lab) && (await V('window.__rig.atlas.pick().labels')) === 'note', `note names on the dots; screen readers get the scale (“${lab.slice(0, 40)}…”)`);
   await select('#atlasTuning', 'dropd'); await sleep(100);
   const d0 = await dot(0, 0), d2 = await dot(0, 2);
   check(near(d0, P.dot) && near(d2, P.dot) && (await V(`window.__rig.atlas.pixel(${(await V('window.__rig.atlas.at(0, 1)')).x}, ${(await V('window.__rig.atlas.at(0, 1)')).y - 6})`)).every((v, i) => i === 3 || Math.abs(v - hexRgb(P.glass)[i]) < 30),
     'Drop D: the low string is D, so D (open) and E (fret 2) are scale notes and D♯ (fret 1) isn\'t');
-  const g1 = await V(`window.__rig.atlas.pixel(120, 200)`);
+  const ag = await V('window.__rig.atlas.glass()'), gp = [ag[0] + 8, ag[1] + ag[3] - 8], g1 = await V(`window.__rig.atlas.pixel(${gp[0]}, ${gp[1]})`);
   await page.keyboard.press('k'); await sleep(1200);
-  const P1 = await V('window.__rig.chart.colors()'), g2 = await V(`window.__rig.atlas.pixel(120, 200)`);
+  const P1 = await V('window.__rig.chart.colors()'), g2 = await V(`window.__rig.atlas.pixel(${gp[0]}, ${gp[1]})`);
   check(near(g2, P1.glass, 30), `K: the neck's display redrawn in the new skin's glass (${g1.slice(0, 3)} → ${g2.slice(0, 3)})`);
   await page.keyboard.press('k'); await sleep(600);
   await page.mouse.click(800, 870); await page.keyboard.press('s'); await sleep(500);

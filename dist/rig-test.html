@@ -216,18 +216,18 @@ body.panel-hidden .ptoggle{right:16px}
 .tunctl{position:absolute;left:15%;right:15%;top:81.5%;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
 .tunref{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 4px}
 .tunref .btn.icon{width:26px;min-height:26px;border:0;background:transparent}
-/* the Chord Chart view: two sideways cards over a veil (64-chart.js lays them out at 754 x 518 each and scales the board) */
+/* the Chord Chart and Scale Atlas views: one sideways card each, stretched to the window's shape, over a veil (cardFit in 64-chart.js) */
 .chart{inset:0;z-index:1}
 .cboard{position:absolute;left:0;top:0;transform-origin:0 0}
-.ccard{position:absolute;width:754px;height:518px;filter:drop-shadow(0 18px 40px var(--overlay))}
-.ccard canvas{position:absolute;inset:0;width:754px;height:518px}
+.ccard{position:absolute;left:0;top:0;height:518px;filter:drop-shadow(0 18px 40px var(--overlay))}
+.ccard canvas{position:absolute;inset:0;width:100%;height:100%}
 .crow{position:absolute;left:214px;width:428px;display:flex;flex-wrap:wrap;gap:6px}
 .cchip{min-height:28px;min-width:38px;padding:0 9px;border:1px solid var(--line2);border-radius:8px;background:var(--raise);color:var(--soft);font:600 13px/1 var(--display)}
 .cchip:hover:not(:disabled){border-color:var(--accent)}
 .cchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--ink)}
 .cchip:disabled{opacity:.3}
 .crow.formulas .cchip{width:80px}
-.cfoot{position:absolute;left:112px;width:530px;top:410px;display:flex;align-items:center;gap:8px}
+.cfoot{position:absolute;top:410px;display:flex;align-items:center;gap:8px}
 .cfoot select{min-height:30px;font-size:12px;padding:0 6px}
 .cfoot #chartTuning{flex:1.7}.cfoot #chartPos{flex:1}
 .cfoot #atlasTuning{flex:1.7}.cfoot #atlasLabels{flex:.8}.cfoot #atlasInfo{flex:1.4;overflow:hidden;text-overflow:ellipsis}
@@ -319,8 +319,7 @@ body.panel-hidden .ptoggle{right:16px}
 
 <section class="hud chart" id="chart" hidden aria-label="Chord chart">
   <div class="cboard" id="chartBoard">
-    <div class="ccard" id="chartPickCard"><canvas id="chartPickCv" aria-hidden="true"></canvas><div id="chartPick"></div></div>
-    <div class="ccard" id="chartShapeCard"><canvas id="chartShapeCv" role="img" aria-label="Chord shapes"></canvas>
+    <div class="ccard" id="chartCard"><canvas id="chartCv" role="img" aria-label="Chord shapes"></canvas><div id="chartPick"></div>
       <div class="cfoot" id="chartFoot">
         <select id="chartTuning" aria-label="Tuning"></select>
         <select id="chartPos" aria-label="Fret position"></select>
@@ -333,9 +332,8 @@ body.panel-hidden .ptoggle{right:16px}
 
 <section class="hud chart" id="atlas" hidden aria-label="Scale atlas">
   <div class="cboard" id="atlasBoard">
-    <div class="ccard"><canvas id="atlasPickCv" aria-hidden="true"></canvas><div id="atlasPick"></div><select id="atlasExotic" class="cexotic" aria-label="Exotic scales"></select></div>
-    <div class="ccard" id="atlasNeckCard"><canvas id="atlasNeckCv" role="img" aria-label="Fretboard"></canvas><div id="atlasChords"></div>
-      <div class="cfoot">
+    <div class="ccard" id="atlasCard"><canvas id="atlasCv" role="img" aria-label="Fretboard"></canvas><div id="atlasPick"></div><select id="atlasExotic" class="cexotic" aria-label="Exotic scales"></select><div id="atlasChords"></div>
+      <div class="cfoot" id="atlasFoot">
         <select id="atlasTuning" aria-label="Tuning"></select>
         <select id="atlasLabels" aria-label="Labels on the notes"><option value="deg">Degrees</option><option value="note">Notes</option></select>
         <span class="mono cpage" id="atlasInfo"></span>
@@ -910,7 +908,7 @@ const DEFAULT_SKIN = {
   // the strobe tuner: a card turned sideways (`tile` names one of `tiles`), and the face-down mini card that opens it
   tuner: { tile: 'teal', glass: '#070A14', stripe: '#4FE3F0', inTune: '#9BE15D', flat: '#FFB547', sharp: '#FF5FA2', text: '#94A3BD', bright: '#E6ECF5',
     back: '#151030', backLine: '#7B5BD6', backMark: '#4FE3F0' },
-  // the Chord Chart (C) and Scale Atlas (S) views: two cards (`tile` names one of `tiles`) over a veil, chord shapes on the right card's display
+  // the Chord Chart (C) and Scale Atlas (S) views: one card each (`tile` names one of `tiles`) over a veil, shapes and the neck on its display
   chart: { tile: 'teal', bg: 'rgba(6,4,14,.62)', glass: '#070A14', grid: '#5E6B85', dot: '#E6ECF5', root: '#4FE3F0', hi: '#FFB547', open: '#9BE15D', mute: '#FF5FA2',
     text: '#94A3BD' },
   fonts: [],                                              // [{ family, file, weight?, style? }]
@@ -3570,8 +3568,8 @@ let panelPending = false;
 function renderPanelSoon() { if (panelPending) return; panelPending = true; requestAnimationFrame(() => { panelPending = false; renderPanel(); }); }
 function setHint() {
   if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it, or another source's orb to move one of its knobs · Esc to drop`; return; }
-  if (state.view === 'atlas') { hint.className = 'hint'; hint.textContent = 'Scale Atlas: pick a key and a scale on the left card, and degrees to highlight · the neck shows every note of the scale, the root in colour · click a chord under it to light its notes · S back to the stage'; return; }
-  if (state.view === 'chart') { hint.className = 'hint'; hint.textContent = 'Chord Chart: pick a key, a formula and its options on the left card · the right card spells the chord and shows its shapes, low string on the left, root notes in colour · tuning and fret position below the shapes · C back to the stage'; return; }
+  if (state.view === 'atlas') { hint.className = 'hint'; hint.textContent = 'Scale Atlas: pick a key and a scale on the left of the card, and degrees to highlight · the neck shows every note of the scale, the root in colour · click a chord under it to light its notes · S back to the stage'; return; }
+  if (state.view === 'chart') { hint.className = 'hint'; hint.textContent = 'Chord Chart: pick a key, a formula and its options on the left of the card · the right spells the chord and shows its shapes, low string on the left, root notes in colour · tuning and fret position below the shapes · C back to the stage'; return; }
   if (state.view === 'viz') { hint.className = 'hint'; hint.textContent = 'Visualizer: a ring for each modulation source, newest value at the top, fading round the circle · dashed links: one source moving another · click a ring to edit it · V back to the stage'; return; }
   hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · the + card adds an effect, the + orb a source · P hides the panel · V visualizer · C chord chart · S scale atlas · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
 }
@@ -5501,15 +5499,18 @@ function wireFileDlg() {
 }
 
 // ===== ui/js/64-chart.js =====
-// 64-chart.js - the Chord Chart view (C): a chord dictionary on two cards turned sideways, like the tuner's.
-// The left card picks the chord: key, formula, extension, additions, alterations, bass note. The right card
-// names it, spells it (degrees = notes, optional ones in brackets) and shows its shapes on the fretboard
-// for a tuning and a fret position, 24 to a page, best first. The music is 15-chordbook.js.
-// Like the Visualizer, the 3D stage isn't drawn while this is up. The board is laid out at the cards' own
-// size (754 x 518 each, side by side or stacked, whichever is bigger) and scaled to fit between the bars.
+// 64-chart.js - the Chord Chart view (C): a chord dictionary on one card turned sideways, like the tuner's,
+// and stretched to the shape of the space it has (cardFit, shared with the Scale Atlas). The left of the
+// card picks the chord: key, formula, extension, additions, alterations, bass note. The right names it,
+// spells it (degrees = notes, optional ones in brackets) and shows its shapes on the fretboard for a
+// tuning and a fret position, best first, four rows of as many as the width holds (six or more) to a page.
+// The music is 15-chordbook.js. Like the Visualizer, the 3D stage isn't drawn while this is up.
 // Picks are remembered in this browser. Colours: the skin's `chart` section and its tile (docs/SKINS.md).
-const CH_W = CARD_H, CH_H = FW, CH_GAP = 28, CH_PER = 24, CH_GLASS = [112, 100, 530, 300];   // the shapes' display: x, y, w, h
-const chart = { k: 1, dpr: 1, page: 0, shapes: [], counts: [], chord: null };
+const CH_H = FW, CH_RX = 662, CH_LMIN = 1300, CH_LMAX = 1700;   // the card's height; where its right part starts; its length, least and most
+const chart = { k: 1, dpr: 1, L: CH_LMIN, page: 0, shapes: [], counts: [], chord: null };
+const chRW = (L) => L - CH_RX - 112;                                   // the right part's width
+const chGlass = () => [CH_RX, 100, chRW(chart.L), 300];               // the shapes' display: x, y, w, h
+const chCols = () => Math.max(6, Math.floor(chRW(chart.L) / 88)), chPer = () => chCols() * 4;
 const CH_ROWS = [['key', 'KEY', 104], ['formula', 'FORMULA', 142], ['ext', 'EXTENSION', 250], ['adds', 'ADD', 286], ['alts', 'ALTER', 322], ['bass', 'BASS', 410]];
 const chPick = (() => {
   const d = { key: { letter: 0, acc: 0 }, formula: 'maj', ext: 0, adds: [], alts: [], bass: null, tuning: 'std', pos: 0 };
@@ -5524,11 +5525,11 @@ function chCompute() {
   // every position's count, for the position menu: a rich chord may have shapes at only a few
   const all = Array.from({ length: CB_POSITIONS + 1 }, (_, p) => chordVoicings(chart.chord, chTuning()[2], p));
   chart.counts = all.map((l) => l.length); chart.shapes = all[chPick.pos] || [];
-  chart.page = clamp(chart.page, 0, Math.max(0, Math.ceil(chart.shapes.length / CH_PER) - 1));
+  chart.page = clamp(chart.page, 0, Math.max(0, Math.ceil(chart.shapes.length / chPer()) - 1));
 }
 function chChanged(keepPage) { if (!keepPage) chart.page = 0; chSave(); chCompute(); chControls(); chDraw(); }
 
-// ------------------------------------------------------------------ the left card's buttons
+// ------------------------------------------------------------------ the buttons on the left of the card
 function chChip(label, pressed, act, val, disabled) {
   return `<button class="cchip" aria-pressed="${pressed}" data-ch="${act}" data-v="${val}"${disabled ? ' disabled' : ''}>${label}</button>`;
 }
@@ -5549,7 +5550,7 @@ function chControls() {
   $('chartTuning').value = chTuning()[0];
   $('chartPos').innerHTML = chart.counts.map((n, p) => `<option value="${p}">${p ? `Fret ${p}` : 'Open'} · ${n}</option>`).join('');
   $('chartPos').value = String(chPick.pos);
-  const pages = Math.max(1, Math.ceil(chart.shapes.length / CH_PER));
+  const pages = Math.max(1, Math.ceil(chart.shapes.length / chPer()));
   $('chartPage').textContent = `${chart.shapes.length} shape${chart.shapes.length === 1 ? '' : 's'} · ${chart.page + 1}/${pages}`;
   $('chartPrev').disabled = chart.page === 0; $('chartNext').disabled = chart.page >= pages - 1;
 }
@@ -5574,36 +5575,34 @@ function chClick(e) {
 }
 
 // ------------------------------------------------------------------ drawing
-function chCardFrame(c, st) { c.save(); c.translate(CH_W, 0); c.rotate(Math.PI / 2); drawCard(c, st, CARD_H); c.restore(); }
-// a card's canvas at the board's scale (fit: { k, dpr }); returns its context in card units
-function chCanvas(cv, fit = chart) {
-  const w = Math.round(CH_W * fit.k * fit.dpr), h = Math.round(CH_H * fit.k * fit.dpr);
+function chCardFrame(c, st, L) { c.save(); c.translate(L, 0); c.rotate(Math.PI / 2); drawCard(c, st, L); c.restore(); }
+// a card's canvas at its length and scale (fit: { k, dpr, L }); returns its context in card units
+function chCanvas(cv, fit) {
+  const w = Math.round(fit.L * fit.k * fit.dpr), h = Math.round(CH_H * fit.k * fit.dpr);
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
-  const c = cv.getContext('2d'); c.setTransform(w / CH_W, 0, 0, h / CH_H, 0, 0); c.clearRect(0, 0, CH_W, CH_H); return c;
+  const c = cv.getContext('2d'); c.setTransform(w / fit.L, 0, 0, h / CH_H, 0, 0); c.clearRect(0, 0, fit.L, CH_H); return c;
 }
 function chDraw() {
   if ($('chart').hidden || !chart.chord) return;
   const P = SKIN.chart, st = tileStyle(SKIN, P.tile);
   $('chart').style.background = P.bg;
-  // the left card: its title and the row labels (the buttons are HTML over it)
-  let c = chCanvas($('chartPickCv'));
-  chCardFrame(c, st);
+  // the left of the card: its title and the row labels (the buttons are HTML over it)
+  const c = chCanvas($('chartCv'), chart), RX = CH_RX, RE = CH_RX + chRW(chart.L);
+  chCardFrame(c, st, chart.L);
   c.textBaseline = 'alphabetic'; c.textAlign = 'left'; c.fillStyle = st.card.title; c.font = `700 26px ${SKIN.ui.fontDisplay}`; c.fillText('CHORD', 128, 86);
   c.textAlign = 'right'; c.fillStyle = st.card.text; c.font = `500 17px ${SKIN.ui.fontMono}`; c.fillText(chTuning()[1].split(' (')[0], 626, 86);
   c.font = `600 13px ${SKIN.ui.fontDisplay}`; c.textAlign = 'left';
   CH_ROWS.forEach(([, label, y]) => c.fillText(label, 128, y + 19));
-  // the right card: the name and spelling, then the shapes on its display
-  c = chCanvas($('chartShapeCv'));
-  chCardFrame(c, st);
+  // the right: the name and spelling, then the shapes on the display
   const ch = chart.chord;
-  c.fillStyle = st.card.title; c.font = `700 26px ${SKIN.ui.fontDisplay}`; c.fillText(ch.name, 128, 86);
-  const nw = c.measureText(ch.name).width, spell = `${ch.degrees}  =  ${ch.spelled}`, room = 626 - 128 - nw - 24;
+  c.fillStyle = st.card.title; c.font = `700 26px ${SKIN.ui.fontDisplay}`; c.fillText(ch.name, RX + 16, 86);
+  const nw = c.measureText(ch.name).width, spell = `${ch.degrees}  =  ${ch.spelled}`, room = RE - 16 - RX - 16 - nw - 24;
   let fs = 16; c.font = `500 ${fs}px ${SKIN.ui.fontMono}`;
   while (fs > 10 && c.measureText(spell).width > room) { fs--; c.font = `500 ${fs}px ${SKIN.ui.fontMono}`; }
-  c.textAlign = 'right'; c.fillStyle = st.card.text; c.fillText(spell, 626, 86); c.textAlign = 'left';
-  const [gx, gy, gw, gh] = CH_GLASS;
+  c.textAlign = 'right'; c.fillStyle = st.card.text; c.fillText(spell, RE - 16, 86); c.textAlign = 'left';
+  const [gx, gy, gw, gh] = chGlass();
   rr(c, gx, gy, gw, gh, 18); c.fillStyle = P.glass; c.fill(); c.strokeStyle = st.rim; c.lineWidth = 3; c.stroke();
-  const page = chart.shapes.slice(chart.page * CH_PER, chart.page * CH_PER + CH_PER);
+  const page = chart.shapes.slice(chart.page * chPer(), chart.page * chPer() + chPer());
   if (!page.length) {
     c.textAlign = 'center'; c.fillStyle = P.text; c.font = `500 17px ${SKIN.ui.fontMono}`;
     c.fillText(chPick.pos ? `no shapes at fret ${chPick.pos}` : 'no shapes in open position', gx + gw / 2, gy + gh / 2 - 6);
@@ -5611,14 +5610,14 @@ function chDraw() {
     c.fillText(at.length ? `shapes at: ${at.join(', ')}` : 'none at any position in this tuning', gx + gw / 2, gy + gh / 2 + 18); c.textAlign = 'left';
   }
   page.forEach((v, i) => chDiagram(c, v, i, P, ch.rootPc));
-  $('chartShapeCv').setAttribute('aria-label', `${ch.name}: ${ch.spelled}. ` + (page.length ? `Shapes, low string first: ${page.map((v) => fretsText(v.frets)).join(', ')}.` : 'No shapes at this fret position.'));
+  $('chartCv').setAttribute('aria-label', `${ch.name}: ${ch.spelled}. ` + (page.length ? `Shapes, low string first: ${page.map((v) => fretsText(v.frets)).join(', ')}.` : 'No shapes at this fret position.'));
 }
 // One shape in a cell: x / o over the nut, the strings and four frets, a dot per fretted note (the root's
 // notes in the root colour), and the starting fret beside it above fret 1.
 // chGrid(i): where shape i of the page has its top-left string and fret line, its string and fret spacing.
 function chGrid(i, S) {
-  const [gx, gy, gw, gh] = CH_GLASS, cw = gw / 6, sp = 12;
-  return { x0: gx + (i % 6) * cw + (cw - sp * (S - 1)) / 2 + 4, y0: gy + Math.floor(i / 6) * gh / 4 + 18, sp, fh: 13 };
+  const [gx, gy, gw, gh] = chGlass(), n = chCols(), cw = gw / n, sp = 12;
+  return { x0: gx + (i % n) * cw + (cw - sp * (S - 1)) / 2 + 4, y0: gy + Math.floor(i / n) * gh / 4 + 18, sp, fh: 13 };
 }
 function chDiagram(c, v, i, P, rootPc) {
   const S = v.frets.length, { x0, y0, sp, fh } = chGrid(i, S), gw = sp * (S - 1), tun = chTuning()[2];
@@ -5638,26 +5637,27 @@ function chDiagram(c, v, i, P, rootPc) {
 }
 
 // ------------------------------------------------------------------ layout, show / hide
-// Lays out a two-card board (the Chord Chart's, the Scale Atlas's) between the bars and the panel:
-// side by side or stacked, whichever is bigger. Returns { k, dpr, stacked }.
-function cardsFit(board, second) {
+// Lays out a one-card view (the Chord Chart's, the Scale Atlas's) between the bars and the panel: the card
+// is stretched to the shape of that space (between CH_LMIN and CH_LMAX long) and scaled to fill it.
+// Returns { k, dpr, L }; the right part of the card is chRW(L) wide.
+function cardFit(board, card) {
   const W = innerWidth, H = innerHeight;
   const right = !panelHidden && W > 900 ? W - $('panel').offsetWidth - 32 : W - 16, left = 16;
   const top = $('top').offsetHeight + 14, bottom = Math.min(H - $('bottom').offsetHeight, $('board').getBoundingClientRect().top) - 12;
   const aw = Math.max(100, right - left), ah = Math.max(100, bottom - top);
-  const side = Math.min(aw / (2 * CH_W + CH_GAP), ah / CH_H), stack = Math.min(aw / CH_W, ah / (2 * CH_H + CH_GAP));
-  const stacked = stack > side, k = Math.min(1.4, stacked ? stack : side), bw = stacked ? CH_W : 2 * CH_W + CH_GAP, bh = stacked ? 2 * CH_H + CH_GAP : CH_H;
-  board.style.width = bw + 'px'; board.style.height = bh + 'px';
-  board.style.transform = `translate(${Math.round(left + (aw - bw * k) / 2)}px, ${Math.round(top + (ah - bh * k) / 2)}px) scale(${k})`;
-  second.style.left = stacked ? '0px' : CH_W + CH_GAP + 'px'; second.style.top = stacked ? CH_H + CH_GAP + 'px' : '0px';
-  return { k, dpr: Math.min(2, devicePixelRatio || 1), stacked };
+  const L = Math.round(clamp(aw / ah * CH_H, CH_LMIN, CH_LMAX)), k = Math.min(1.6, aw / L, ah / CH_H);
+  board.style.width = card.style.width = L + 'px'; board.style.height = CH_H + 'px';
+  board.style.transform = `translate(${Math.round(left + (aw - L * k) / 2)}px, ${Math.round(top + (ah - CH_H * k) / 2)}px) scale(${k})`;
+  return { k, dpr: Math.min(2, devicePixelRatio || 1), L };
 }
-function chLayout() { Object.assign(chart, cardsFit($('chartBoard'), $('chartShapeCard'))); chDraw(); }
+// the footer under the right part: tuning and the rest, as wide as that part
+function chFoot(el, L) { el.style.left = CH_RX + 'px'; el.style.width = chRW(L) + 'px'; }
+function chLayout() { Object.assign(chart, cardFit($('chartBoard'), $('chartCard'))); chFoot($('chartFoot'), chart.L); chart.page = 0; chCompute(); chControls(); chDraw(); }
 function chartShow(on) {
   $('chart').hidden = !on;
   if (!on) return;
   canvas.style.visibility = 'hidden'; $('overview').disabled = true;
-  chCompute(); chControls(); chLayout();
+  chLayout();
 }
 function wireChart() {
   $('chartTuning').innerHTML = CB_TUNINGS.map(([id, label]) => `<option value="${id}">${label}</option>`).join('');
@@ -5676,33 +5676,33 @@ function wireChart() {
 // Test helpers: the chord on show, its shapes on this page, the picks, and the board's scale
 rig.chart = {
   chord: () => chart.chord && { name: chart.chord.name, degrees: chart.chord.degrees, spelled: chart.chord.spelled },
-  shapes: () => chart.shapes.slice(chart.page * CH_PER, chart.page * CH_PER + CH_PER).map((v) => fretsText(v.frets)),
+  shapes: () => chart.shapes.slice(chart.page * chPer(), chart.page * chPer() + chPer()).map((v) => fretsText(v.frets)),
   count: () => chart.shapes.length, counts: () => chart.counts.slice(), page: () => chart.page, pick: () => JSON.parse(JSON.stringify(chPick)),
-  layout: () => ({ k: chart.k, stacked: chart.stacked }), colors: () => SKIN.chart,
-  // a pixel of the right card, in its own 754 x 518 coordinates; where shape i's note on string s is drawn
-  pixel: (x, y) => { const cv = $('chartShapeCv'); return Array.from(cv.getContext('2d').getImageData(Math.round(x * cv.width / CH_W), Math.round(y * cv.height / CH_H), 1, 1).data); },
-  noteAt: (i, s) => { const v = chart.shapes[chart.page * CH_PER + i], g = chGrid(i, v.frets.length), f = v.frets[s];
+  layout: () => ({ k: chart.k, L: chart.L, cols: chCols(), per: chPer() }), colors: () => SKIN.chart, glass: () => chGlass(),
+  // a pixel of the card, in its own coordinates (L x 518); where shape i's note on string s is drawn
+  pixel: (x, y) => { const cv = $('chartCv'); return Array.from(cv.getContext('2d').getImageData(Math.round(x * cv.width / chart.L), Math.round(y * cv.height / CH_H), 1, 1).data); },
+  noteAt: (i, s) => { const v = chart.shapes[chart.page * chPer() + i], g = chGrid(i, v.frets.length), f = v.frets[s];
     return { x: g.x0 + s * g.sp, y: f > 0 ? g.y0 + (f - (chPick.pos || 1) + 0.5) * g.fh : g.y0 - 8, fret: f }; },
 };
 
 // ===== ui/js/65-atlas.js =====
 // 65-atlas.js - the Scale Atlas view (S): a scale on the fretboard, beside the Chord Chart and laid out the
-// same way (two sideways cards, cardsFit and chCanvas from 64-chart.js). The left card picks the key and
-// the scale and highlights degrees; the right card shows every note of the scale on frets 0-15 (high
+// same way (one sideways card, cardFit and chCanvas from 64-chart.js). The left of the card picks the key and
+// the scale and highlights degrees; the right shows every note of the scale on frets 0 to as many as fit (high
 // string at the top, as you look down at the neck), labelled by degree or note, and under it the chords
 // on each degree that use only the scale's notes. Click a chord to highlight its notes on the neck.
 // The music is 16-scales.js. Picks are remembered in this browser; the highlight isn't.
 // Colours: the skin's `chart` section, shared with the Chord Chart (docs/SKINS.md).
-const AT_FRETS = 15;
 const AT_ROWS = [['key', 'KEY', 104], ['scale', 'SCALE', 142], ['hl', 'HIGHLIGHT', 352]];   // the Exotic menu sits at 316 (#atlasExotic)
-const AT_NECK = { x0: 154, x1: 630, open: 136, y0: 120, sp: 24 };          // the nut, the 15th fret, open notes, top string, string spacing
-const atlas = { k: 1, dpr: 1, notes: [], chords: [], hl: [], chord: null };
+// the neck in card units: open notes, the nut, the last fret, the top string, string spacing; 12-22 frets, ~30 units each
+const atNeck = () => { const RW = chRW(atlas.L); return { open: CH_RX + 24, x0: CH_RX + 42, x1: CH_RX + RW - 12, y0: 120, sp: 24, frets: clamp(Math.floor((RW - 54) / 30), 12, 22) }; };
+const atlas = { k: 1, dpr: 1, L: CH_LMIN, notes: [], chords: [], hl: [], chord: null };
 const atPick = (() => {
   const d = { key: { letter: 5, acc: 0 }, scale: 'minpent', tuning: 'std', labels: 'deg' };
   try { return { ...d, ...JSON.parse(lsGet('rig01.atlas', '{}')) }; } catch (e) { return d; }
 })();
 const atTuning = () => (CB_TUNINGS.find((t) => t[0] === atPick.tuning) || CB_TUNINGS[0]);
-const atFretX = (f) => f === 0 ? AT_NECK.open : AT_NECK.x0 + (f - 0.5) * (AT_NECK.x1 - AT_NECK.x0) / AT_FRETS;
+const atFretX = (f) => { const N = atNeck(); return f === 0 ? N.open : N.x0 + (f - 0.5) * (N.x1 - N.x0) / N.frets; };
 
 function atChanged(keepHl) {
   lsSet('rig01.atlas', JSON.stringify(atPick));
@@ -5720,9 +5720,9 @@ function atControls() {
   };
   $('atlasPick').innerHTML = AT_ROWS.map(([id, label, y]) => `<div class="crow${id === 'scale' ? ' scales' : id === 'hl' ? ' hl' : ''}" style="top:${y}px" role="group" aria-label="${label.toLowerCase()}">${rows[id]}</div>`).join('');
   // the chords: a column per degree under the neck, a button per chord
-  const n = atlas.chords.length, cw = 530 / n;
+  const n = atlas.chords.length, cw = chRW(atlas.L) / n;
   $('atlasChords').innerHTML = atlas.chords.map((d, i) => d.chords.map((c, j) =>
-    `<button class="cchip" style="left:${Math.round(112 + i * cw + 3)}px;top:${304 + j * 25}px;width:${Math.round(cw - 6)}px" aria-pressed="${atlas.chord === c.name}" data-at="chord" data-v="${i}.${j}" title="${c.name}: ${c.idx.map((k) => atlas.notes[k].name).join(' ')}">${c.name}</button>`).join('')).join('');
+    `<button class="cchip" style="left:${Math.round(CH_RX + i * cw + 3)}px;top:${304 + j * 25}px;width:${Math.round(cw - 6)}px" aria-pressed="${atlas.chord === c.name}" data-at="chord" data-v="${i}.${j}" title="${c.name}: ${c.idx.map((k) => atlas.notes[k].name).join(' ')}">${c.name}</button>`).join('')).join('');
   $('atlasChords').className = 'achords';
   $('atlasTuning').value = atTuning()[0]; $('atlasLabels').value = atPick.labels;
   const ex = SC_EXOTIC.some((x) => x[0] === atPick.scale);
@@ -5749,10 +5749,10 @@ function atClick(e) {
 // ------------------------------------------------------------------ drawing
 function atDraw() {
   if ($('atlas').hidden || !atlas.notes.length) return;
-  const P = SKIN.chart, st = tileStyle(SKIN, P.tile), N = AT_NECK;
+  const P = SKIN.chart, st = tileStyle(SKIN, P.tile), N = atNeck(), RW = chRW(atlas.L);
   $('atlas').style.background = P.bg;
-  let c = chCanvas($('atlasPickCv'), atlas);
-  chCardFrame(c, st);
+  const c = chCanvas($('atlasCv'), atlas);
+  chCardFrame(c, st, atlas.L);
   c.textBaseline = 'alphabetic'; c.textAlign = 'left'; c.fillStyle = st.card.title; c.font = `700 26px ${SKIN.ui.fontDisplay}`; c.fillText('SCALE', 128, 86);
   c.textAlign = 'right'; c.fillStyle = st.card.text; c.font = `500 17px ${SKIN.ui.fontMono}`; c.fillText(atTuning()[1].split(' (')[0], 626, 86);
   c.font = `600 13px ${SKIN.ui.fontDisplay}`; c.textAlign = 'left';
@@ -5760,22 +5760,20 @@ function atDraw() {
   c.fillText('EXOTIC', 128, 316 + 19);
   c.font = `500 14px ${SKIN.ui.fontMono}`;
   c.fillText(atlas.notes.map((x) => x.name).join('  '), 214, 412); c.fillText(atlas.notes.map((x) => x.deg).join('  '), 214, 434);
-  // the right card: the scale's name and notes, the neck, and the degree over each column of chords
-  c = chCanvas($('atlasNeckCv'), atlas);
-  chCardFrame(c, st);
+  // the right: the scale's name, the neck, and the degree over each column of chords
   const name = `${cbNote(atPick.key)} ${scScale(atPick.scale)[1]}`;
-  c.fillStyle = st.card.title; c.font = `700 24px ${SKIN.ui.fontDisplay}`; c.fillText(name, 128, 86);
-  rr(c, 112, 100, 530, 172, 18); c.fillStyle = P.glass; c.fill(); c.strokeStyle = st.rim; c.lineWidth = 3; c.stroke();
-  const tun = atTuning()[2], S = tun.length, yOf = (s) => N.y0 + (S - 1 - s) * N.sp, fw = (N.x1 - N.x0) / AT_FRETS;
+  c.fillStyle = st.card.title; c.font = `700 24px ${SKIN.ui.fontDisplay}`; c.fillText(name, CH_RX + 16, 86);
+  rr(c, CH_RX, 100, RW, 172, 18); c.fillStyle = P.glass; c.fill(); c.strokeStyle = st.rim; c.lineWidth = 3; c.stroke();
+  const tun = atTuning()[2], S = tun.length, yOf = (s) => N.y0 + (S - 1 - s) * N.sp, fw = (N.x1 - N.x0) / N.frets;
   c.strokeStyle = P.grid; c.lineWidth = 1;
-  for (let f = 0; f <= AT_FRETS; f++) { c.beginPath(); c.moveTo(N.x0 + f * fw, yOf(S - 1)); c.lineTo(N.x0 + f * fw, yOf(0)); c.lineWidth = f === 0 ? 4 : 1; c.stroke(); }
+  for (let f = 0; f <= N.frets; f++) { c.beginPath(); c.moveTo(N.x0 + f * fw, yOf(S - 1)); c.lineTo(N.x0 + f * fw, yOf(0)); c.lineWidth = f === 0 ? 4 : 1; c.stroke(); }
   c.lineWidth = 1;
   for (let s = 0; s < S; s++) { c.beginPath(); c.moveTo(N.x0, yOf(s)); c.lineTo(N.x1, yOf(s)); c.stroke(); }
   c.textAlign = 'center'; c.fillStyle = P.text; c.font = `500 11px ${SKIN.ui.fontMono}`;
-  [3, 5, 7, 9, 12, 15].forEach((f) => c.fillText(String(f), atFretX(f), yOf(0) + 24));
+  [3, 5, 7, 9, 12, 15, 17, 19, 21].filter((f) => f <= N.frets).forEach((f) => c.fillText(String(f), atFretX(f), yOf(0) + 24));
   const pcs = atlas.notes.map((x) => x.pc), lit = atlas.hl.length > 0;
   c.textBaseline = 'middle';
-  for (let s = 0; s < S; s++) for (let f = 0; f <= AT_FRETS; f++) {
+  for (let s = 0; s < S; s++) for (let f = 0; f <= N.frets; f++) {
     const i = pcs.indexOf((tun[s] + f) % 12); if (i < 0) continue;
     const on = atlas.hl.includes(i), x = atFretX(f), y = yOf(s);
     c.globalAlpha = lit && !on ? 0.3 : 1;
@@ -5784,16 +5782,16 @@ function atDraw() {
     c.fillText(atPick.labels === 'deg' ? atlas.notes[i].deg : atlas.notes[i].name, x, y + 0.5);
   }
   c.globalAlpha = 1; c.textBaseline = 'alphabetic';
-  const n = atlas.chords.length, cw = 530 / n;
+  const n = atlas.chords.length, cw = RW / n;
   c.fillStyle = st.card.text; c.font = `600 12px ${SKIN.ui.fontMono}`;
-  atlas.chords.forEach((d, i) => c.fillText(`${d.deg} · ${d.root}`, 112 + (i + 0.5) * cw, 296));
+  atlas.chords.forEach((d, i) => c.fillText(`${d.deg} · ${d.root}`, CH_RX + (i + 0.5) * cw, 296));
   c.textAlign = 'left';
-  $('atlasNeckCv').setAttribute('aria-label', `${name}: ${atlas.notes.map((x) => `${x.name} (${x.deg})`).join(', ')}, frets 0 to ${AT_FRETS}` +
+  $('atlasCv').setAttribute('aria-label', `${name}: ${atlas.notes.map((x) => `${x.name} (${x.deg})`).join(', ')}, frets 0 to ${N.frets}` +
     (lit ? `; highlighted: ${atlas.hl.map((i) => atlas.notes[i].name).join(' ')}` : '') + '.');
 }
 
 // ------------------------------------------------------------------ layout, show / hide
-function atLayout() { Object.assign(atlas, cardsFit($('atlasBoard'), $('atlasNeckCard'))); atDraw(); }
+function atLayout() { Object.assign(atlas, cardFit($('atlasBoard'), $('atlasCard'))); chFoot($('atlasFoot'), atlas.L); atControls(); atDraw(); }
 function atlasShow(on) {
   $('atlas').hidden = !on;
   if (!on) return;
@@ -5814,12 +5812,12 @@ function wireAtlas() {
   });
   rig.skinHooks.push(atDraw);
 }
-// Test helpers: the scale, its chords, the highlight, and where a fret's note is drawn on the right card
+// Test helpers: the scale, its chords, the highlight, and where a fret's note is drawn on the card
 rig.atlas = {
   notes: () => atlas.notes.map((x) => `${x.name}:${x.deg}`), chords: () => atlas.chords.map((d) => d.chords.map((c) => c.name)),
-  hl: () => atlas.hl.slice(), chord: () => atlas.chord, pick: () => JSON.parse(JSON.stringify(atPick)), layout: () => ({ k: atlas.k, stacked: atlas.stacked }),
-  at: (s, f) => ({ x: atFretX(f), y: AT_NECK.y0 + (atTuning()[2].length - 1 - s) * AT_NECK.sp }),
-  pixel: (x, y) => { const cv = $('atlasNeckCv'); return Array.from(cv.getContext('2d').getImageData(Math.round(x * cv.width / CH_W), Math.round(y * cv.height / CH_H), 1, 1).data); },
+  hl: () => atlas.hl.slice(), chord: () => atlas.chord, pick: () => JSON.parse(JSON.stringify(atPick)), layout: () => ({ k: atlas.k, L: atlas.L }),
+  at: (s, f) => ({ x: atFretX(f), y: atNeck().y0 + (atTuning()[2].length - 1 - s) * atNeck().sp }), frets: () => atNeck().frets, glass: () => [CH_RX, 100, chRW(atlas.L), 172],
+  pixel: (x, y) => { const cv = $('atlasCv'); return Array.from(cv.getContext('2d').getImageData(Math.round(x * cv.width / atlas.L), Math.round(y * cv.height / CH_H), 1, 1).data); },
 };
 
 // ===== ui/js/70-presets.js =====

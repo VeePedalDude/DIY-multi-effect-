@@ -216,18 +216,18 @@ body.panel-hidden .ptoggle{right:16px}
 .tunctl{position:absolute;left:15%;right:15%;top:81.5%;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}
 .tunref{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:0 4px}
 .tunref .btn.icon{width:26px;min-height:26px;border:0;background:transparent}
-/* the Chord Chart view: two sideways cards over a veil (64-chart.js lays them out at 754 x 518 each and scales the board) */
+/* the Chord Chart and Scale Atlas views: one sideways card each, stretched to the window's shape, over a veil (cardFit in 64-chart.js) */
 .chart{inset:0;z-index:1}
 .cboard{position:absolute;left:0;top:0;transform-origin:0 0}
-.ccard{position:absolute;width:754px;height:518px;filter:drop-shadow(0 18px 40px var(--overlay))}
-.ccard canvas{position:absolute;inset:0;width:754px;height:518px}
+.ccard{position:absolute;left:0;top:0;height:518px;filter:drop-shadow(0 18px 40px var(--overlay))}
+.ccard canvas{position:absolute;inset:0;width:100%;height:100%}
 .crow{position:absolute;left:214px;width:428px;display:flex;flex-wrap:wrap;gap:6px}
 .cchip{min-height:28px;min-width:38px;padding:0 9px;border:1px solid var(--line2);border-radius:8px;background:var(--raise);color:var(--soft);font:600 13px/1 var(--display)}
 .cchip:hover:not(:disabled){border-color:var(--accent)}
 .cchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--ink)}
 .cchip:disabled{opacity:.3}
 .crow.formulas .cchip{width:80px}
-.cfoot{position:absolute;left:112px;width:530px;top:410px;display:flex;align-items:center;gap:8px}
+.cfoot{position:absolute;top:410px;display:flex;align-items:center;gap:8px}
 .cfoot select{min-height:30px;font-size:12px;padding:0 6px}
 .cfoot #chartTuning{flex:1.7}.cfoot #chartPos{flex:1}
 .cfoot #atlasTuning{flex:1.7}.cfoot #atlasLabels{flex:.8}.cfoot #atlasInfo{flex:1.4;overflow:hidden;text-overflow:ellipsis}
@@ -319,8 +319,7 @@ body.panel-hidden .ptoggle{right:16px}
 
 <section class="hud chart" id="chart" hidden aria-label="Chord chart">
   <div class="cboard" id="chartBoard">
-    <div class="ccard" id="chartPickCard"><canvas id="chartPickCv" aria-hidden="true"></canvas><div id="chartPick"></div></div>
-    <div class="ccard" id="chartShapeCard"><canvas id="chartShapeCv" role="img" aria-label="Chord shapes"></canvas>
+    <div class="ccard" id="chartCard"><canvas id="chartCv" role="img" aria-label="Chord shapes"></canvas><div id="chartPick"></div>
       <div class="cfoot" id="chartFoot">
         <select id="chartTuning" aria-label="Tuning"></select>
         <select id="chartPos" aria-label="Fret position"></select>
@@ -333,9 +332,8 @@ body.panel-hidden .ptoggle{right:16px}
 
 <section class="hud chart" id="atlas" hidden aria-label="Scale atlas">
   <div class="cboard" id="atlasBoard">
-    <div class="ccard"><canvas id="atlasPickCv" aria-hidden="true"></canvas><div id="atlasPick"></div><select id="atlasExotic" class="cexotic" aria-label="Exotic scales"></select></div>
-    <div class="ccard" id="atlasNeckCard"><canvas id="atlasNeckCv" role="img" aria-label="Fretboard"></canvas><div id="atlasChords"></div>
-      <div class="cfoot">
+    <div class="ccard" id="atlasCard"><canvas id="atlasCv" role="img" aria-label="Fretboard"></canvas><div id="atlasPick"></div><select id="atlasExotic" class="cexotic" aria-label="Exotic scales"></select><div id="atlasChords"></div>
+      <div class="cfoot" id="atlasFoot">
         <select id="atlasTuning" aria-label="Tuning"></select>
         <select id="atlasLabels" aria-label="Labels on the notes"><option value="deg">Degrees</option><option value="note">Notes</option></select>
         <span class="mono cpage" id="atlasInfo"></span>

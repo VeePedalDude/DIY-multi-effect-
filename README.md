@@ -227,12 +227,13 @@ The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins
 
 ### The Chord Chart
 
-**Chord Chart** in the top bar (or **C**) swaps the 3D stage for a chord dictionary on two cards.
-- **The left card picks the chord:** key (with ♭ / ♯), formula (maj, m, aug, dim, 5, 6, m6, 7, maj7, m7,
+**Chord Chart** in the top bar (or **C**) swaps the 3D stage for a chord dictionary on one card, stretched to
+the shape of the space it has (a wider window shows more shapes a row; the Scale Atlas more frets).
+- **The left of the card picks the chord:** key (with ♭ / ♯), formula (maj, m, aug, dim, 5, 6, m6, 7, maj7, m7,
   m7♭5, dim7, mMaj7), extension (9, 11, 13), additions (add2 … add11), alterations (♭5, ♯5, ♭9, ♯9, ♯11,
   ♭13, sus2, sus4) and the bass note for a slash chord. What a formula can't take is greyed out.
-- **The right card names and spells it** (C7♭9: 1-3-(5)-♭7-♭9 = C-E-(G)-B♭-D♭, optional notes in
-  brackets, spelled from the root's letter), and shows its shapes on the fretboard, 24 to a page, best
+- **The right names and spells it** (C7♭9: 1-3-(5)-♭7-♭9 = C-E-(G)-B♭-D♭, optional notes in
+  brackets, spelled from the root's letter), and shows its shapes on the fretboard, four rows to a page, best
   first: low string on the left, the root's notes in colour, × for a muted string, o for an open one.
 - **Tuning and fret position** sit under the shapes. Open means at least one open string; a fret means a
   four-fret window starting there. The position menu counts the shapes at each, so a rich chord with
@@ -242,13 +243,13 @@ The picks are remembered in the browser. Skins colour it (the `chart` section).
 
 ### The Scale Atlas
 
-**Scale Atlas** in the top bar (or **S**) puts a scale on the fretboard, on the same two cards.
-- **The left card:** key, scale (the major modes, harmonic and melodic minor, Phrygian dominant,
+**Scale Atlas** in the top bar (or **S**) puts a scale on the fretboard, on the same kind of card.
+- **The left:** key, scale (the major modes, harmonic and melodic minor, Phrygian dominant,
   Hungarian minor, major and minor pentatonic, blues, Hirajōshi, whole tone, both diminished scales), an
   **Exotic** menu of 37 rarer scales (double harmonic, enigmatic, Persian, Neapolitan, Prometheus, the
   Japanese in / insen / iwato / yo / kumoi, bebop, altered, Messiaen mode 3, ...), and
   **Highlight**: click degrees to light them on the neck and dim the rest.
-- **The right card:** every note of the scale on frets 0-15, high string at the top, the root in colour,
+- **The right:** every note of the scale on frets 0 to 15-22 (as many as the width holds), high string at the top, the root in colour,
   labelled by degree or by note name. Under it, a column per degree of the chords on it that use only
   the scale's notes (triads, then sevenths, then sus, sixths and fifths). Click a chord to light its notes.
 - Tuning and labels sit at the bottom. Skins colour it with the Chord Chart's `chart` section.

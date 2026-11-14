@@ -230,6 +230,9 @@ body.panel-hidden .ptoggle{right:16px}
 .cfoot{position:absolute;left:112px;width:530px;top:410px;display:flex;align-items:center;gap:8px}
 .cfoot select{min-height:30px;font-size:12px;padding:0 6px}
 .cfoot #chartTuning{flex:1.7}.cfoot #chartPos{flex:1}
+.cfoot #atlasTuning{flex:1.7}.cfoot #atlasLabels{flex:.8}.cfoot #atlasInfo{flex:1.4;overflow:hidden;text-overflow:ellipsis}
+.crow.scales .cchip{width:101px;font-size:12px;padding:0 4px}
+.achords .cchip{position:absolute;min-height:22px;height:22px;min-width:0;padding:0 4px;font-size:12px;overflow:hidden;white-space:nowrap}
 .cfoot .cpage{font-size:12px;white-space:nowrap;color:var(--fg);background:var(--raise);border:1px solid var(--line2);border-radius:8px;padding:7px 8px}
 .cfoot .btn.icon{width:30px;padding:0;font-size:16px}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -278,6 +281,7 @@ body.panel-hidden .ptoggle{right:16px}
     <button id="vStage" aria-pressed="true">3D Stage</button>
     <button id="vViz" aria-pressed="false" title="Visualizer (V): every modulation source as a ring">Visualizer</button>
     <button id="vChart" aria-pressed="false" title="Chord Chart (C): any chord, spelled and shown as shapes on the fretboard">Chord Chart</button>
+    <button id="vAtlas" aria-pressed="false" title="Scale Atlas (S): a scale on the fretboard, its degrees to highlight, and the chords that fit it">Scale Atlas</button>
   </div>
   <button class="btn" id="overview">Overview</button>
   <button class="btn" id="driverBtn" hidden aria-controls="drawer" title="Audio driver and buffer size (opens Settings, Audio)">Driver</button>
@@ -319,6 +323,19 @@ body.panel-hidden .ptoggle{right:16px}
         <select id="chartPos" aria-label="Fret position"></select>
         <span class="mono cpage" id="chartPage"></span>
         <button class="btn mini icon" id="chartPrev" aria-label="Previous page">‹</button><button class="btn mini icon" id="chartNext" aria-label="Next page">›</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="hud chart" id="atlas" hidden aria-label="Scale atlas">
+  <div class="cboard" id="atlasBoard">
+    <div class="ccard"><canvas id="atlasPickCv" aria-hidden="true"></canvas><div id="atlasPick"></div></div>
+    <div class="ccard" id="atlasNeckCard"><canvas id="atlasNeckCv" role="img" aria-label="Fretboard"></canvas><div id="atlasChords"></div>
+      <div class="cfoot">
+        <select id="atlasTuning" aria-label="Tuning"></select>
+        <select id="atlasLabels" aria-label="Labels on the notes"><option value="deg">Degrees</option><option value="note">Notes</option></select>
+        <span class="mono cpage" id="atlasInfo"></span>
       </div>
     </div>
   </div>

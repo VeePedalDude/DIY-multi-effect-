@@ -54,9 +54,10 @@ let panelPending = false;
 function renderPanelSoon() { if (panelPending) return; panelPending = true; requestAnimationFrame(() => { panelPending = false; renderPanel(); }); }
 function setHint() {
   if (state.carrying) { const s = SRCMAP[state.carrying]; hint.className = 'hint carry'; hint.innerHTML = `<span style="color:${s.color}">Carrying ${s.name}</span> · click a knob to patch it, or another source's orb to move one of its knobs · Esc to drop`; return; }
+  if (state.view === 'atlas') { hint.className = 'hint'; hint.textContent = 'Scale Atlas: pick a key and a scale on the left card, and degrees to highlight · the neck shows every note of the scale, the root in colour · click a chord under it to light its notes · S back to the stage'; return; }
   if (state.view === 'chart') { hint.className = 'hint'; hint.textContent = 'Chord Chart: pick a key, a formula and its options on the left card · the right card spells the chord and shows its shapes, low string on the left, root notes in colour · tuning and fret position below the shapes · C back to the stage'; return; }
   if (state.view === 'viz') { hint.className = 'hint'; hint.textContent = 'Visualizer: a ring for each modulation source, newest value at the top, fading round the circle · dashed links: one source moving another · click a ring to edit it · V back to the stage'; return; }
-  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · the + card adds an effect, the + orb a source · P hides the panel · V visualizer · C chord chart · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
+  hint.className = 'hint'; hint.textContent = `Drag to orbit · scroll to zoom · drag a knob to turn it · click an orb, then a knob, to patch · click a source's name to edit it · the + card adds an effect, the + orb a source · P hides the panel · V visualizer · C chord chart · S scale atlas · T tuner · K changes skin · keys 1–${Math.min(9, MODS.length)}`;
 }
 // The side panel can be hidden (button or P) and remembers that per browser.
 let panelHidden = false;
@@ -76,8 +77,8 @@ function updatePanelToggle() {
 function update() { renderPanel(); updatePanelToggle(); setHint(); carryLine.visible = !!state.carrying; if (state.carrying) carryLine.material.color.set(SRCMAP[state.carrying].color); drawAddLabel(); drawAddCard(); }
 function setView(v) {
   state.view = v; state.carrying = null;
-  $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vViz').setAttribute('aria-pressed', v === 'viz'); $('vChart').setAttribute('aria-pressed', v === 'chart');
-  vizShow(v === 'viz'); chartShow(v === 'chart'); update();
+  $('vStage').setAttribute('aria-pressed', v === 'stage'); $('vViz').setAttribute('aria-pressed', v === 'viz'); $('vChart').setAttribute('aria-pressed', v === 'chart'); $('vAtlas').setAttribute('aria-pressed', v === 'atlas');
+  vizShow(v === 'viz'); chartShow(v === 'chart'); atlasShow(v === 'atlas'); update();
 }
 
 function wireHud() {

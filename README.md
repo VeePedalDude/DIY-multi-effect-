@@ -92,7 +92,7 @@ ui/
   sources/     a source type's own picture in its panel (geo.js: GEO PULSE's 3D view; seq.js: GATE SEQ's squares and lanes; ctrl.js: CONTROLLER's input and LEARN)
   js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 47-va-plot 49-picker 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner 59-viz
-               64-chart (the Chord Chart; 15-chordbook spells chords and finds their shapes)
+               64-chart (the Chord Chart; 15-chordbook spells chords and finds their shapes) 65-atlas (the Scale Atlas; 16-scales)
                60-controllers (USB gamepads, joysticks and MIDI for CONTROLLER sources; 12-inputs-core reads them) 70-presets 72-preset-format 90-main
   screens/     one face display per module type: gate.js amp.js cab.js holo.js tess.js, and the EQs' curves
                tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js, and the synth filters'
@@ -146,7 +146,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs`, `viz.cjs` and `chart.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs`, `viz.cjs`, `chart.cjs` and `atlas.cjs`.
 
 ## Current effects and sources
 
@@ -239,6 +239,17 @@ The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins
   only a few shapes shows where they are.
 
 The picks are remembered in the browser. Skins colour it (the `chart` section).
+
+### The Scale Atlas
+
+**Scale Atlas** in the top bar (or **S**) puts a scale on the fretboard, on the same two cards.
+- **The left card:** key, scale (the major modes, harmonic and melodic minor, Phrygian dominant,
+  Hungarian minor, major and minor pentatonic, blues, Hirajōshi, whole tone, both diminished scales), and
+  **Highlight**: click degrees to light them on the neck and dim the rest.
+- **The right card:** every note of the scale on frets 0-15, high string at the top, the root in colour,
+  labelled by degree or by note name. Under it, a column per degree of the chords on it that use only
+  the scale's notes (triads, then sevenths, then sus, sixths and fifths). Click a chord to light its notes.
+- Tuning and labels sit at the bottom. Skins colour it with the Chord Chart's `chart` section.
 
 ### The effect chain
 

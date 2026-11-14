@@ -72,8 +72,9 @@ function chClick(e) {
 
 // ------------------------------------------------------------------ drawing
 function chCardFrame(c, st) { c.save(); c.translate(CH_W, 0); c.rotate(Math.PI / 2); drawCard(c, st, CARD_H); c.restore(); }
-function chCanvas(cv) {
-  const w = Math.round(CH_W * chart.k * chart.dpr), h = Math.round(CH_H * chart.k * chart.dpr);
+// a card's canvas at the board's scale (fit: { k, dpr }); returns its context in card units
+function chCanvas(cv, fit = chart) {
+  const w = Math.round(CH_W * fit.k * fit.dpr), h = Math.round(CH_H * fit.k * fit.dpr);
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   const c = cv.getContext('2d'); c.setTransform(w / CH_W, 0, 0, h / CH_H, 0, 0); c.clearRect(0, 0, CH_W, CH_H); return c;
 }
@@ -134,20 +135,21 @@ function chDiagram(c, v, i, P, rootPc) {
 }
 
 // ------------------------------------------------------------------ layout, show / hide
-function chLayout() {
+// Lays out a two-card board (the Chord Chart's, the Scale Atlas's) between the bars and the panel:
+// side by side or stacked, whichever is bigger. Returns { k, dpr, stacked }.
+function cardsFit(board, second) {
   const W = innerWidth, H = innerHeight;
   const right = !panelHidden && W > 900 ? W - $('panel').offsetWidth - 32 : W - 16, left = 16;
   const top = $('top').offsetHeight + 14, bottom = Math.min(H - $('bottom').offsetHeight, $('board').getBoundingClientRect().top) - 12;
   const aw = Math.max(100, right - left), ah = Math.max(100, bottom - top);
   const side = Math.min(aw / (2 * CH_W + CH_GAP), ah / CH_H), stack = Math.min(aw / CH_W, ah / (2 * CH_H + CH_GAP));
   const stacked = stack > side, k = Math.min(1.4, stacked ? stack : side), bw = stacked ? CH_W : 2 * CH_W + CH_GAP, bh = stacked ? 2 * CH_H + CH_GAP : CH_H;
-  chart.k = k; chart.dpr = Math.min(2, devicePixelRatio || 1); chart.stacked = stacked;
-  const b = $('chartBoard');
-  b.style.width = bw + 'px'; b.style.height = bh + 'px';
-  b.style.transform = `translate(${Math.round(left + (aw - bw * k) / 2)}px, ${Math.round(top + (ah - bh * k) / 2)}px) scale(${k})`;
-  $('chartShapeCard').style.left = stacked ? '0px' : CH_W + CH_GAP + 'px'; $('chartShapeCard').style.top = stacked ? CH_H + CH_GAP + 'px' : '0px';
-  chDraw();
+  board.style.width = bw + 'px'; board.style.height = bh + 'px';
+  board.style.transform = `translate(${Math.round(left + (aw - bw * k) / 2)}px, ${Math.round(top + (ah - bh * k) / 2)}px) scale(${k})`;
+  second.style.left = stacked ? '0px' : CH_W + CH_GAP + 'px'; second.style.top = stacked ? CH_H + CH_GAP + 'px' : '0px';
+  return { k, dpr: Math.min(2, devicePixelRatio || 1), stacked };
 }
+function chLayout() { Object.assign(chart, cardsFit($('chartBoard'), $('chartShapeCard'))); chDraw(); }
 function chartShow(on) {
   $('chart').hidden = !on;
   if (!on) return;

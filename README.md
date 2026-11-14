@@ -92,6 +92,7 @@ ui/
   sources/     a source type's own picture in its panel (geo.js: GEO PULSE's 3D view; seq.js: GATE SEQ's squares and lanes; ctrl.js: CONTROLLER's input and LEARN)
   js/          00-core 04-skin-core 10-model 20-bridge 22-rack 24-chain 30-audio 40-stage 45-faces 46-eq-plot 47-va-plot 49-picker 50-hud 51-source-panel
                52-vfs 53-assets 54-library-core 55-library 56-asset-ui   (file library) 57-skins 58-tuner 59-viz
+               64-chart (the Chord Chart; 15-chordbook spells chords and finds their shapes)
                60-controllers (USB gamepads, joysticks and MIDI for CONTROLLER sources; 12-inputs-core reads them) 70-presets 72-preset-format 90-main
   screens/     one face display per module type: gate.js amp.js cab.js holo.js tess.js, and the EQs' curves
                tilt.js bax.js geq.js peq.js stack.js prog.js dyneq.js, and the synth filters'
@@ -145,7 +146,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs` and `viz.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs`, `viz.cjs` and `chart.cjs`.
 
 ## Current effects and sources
 
@@ -223,6 +224,21 @@ modulation source in the rack: one ring each, innermost first, in the source's c
   goes out about 20 ms after it stops.
 
 The stage isn't drawn while the Visualizer is up, so it costs no GPU time. Skins colour it (the `viz` section).
+
+### The Chord Chart
+
+**Chord Chart** in the top bar (or **C**) swaps the 3D stage for a chord dictionary on two cards.
+- **The left card picks the chord:** key (with ♭ / ♯), formula (maj, m, aug, dim, 5, 6, m6, 7, maj7, m7,
+  m7♭5, dim7, mMaj7), extension (9, 11, 13), additions (add2 … add11), alterations (♭5, ♯5, ♭9, ♯9, ♯11,
+  ♭13, sus2, sus4) and the bass note for a slash chord. What a formula can't take is greyed out.
+- **The right card names and spells it** (C7♭9: 1-3-(5)-♭7-♭9 = C-E-(G)-B♭-D♭, optional notes in
+  brackets, spelled from the root's letter), and shows its shapes on the fretboard, 24 to a page, best
+  first: low string on the left, the root's notes in colour, × for a muted string, o for an open one.
+- **Tuning and fret position** sit under the shapes. Open means at least one open string; a fret means a
+  four-fret window starting there. The position menu counts the shapes at each, so a rich chord with
+  only a few shapes shows where they are.
+
+The picks are remembered in the browser. Skins colour it (the `chart` section).
 
 ### The effect chain
 

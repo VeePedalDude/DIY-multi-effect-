@@ -59,11 +59,12 @@ echo "== WebAssembly engine"
 # exception runtime first, so it wins over zig's no-exceptions stubs
 $ZIGCXX $WASM -mexec-model=reactor -O3 -msimd128 -g0 -s $STRICT -include tools/wasm/nam_compat.h \
   -o build/rig.wasm build/obj/wasm-rt/*.o engine/api/rig_api.cpp build/obj/wasm/*.o
-echo "== UI unit tests (library, preset format, skins, controller inputs)"
+echo "== UI unit tests (library, preset format, skins, controller inputs, chord chart)"
 node tests/ui/library.test.mjs
 node tests/ui/preset.test.mjs
 node tests/ui/inputs.test.mjs
 node tests/ui/skin.test.mjs
+node tests/ui/chordbook.test.mjs
 echo "== native vs WebAssembly parity"
 $CXX -O2 $STRICT -o build/dump tests/parity/dump.cpp build/obj/native/*.o
 ./build/dump

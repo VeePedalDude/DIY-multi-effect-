@@ -48,6 +48,9 @@ const DEFAULT_SKIN = {
   // the strobe tuner: a card turned sideways (`tile` names one of `tiles`), and the face-down mini card that opens it
   tuner: { tile: 'teal', glass: '#070A14', stripe: '#4FE3F0', inTune: '#9BE15D', flat: '#FFB547', sharp: '#FF5FA2', text: '#94A3BD', bright: '#E6ECF5',
     back: '#151030', backLine: '#7B5BD6', backMark: '#4FE3F0' },
+  // the Chord Chart view (C): two cards (`tile` names one of `tiles`) over a veil, chord shapes on the right card's display
+  chart: { tile: 'teal', bg: 'rgba(6,4,14,.62)', glass: '#070A14', grid: '#5E6B85', dot: '#E6ECF5', root: '#4FE3F0', open: '#9BE15D', mute: '#FF5FA2',
+    text: '#94A3BD' },
   fonts: [],                                              // [{ family, file, weight?, style? }]
   css: null,                                              // optional stylesheet file in the packet
 };
@@ -63,6 +66,7 @@ const CLASSIC_SKIN = {
   labels: { bg: 'rgba(10,14,23,.88)', text: '#94A3BD' },
   viz: { bg: 'rgba(5,7,12,.94)', track: '#0F1524' },
   tuner: { tile: 'console', back: '#0C1220', backLine: '#2A3550', backMark: '#4FE3F0' },
+  chart: { tile: 'console', bg: 'rgba(5,7,12,.94)' },
 };
 
 // ------------------------------------------------------------------ validation and merging
@@ -132,7 +136,7 @@ function readSkinJson(j, has = () => true) {
       if (k === 'stage' && sk === 'background') { const im = image(p, sv); if (im !== undefined) sec[sk] = im; continue; }
       if (k === 'stage' && sk === 'fogDensity') { if (typeof sv === 'number' && sv >= 0 && sv <= 0.2) sec[sk] = sv; else warn(`${p}: should be a number from 0 to 0.2`); continue; }
       if (k === 'stage' && sk === 'parallax') { if (typeof sv === 'number' && sv >= 0 && sv <= 1) sec[sk] = sv; else warn(`${p}: should be a number from 0 to 1`); continue; }
-      if (k === 'tuner' && sk === 'tile') { if (typeof sv === 'string' && sv.length <= 60) sec[sk] = sv; else warn(`${p}: should be a tile name`); continue; }
+      if ((k === 'tuner' || k === 'chart') && sk === 'tile') { if (typeof sv === 'string' && sv.length <= 60) sec[sk] = sv; else warn(`${p}: should be a tile name`); continue; }
       if (k === 'ui' && (sk === 'fontDisplay' || sk === 'fontMono')) { if (typeof sv === 'string' && sv.length < 200 && !/[;{}<>]/.test(sv)) sec[sk] = sv; else warn(`${p}: not a usable font list`); continue; }
       const c = colorOr(p, sv); if (c !== undefined) sec[sk] = c;
     }

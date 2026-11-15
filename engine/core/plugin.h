@@ -25,6 +25,7 @@ struct PluginBackend {
   virtual ~PluginBackend() {}
   virtual void* create(float sr) = 0;                    // a new, activated instance (control thread)
   virtual void destroy(void* inst) = 0;
+  virtual void reset(void* inst) = 0;                    // clear what it remembers (delay lines, filters); audio thread, so no allocation
   // One block: knobs normalised 0..1 (the backend sends the plugin only those that changed).
   virtual void process(void* inst, const float* inL, const float* inR, float* oL, float* oR, int n, const float* norm, int nparams, float bpm) = 0;
   virtual float output(void* inst) = 0;                  // a source's value after process(), -1..1
@@ -99,7 +100,7 @@ struct PluginModule : Module {
   ~PluginModule() override { if (inst) info->backend->destroy(inst); }
   const ModuleDesc& desc() const override { return info->mdesc; }
   void init(float s) override { sr = s; if (inst) info->backend->destroy(inst); inst = info->backend->create(sr); }
-  void reset() override { init(sr); }
+  void reset() override { if (inst) info->backend->reset(inst); }   // on the audio thread (a preset change, engine.h): never a new instance
   void process(const float* inL, const float* inR, float* oL, float* oR, int n, const float* e, const Context& ctx) override {
     if (!inst) { for (int i = 0; i < n; i++) { oL[i] = inL[i]; oR[i] = inR[i]; } return; }
     info->backend->process(inst, inL, inR, oL, oR, n, e, (int)info->params.size(), ctx.bpm);

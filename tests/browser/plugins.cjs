@@ -59,6 +59,11 @@ const b64 = (f) => fs.readFileSync(path.join(root, f)).toString('base64');
   check(g[0] < 0.2 && g[1] > 0.8, `DEPTH 100%: its gain meter swings ${g[0].toFixed(2)}..${g[1].toFixed(2)} (the plugin's own meter, read from the worklet)`);
   const outPk = await V(async () => { let p = 0; const t0 = performance.now(); while (performance.now() - t0 < 1000) { p = Math.max(p, window.__rig.meters.outPk); await new Promise((r) => setTimeout(r, 25)); } return p; });
   check(outPk > 0.005, `the riff still comes out (peak ${outPk.toFixed(3)})`);
+  // a preset change resets every module while silent (hold): a plugin is reset in place (clap_plugin.reset), and plays on
+  await page.evaluate(() => { window.__rig.cmd('hold 1'); }); await page.waitForTimeout(200);
+  await page.evaluate(() => { window.__rig.cmd('hold 0'); }); await page.waitForTimeout(400);
+  const g2 = await V(async () => { let lo = 9, hi = -9, p = 0; const t0 = performance.now(); while (performance.now() - t0 < 1500) { const v = window.__rig.modMeter('trem', 'gain'); if (v !== undefined) { lo = Math.min(lo, v); hi = Math.max(hi, v); } p = Math.max(p, window.__rig.meters.outPk); await new Promise((r) => setTimeout(r, 20)); } return [lo, hi, p]; });
+  check(g2[0] < 0.2 && g2[1] > 0.8 && g2[2] > 0.005 && errors.length === 0, `after a preset change's reset it still swings ${g2[0].toFixed(2)}..${g2[1].toFixed(2)} and plays (peak ${g2[2].toFixed(3)}), no errors`);
 
   console.log('4. RANDOM in the rack, patched to TREMOLO\'s RATE');
   const src = await V(() => window.__rig.rack.add('rand'));

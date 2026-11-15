@@ -158,6 +158,7 @@ class WclapLib {
     this.byList.delete(s.inEv); this.insts[h] = null;
     for (const a of [s.bufs, s.ptrs, s.ain, s.aout, s.tr, s.ev, s.inEv, s.outEv, s.proc, s.met]) this.x.free && this.x.free(a);
   }
+  reset(h) { const s = this.insts[h]; if (s) this.call(this.u32(s.p + 32), s.p); }   // clap_plugin.reset
   // rigF32: a Float32Array over the engine's memory (rig.wasm); pointers are byte offsets in it.
   process(h, rigF32, inL, inR, oL, oR, n, norm, np, bpm) {
     const s = this.insts[h]; if (!s) return;
@@ -192,6 +193,7 @@ function wclapImports(libs, getF32) {
   return {
     plugin_create: (lib, sr) => { try { return libs[lib] ? libs[lib].create(sr) : 0; } catch (e) { console.log('[plugin] ' + e.message); return 0; } },
     plugin_destroy: (lib, h) => { if (libs[lib]) libs[lib].destroy(h); },
+    plugin_reset: (lib, h) => { if (libs[lib]) libs[lib].reset(h); },
     plugin_process: (lib, h, inL, inR, oL, oR, n, norm, np, bpm) => { if (libs[lib]) libs[lib].process(h, getF32(), inL, inR, oL, oR, n, norm, np, bpm); },
     plugin_output: (lib, h) => (libs[lib] ? libs[lib].output(h) : 0),
     plugin_meters: (lib, h, out, max) => (libs[lib] ? libs[lib].meters(h, getF32(), out, max) : 0),

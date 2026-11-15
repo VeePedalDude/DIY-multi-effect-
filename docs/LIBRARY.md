@@ -138,7 +138,8 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
   knobs land on their new values (10 ms) and fades back in (20 ms): about 0.1 s of silence. The files the
   scene's presets name are read ahead, and a file the next preset shares with this one isn't loaded again.
 - **Each preset has its own level** (`level`, dB, -24..+24: the PATCH control and **Level**); the MASTER is
-  the rig's, not the preset's. Format 4 files' `master` becomes their level when they load.
+  the rig's, not the preset's. Format 4 files' `master` becomes their level when they load, measured from where the
+  rig's master starts (-12 dB): a file saved at -8 dB loads at level +4 dB and plays as loud as it did.
 - **Matched by name, not position:** modules by `id`, knobs by `symbol`. Reordering or adding
   modules doesn't scramble a preset.
 - **Real units** (%, ms, dB, Hz, s). If a knob's range changes later, the sound stays the same.

@@ -49,8 +49,10 @@ const PRESET_MIGRATIONS = {
     return { ...j, version: 4, chain };
   },
   // 4 -> 5: the master stopped being saved in presets; each preset has its own level instead. A file's
-  // master was how loud that preset played, so it becomes the preset's level (the master starts at 0 dB).
-  4: (j) => { const { master, ...rest } = j; return { ...rest, version: 5, level: typeof master === 'number' ? master : 0 }; }
+  // master was how loud that preset played. The rig's master starts where the old one did (-12 dB), so
+  // the level is the file's master measured from there: with the master untouched, an old preset plays
+  // exactly as loud as it did.
+  4: (j) => { const { master, ...rest } = j; return { ...rest, version: 5, level: typeof master === 'number' ? Math.max(-24, Math.min(24, master + 12)) : 0 }; }
 };
 const SOURCE_ID = /^[a-z][a-z0-9_]{0,14}$/;
 

@@ -102,3 +102,20 @@ TEST("178 plugins: a newer file replaces the type, a removed one leaves the list
   for (int b = 0; b < 50; b++) e2.process(128);
   CHECK(e2.rack.slot[k].type >= 0 && e2.rack.slot[k].nparams() == sourceTypeDesc(e2.rack.slot[k].type).nparams, "the old source keeps its own layout and runs");
 }
+
+TEST("181 plugins: a preset change (hold) resets a plugin where it stands: no heap calls on the audio thread") {
+  const std::string path = unpack("trem", "-181");
+  if (rig_plugin_load(path.c_str()) < 0) { CHECK(false, "trem loads: %s", rig_plugin_status()); return; }
+  Engine e; e.init(SR); const int m = e.addModule("trem", nullptr, -1, false);
+  CHECK(m >= 0, "trem in the chain");
+  if (m < 0) return;
+  const auto& g = riffSignal(); int at = 0;
+  auto run = [&](int blocks) { for (int b = 0; b < blocks; b++) { memcpy(e.inBuf, &g[at], 64 * sizeof(float)); at += 64; e.process(64); } };
+  run(200);
+  bool silent = false;
+  const long heap = heapCallsDuring([&] { e.hold(true); run(40); silent = e.holdState == Engine::HOLD_SILENT; e.hold(false); run(60); });
+  CHECK(silent && e.holdState == Engine::HOLD_NONE, "the hold went silent and came back");
+  CHECK(!heapCounting() || heap == 0, "heap calls across the change (64-frame blocks): %ld", heap);
+  float pk = 0; run(100); for (int i = 0; i < 64; i++) pk = fmaxf(pk, fabsf(e.outL[i]));
+  CHECK(std::isfinite(pk), "it plays on");
+}

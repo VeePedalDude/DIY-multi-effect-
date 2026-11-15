@@ -11,7 +11,7 @@ check(!r.error && r.warnings.length === 0, `loads with no notes${r.warnings && r
 check(close(r.snap.params['holo.feedback'], 42.75 / 95) && close(r.snap.params['gate.thresh'], (-59 + 80) / 60) && close(r.snap.params['cab.locut'], 0.25, 1e-5), 'real units map back to the same knob positions');
 check(r.snap.conns['holo.feedback'] === 'lfo' && r.snap.conns['amp.input'] === 'env' && close(r.snap.depths['tess.fold'], 0.3), 'modulations and their depths');
 check(r.assets.cab && r.assets.cab.name === 'V30 SM57.wav' && r.assets.amp && r.assets.amp.kind === 'nam', 'file references for the cab IR and the NAM capture');
-check(r.scenes.A && close(r.scenes.A.params['holo.halo'], 0.9) && r.level === -12 && r.snap.bpm === 120, 'scene A, tempo, and the file\'s master as the preset\'s level (format 5)');
+check(r.scenes.A && close(r.scenes.A.params['holo.halo'], 0.9) && r.level === 0 && r.snap.bpm === 120, 'scene A, tempo, and the file\'s master (-12 dB, where the rig\'s master starts) as a preset level of 0 dB (format 5)');
 check(Object.keys(r.snap.srcParams).length === 0 && Object.keys(r.scenes.A.srcParams).length === 0, 'migrated from format 1: modulation sources stay at their defaults (what format 1 meant)');
 
 console.log('golden file (format 2: source knobs, written by hand in real units)');
@@ -58,7 +58,7 @@ r = u.readPreset(g4);
 const mreal = (snap, id, sym) => { const t = r.chain.find((x) => x.id === id).type, q = u.MTYPES[t].params.find((x) => x.symbol === sym), v = snap.params[`${id}.${sym}`]; return q.curve === 'log' ? q.min * Math.pow(q.max / q.min, v) : q.min + (q.max - q.min) * v; };
 check(!r.error && r.warnings.length === 0, `loads with no notes${r.warnings && r.warnings.length ? ': ' + r.warnings.join(' | ') : ''}`);
 check(r.chain.map((x) => `${x.id}:${x.type}`).join() === 'amp:amp,holo:holo,echo:holo,cab:cab,tess:tess', `the chain, in order: ${r.chain.map((x) => x.id).join(' → ')}`);
-check(r.level === -8, `format 4 → 5: the file's master (-8 dB) is now the preset's own level (${r.level} dB)`);
+check(r.level === 4, `format 4 → 5: the file's master (-8 dB) is now the preset's own level, measured from the rig's -12 dB master: +4 dB (${r.level} dB)`);
 check(close(mreal(r.snap, 'echo', 'feedback'), 70, 1e-3) && close(mreal(r.snap, 'holo', 'feedback'), 30, 1e-3) && r.snap.bypass.echo === true && r.snap.bypass.holo === false, 'each HOLOGRAM has its own knobs and bypass');
 check(r.snap.conns['echo.feedback'] === 'lfo' && close(r.snap.depths['echo.feedback'], 0.25) && r.snap.conns['holo.halo'] === 'env', 'patches to the second delay');
 check(r.scenes.A.bypass.echo === false && close(mreal(r.scenes.A, 'echo', 'feedback'), 85, 1e-3), 'scene A turns “echo” on with more feedback');

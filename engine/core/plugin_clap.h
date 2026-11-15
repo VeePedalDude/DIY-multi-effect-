@@ -176,6 +176,7 @@ struct ClapLibrary : PluginBackend {
     Inst* s = (Inst*)inst; if (!s) return;
     s->p->stop_processing(s->p); s->p->deactivate(s->p); s->p->destroy(s->p); delete s;
   }
+  void reset(void* inst) override { Inst* s = (Inst*)inst; s->p->reset(s->p); }   // CLAP's own reset: audio thread, the plugin stays active
   void process(void* inst, const float* inL, const float* inR, float* oL, float* oR, int n, const float* norm, int np, float bpm) override {
     Inst* s = (Inst*)inst;
     s->nev = 0;

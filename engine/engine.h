@@ -87,9 +87,9 @@ struct Engine {
   float lvPk[2] = {0, 0}, lvMs[2] = {0, 0}, lvLim = 0.f;       // the level meters' state (linear peak, mean square, limiter dB)
   // A preset change (`hold 1` ... `hold 0`): the output fades out (HOLD_OUT_MS); once silent every module is
   // reset, so nothing of the old preset rings into the new one; the page puts the new preset on and loads its
-  // files meanwhile; on release the output stays silent HOLD_SETTLE_MS more (4 time constants of the 20 ms knob smoothing: within 2% of the new
-  // values) and fades back in (HOLD_IN_MS). A hold nobody releases ends by itself after HOLD_MAX_MS.
-  static constexpr float HOLD_OUT_MS = 10.f, HOLD_SETTLE_MS = 80.f, HOLD_IN_MS = 20.f, HOLD_MAX_MS = 3000.f;
+  // files meanwhile; on release the output stays silent HOLD_SETTLE_MS more, during which every knob smoother jumps to its new
+  // value (g_snapSmoothing, dsp.h) and the filters run on the live input, and fades back in (HOLD_IN_MS). A hold nobody releases ends by itself after HOLD_MAX_MS.
+  static constexpr float HOLD_OUT_MS = 10.f, HOLD_SETTLE_MS = 10.f, HOLD_IN_MS = 20.f, HOLD_MAX_MS = 3000.f;
   enum HoldState { HOLD_NONE, HOLD_FADING, HOLD_SILENT, HOLD_SETTLING };
   int holdState = HOLD_NONE; float holdG = 1.f; long holdN = 0; bool holdReset = false;   // gain, samples spent in this state, modules reset yet
   void hold(bool on) {
@@ -239,6 +239,11 @@ struct Engine {
     if (want == runWord) dipTarget = 1.f;
     curOrder.store(runWord, std::memory_order_release);
     const Order ord = Order::unpack(runWord);
+    if (holdState == HOLD_SILENT && holdN >= (long)(HOLD_MAX_MS * 1e-3f * sr)) { holdState = HOLD_SETTLING; holdN = 0; }   // nobody released it
+    // released: what the old settings left in the filters while it was silent is cleared once more, so the
+    // new preset starts clean on its own knobs
+    if (holdState == HOLD_SETTLING && holdN == 0) { for (int i = 0; i < ord.n; i++) mods[ord.s[i]]->reset(); dcL.reset(); dcR.reset(); }
+    g_snapSmoothing = holdState == HOLD_SETTLING && holdN < (long)(HOLD_SETTLE_MS * 1e-3f * sr);
     rack.update(inBuf, n, bpm);
     for (int i = 0; i < ord.n; i++) for (int m = ord.s[i], p = 0; p < nparams(m); p++) {
       float v = base[m][p];
@@ -268,7 +273,7 @@ struct Engine {
     listen.process(inBuf, n, tuner.a4);
     const float muteTarget = tuner.on && tuner.mute ? 0.f : 1.f;
     float g = db2lin(masterDb + patchDb);
-    if (holdState == HOLD_SILENT && holdN >= (long)(HOLD_MAX_MS * 1e-3f * sr)) { holdState = HOLD_SETTLING; holdN = 0; }   // nobody released it
+    g_snapSmoothing = false;
     if (holdState == HOLD_SETTLING && holdN == 0) masterS.y = g;          // the new level from the start, no glide from the old one
     const float holdOut = 1.f / (HOLD_OUT_MS * 1e-3f * sr), holdIn = 1.f / (HOLD_IN_MS * 1e-3f * sr);
     const long settleN = (long)(HOLD_SETTLE_MS * 1e-3f * sr);

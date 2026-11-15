@@ -5,7 +5,7 @@
 // the host's own: {type:'host'} (backend, buffers, devices) and {type:'latency'} (a measured round trip).
 // Files are decoded here as before (an OfflineAudioContext: no audio of its own), then sent as bytes.
 const HOST = typeof window !== 'undefined' && window.RIG_HOST ? window.RIG_HOST : null;
-const host = { ws: null, info: null, latency: null, want: 'device', up: false, started: false, devices: null };
+const host = { ws: null, info: null, latency: null, want: 'device', up: false, started: false, devices: null, snap: null };   // snap: the engine's chain and rack as this connection found them
 rig.host = host;
 
 function hostSend(msg, data) {
@@ -33,16 +33,24 @@ function hostMsg(d) {
     hostDeviceMenus(); return;
   }
   if (d.type === 'resync') { syncChain(); syncRack(); sendAll(); pushAllAssets(); logLine('rig-host: new sample rate, rig sent again'); return; }
-  if (d.type === 'describe') { onEngineMsg({ type: 'describe', desc: d.raw }); if (!host.up) hostReady(); return; }
-  if (d.type === 'rack') { onEngineMsg({ type: 'rack', rack: d.raw.sources }); return; }
-  if (d.type === 'chain') { onEngineMsg({ type: 'chain', chain: d.raw.modules }); return; }
+  if (d.type === 'describe') { onEngineMsg({ type: 'describe', desc: d.raw }); return; }
+  if (d.type === 'rack') { onEngineMsg({ type: 'rack', rack: d.raw.sources }); if (host.snap && !host.snap.rack) { host.snap.rack = d.raw.sources; hostSnapped(); } return; }
+  if (d.type === 'chain') { onEngineMsg({ type: 'chain', chain: d.raw.modules }); if (host.snap && !host.snap.chain) { host.snap.chain = d.raw.modules; hostSnapped(); } return; }
   onEngineMsg(d);
 }
-// Connected and described: hand the host this page's state (the page is the source of truth, as with the worklet).
-async function hostReady() {
+function hostSnapped() { if (!host.up && host.snap.chain && host.snap.rack) hostReady(host.snap); }
+// Connected, described, and the engine's chain and rack known: hand the host this page's state (the page is
+// the source of truth, as with the worklet). The host's engine outlives the page (a reload, a second
+// browser), so whatever it was left with is brought in line: modules and sources the page doesn't have
+// are removed, files the page doesn't name are cleared, and the tuner, note listener and a held preset
+// change are switched off unless this page has them on.
+async function hostReady(snap) {
   host.up = true; rig.node = { port: hostPort };
   await loadLibraryPlugins();                                  // the host loads them too; the rig may use them (61-plugins.js)
-  syncChain(); syncRack(); sendAll(); pushAllAssets();
+  rig.cmd('hold 0'); rig.cmd('listen 0'); rig.cmd('tuner 0');  // sendAll's afterSend turns the tuner back on if this page has it on
+  syncChain(snap.chain); syncRack(snap.rack);
+  MODS.forEach((m) => { if (m.asset && !state.assets[m.id]) hostPort.postMessage({ type: 'asset_clear', inst: m.inst }); });
+  sendAll(); pushAllAssets();
   rig.cmd(`host_input ${host.want === 'riff' ? 'riff' : 'interface'}`);
   rig.cmd('host_devices');
   $('statusDot').style.background = 'var(--ok)'; $('engineState').textContent = 'engine running · rig-host';
@@ -50,7 +58,7 @@ async function hostReady() {
 }
 function hostConnect() {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://${location.host}/ws`); ws.binaryType = 'arraybuffer'; host.ws = ws;
+    const ws = new WebSocket(`ws://${location.host}/ws`); ws.binaryType = 'arraybuffer'; host.ws = ws; host.snap = {};
     let opened = false;
     ws.onopen = () => { opened = true; resolve(); };
     ws.onmessage = (e) => { try { hostMsg(JSON.parse(e.data)); } catch (err) { logLine('host message: ' + err.message, true); } };

@@ -30,7 +30,7 @@ function assetPanelHtml(m) {
 }
 async function selectAsset(m, name) {
   const e = (library.entries[m.asset.kind] || []).find((x) => x.name === name); if (!e) return;
-  state.assets[m.id] = { kind: m.asset.kind, name: e.name, size: e.size, hash: await library.core.hash(m.asset.kind, e.name) };
+  state.assets[m.id] = { kind: m.asset.kind, name: e.name, size: e.size, hash: await assetHash(m.asset.kind, e.name) };
   (MODDATA[m.id] = MODDATA[m.id] || {}).assetName = e.name;
   assetStatus[m.id] = m.asset.ready ? (rig.node ? ' · loading…' : ' · loads when audio starts') : ' · saved with presets';
   logLine(`asset_load ${m.inst} ${m.asset.kind}/${e.name}`);
@@ -39,7 +39,7 @@ async function selectAsset(m, name) {
 }
 function clearAsset(m) {
   delete state.assets[m.id];
-  const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null; d.irDecay = null; d.namMeta = null; d.engineNote = '';
+  const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null; d.irDecay = null; d.namMeta = null; d.engineNote = ''; d.pushKey = d.onEngine = null;
   assetStatus[m.id] = '';
   if (rig.node) rig.node.port.postMessage({ type: 'asset_clear', inst: m.inst });
   logLine(`asset_clear ${m.inst}`); renderPanel();
@@ -47,6 +47,33 @@ function clearAsset(m) {
 // Read the chosen file and hand it to the engine. A .nam goes as its text; an IR is decoded by the
 // browser (any WAV it can read, resampled to the engine's rate) and sent as RIR1 header + planar floats.
 const IR_MAX_SECONDS = 20;
+// Files made ready for the engine, kept by library entry (name, size and date): the payload to send, the file's
+// hash and what the panel shows of it. A preset change then reads and decodes nothing (70-presets.js warms
+// this for the presets on the footswitches). Oldest out beyond ASSET_CACHE_MB.
+const ASSET_CACHE_MB = 96, assetCache = new Map();
+async function assetPrepared(kind, name) {
+  const e = (library.entries[kind] || []).find((x) => x.name === name), k = `${kind}/${name}`;
+  let c = assetCache.get(k);
+  if (c && e && c.key === e.key) { assetCache.delete(k); assetCache.set(k, c); return c; }       // most recently used last
+  const file = await library.core.file(kind, name), raw = await file.arrayBuffer(), meta = {};
+  c = { key: e ? e.key : `${k}:${file.size}:${file.lastModified}`, hash: fnv1a(new Uint8Array(raw)), meta, payload: raw };
+  if (kind === 'ir') c.payload = await irPayload(raw, meta);
+  else if (kind === 'nam') meta.namMeta = parseNamMeta(new TextDecoder().decode(raw));
+  assetCache.delete(k); assetCache.set(k, c);
+  let total = 0; for (const x of assetCache.values()) total += x.payload.byteLength;
+  for (const [key, x] of assetCache) { if (total <= ASSET_CACHE_MB * 1048576 || key === k) break; total -= x.payload.byteLength; assetCache.delete(key); }
+  return c;
+}
+// A library file's hash: from the prepared file when audio is running (it will be sent next), else just read.
+async function assetHash(kind, name) {
+  const ready = Object.values(MTYPES).some((t) => t.asset && t.asset.kind === kind && t.asset.ready);
+  return rig.node && rig.ctx && ready ? (await assetPrepared(kind, name)).hash : library.core.hash(kind, name);
+}
+// Whether the engine already has this very file on module m (a preset change then leaves it alone).
+function assetOnEngine(m, ref) {
+  const cur = state.assets[m.id], d = MODDATA[m.id], e = (library.entries[ref.kind] || []).find((x) => x.name === ref.name);
+  return !!(rig.node && cur && !cur.missing && e && d && cur.kind === ref.kind && cur.name === ref.name && (!ref.hash || cur.hash === ref.hash) && d.onEngine === e.key);
+}
 // The engine's answer to each module's latest file, as a promise (a preset change waits for them: 70-presets.js)
 const assetWaits = {};
 function assetLoaded(id, ms) { const w = assetWaits[id]; return w ? Promise.race([w.p, new Promise((ok) => setTimeout(ok, ms))]) : Promise.resolve(); }
@@ -55,14 +82,9 @@ async function pushAsset(m) {
   if (!assetWaits[m.id]) { let ok; const p = new Promise((r) => { ok = r; }); assetWaits[m.id] = { p, ok }; }
   const d = MODDATA[m.id] || (MODDATA[m.id] = {});
   try {
-    const file = await library.core.file(ref.kind, ref.name), raw = await file.arrayBuffer();
-    let data = raw;
-    if (ref.kind === 'ir') {
-      data = await irPayload(raw, d);
-      if (d.irTrimmed) assetStatus[m.id] = ` · first ${IR_MAX_SECONDS} s used`;
-    } else if (ref.kind === 'nam') {
-      d.namMeta = parseNamMeta(new TextDecoder().decode(raw));
-    }
+    const c = await assetPrepared(ref.kind, ref.name), data = c.payload.slice(0);      // a copy: the message takes its buffer
+    Object.assign(d, c.meta); d.pushKey = c.key; d.onEngine = null;
+    if (ref.kind === 'ir' && d.irTrimmed) assetStatus[m.id] = ` · first ${IR_MAX_SECONDS} s used`;
     rig.node.port.postMessage({ type: 'asset', inst: m.inst, data, ref: `${ref.kind}/${ref.name}` }, [data]);
   } catch (e) { if (assetWaits[m.id]) { assetWaits[m.id].ok(); delete assetWaits[m.id]; } assetStatus[m.id] = ' · couldn’t load: ' + e.message; logLine(`asset ${ref.name}: ${e.message}`, true); renderPanel(); }
 }
@@ -91,6 +113,7 @@ function onAssetReply(d) {
   const m = MODS.find((x) => x.id === d.id); if (!m) return;
   if (d.ref && assetWaits[m.id]) { assetWaits[m.id].ok(); delete assetWaits[m.id]; }
   const md = MODDATA[m.id] || (MODDATA[m.id] = {});
+  md.onEngine = d.ref && d.status === 0 ? md.pushKey : null;
   if (d.ref) {
     md.engineNote = d.status === 0 ? d.note : '';
     assetStatus[m.id] = d.status === 0 ? ` · ${d.note}${md.irTrimmed ? ` · first ${IR_MAX_SECONDS} s used` : ''}` : ` · couldn’t load: ${d.note || 'resp ' + d.status}`;

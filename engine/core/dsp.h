@@ -14,10 +14,14 @@ inline float db2lin(float d) { return powf(10.f, d * 0.05f); }
 inline float undenorm(float x) { return fabsf(x) < 1e-15f ? 0.f : x; }
 
 // ------------------------------------------------------------------ utilities
+// Set by the engine while the output is silent at the end of a preset change (engine.h, hold): every knob
+// smoother (OnePole here, StepSmooth in eq.h) then lands on its target at once, so the new preset
+// starts on its own settings without each effect having to be told. False at every other time.
+inline bool g_snapSmoothing = false;
 struct OnePole {
   float y = 0, a = 1;
   void setMs(float sr, float ms) { a = 1.f - expf(-1.f / (0.001f * ms * sr)); }
-  float next(float t) { y += a * (t - y); return y; }
+  float next(float t) { y += (g_snapSmoothing ? 1.f : a) * (t - y); return y; }
 };
 
 struct Biquad {                         // RBJ cookbook, transposed DF-II

@@ -105,10 +105,13 @@ const b64 = (f) => fs.readFileSync(path.join(root, f)).toString('base64');
   await ch2.setFiles(path.join(root, 'dist/plugins/rand.rigfx'));
   await page.waitForFunction(() => (window.__rig.engineRack || []).some((s) => s.id === 'rand'), null, { timeout: 10000 }).catch(() => {});
   check((await V(() => (window.__rig.engineRack || []).map((s) => s.id))).includes('rand'), 'picked rand.rigfx: RANDOM is in the rack');
-  await page.mouse.click(splus.x, splus.y); await sleep(500);
+  // the camera flew to RANDOM when it joined the rack, which puts the + under the top bar: back to the overview first
+  await page.keyboard.press('Escape'); await page.click('#overview'); await sleep(1800);
+  const splus2 = await V(() => window.__rig.addScreen()); await page.mouse.click(splus2.x, splus2.y);
+  await page.waitForSelector('[data-pick-load="src"]', { timeout: 5000 });
   const [ch3] = await Promise.all([page.waitForEvent('filechooser'), page.click('[data-pick-load="src"]')]);
   await ch3.setFiles(path.join(root, 'dist/plugins/trem.rigfx'));
-  await sleep(1500);
+  await page.waitForFunction(() => { const e = document.querySelector('[data-pick-note="src"]'); return e && !/^Loading/.test(e.textContent) && e.textContent.trim(); }, null, { timeout: 15000 }).catch(() => {});   // an import is a few library reads: slow without a GPU
   const note = await page.textContent('[data-pick-note="src"]').catch(() => '');
   check(/is an effect: it’s in Add an effect/.test(note), `an effect file in Add a source: “${note}”`);
 

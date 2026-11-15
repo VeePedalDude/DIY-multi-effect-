@@ -155,3 +155,15 @@ JACK (`--backend jack`). The boot-to-effects setup (systemd unit, kiosk browser)
 (cross-compiled with zig, the same compiler as the WebAssembly build). `tests/browser/host.cjs`
 runs the host on a null audio device with a simulated loopback and drives it from the page;
 `RIG_HOST_BIN="wine dist/rig-host.exe"` runs the same test against the Windows build under Wine.
+
+## Who can control it
+
+Only the page rig-host serves. Its WebSocket (every engine command) and its library requests are refused
+(403) unless they come from that page's own address: a web page on another site can't open either, and
+neither can one that reaches the host under another name. A program on the same computer (no browser,
+so no `Origin`) can still connect, as before. With `--listen 0.0.0.0` anything on your network that
+opens the page can use the rig, which is what that option is for.
+
+The engine keeps running when the page is closed or reloaded. A page that connects brings it in line
+with itself: effects and sources the page doesn't have are removed, files it doesn't name are cleared,
+and the tuner's mute is released.

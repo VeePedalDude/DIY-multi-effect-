@@ -64,8 +64,9 @@ function chainRefused(line, status) {
   logLine(`couldn't add ${id}: ${status === -3 ? 'the chain is full' : status === -2 ? 'that id is taken or not allowed' : 'unknown module type'}`, true);
 }
 // When audio starts the engine has a fresh chain (one of each type, ids = types): make it the page's.
-function syncChain() {
-  const fresh = Object.fromEntries(DESC.modules.map((e) => [e.id, e.type]));
+// `engine`: what the engine has now when it wasn't started with the page (rig-host keeps running across a reload).
+function syncChain(engine) {
+  const fresh = Object.fromEntries((engine || DESC.modules).map((e) => [e.id, e.type]));
   Object.keys(fresh).forEach((id) => { if (!MODS.some((m) => m.id === id && m.type === fresh[id])) rig.cmd(`fx_remove ${id}`); });
   MODS.forEach((m, i) => rig.cmd(fresh[m.id] === m.type ? `fx_move ${m.id} ${i}` : `fx_add ${m.type} ${m.id} ${i}`));
 }

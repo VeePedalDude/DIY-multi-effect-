@@ -119,11 +119,16 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   check(lat.ok && lat.samples === LOOP && /9\.10 ms/.test(note) && /9\.1 ms measured/.test(top), `${lat.samples} samples (${lat.ms} ms) for a ${LOOP}-sample loopback; the drawer and top bar show it (“${top}”)`);
   await page.screenshot({ path: path.join(shots, 'shot-host.png') });
 
-  console.log('5. A reload reconnects to the same host');
+  console.log('5. A reload reconnects to the same host, and brings its engine in line with the new page');
+  await page.keyboard.press('t'); await sleep(600);                 // the tuner on (output muted) when the page goes away
+  const left = await V(`[window.__rig.engineChain.some((m) => m.id === 'bax'), window.__rig.meters.outPk]`);
   await page.reload(); await page.waitForFunction(() => window.__rig && window.__rig.ready, null, { timeout: 15000 });
   await page.check('input[name=src][value=riff]'); await page.click('#startBtn');
   await page.waitForFunction(() => window.__rig.meters && window.__rig.engineChain, null, { timeout: 15000 }); await sleep(800);
-  check(/rig-host/.test(await page.textContent('#engineState')) && (await V('window.__rig.meters.outPk')) > 0.005, 'connected again, and playing');
+  check(/rig-host/.test(await page.textContent('#engineState')) && (await V('window.__rig.meters.outPk')) > 0.005, `connected again, and playing (the engine was left muted by the tuner: output ${left[1].toFixed(4)})`);
+  const same = await V(`[window.__rig.engineChain.map((m) => m.id + ':' + m.type).sort().join(), window.__rig.chain.list().map((m) => m.id + ':' + m.type).sort().join(), window.__rig.modMeter('cab', 'taps')]`);
+  check(left[0] && same[0] === same[1] && !/bax/.test(same[0]), `the engine's chain is the page's again (the module the old page had added is gone): ${same[0]}`);
+  check(same[2] !== 2048, `the IR the old page had loaded is cleared (the cab reports ${same[2]} taps)`);
 
   console.log('6. The Driver menu: every device, a buffer size, switching while it plays, remembered');
   await page.waitForFunction(() => window.__rig.host.devices && document.querySelectorAll('#hostDev option').length > 0, null, { timeout: 10000 });
@@ -199,6 +204,11 @@ const LOOP = 437, PORT = 18000 + Math.floor(Math.random() * 1000);
   const req = (headers, method = 'GET', p = '/lib/list') => new Promise((res) => { const r = http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers }, (x) => { let b = ''; x.on('data', (d) => { b += d; }); x.on('end', () => res([x.statusCode, b])); }); r.on('error', (e) => res([0, e.message])); r.end(method === 'PUT' ? 'x' : undefined); });
   const ok = await req({ 'X-Rig': '1' }), noHdr = await req({}), evil = await req({ 'X-Rig': '1', Origin: 'http://evil.example' }), rebind = await req({ 'X-Rig': '1', Host: `evil.example:${PORT}` });
   const put = await req({ 'Content-Type': 'text/plain', Origin: 'http://evil.example' }, 'PUT', '/lib/f/plugins%2Fx.clap'), dots = await req({ 'X-Rig': '1' }, 'PUT', '/lib/f/nam%2F..%2F..%2Fx.nam');
+  // the WebSocket carries every engine command: a page on another site must not be able to open it
+  const wsTry = (headers) => new Promise((res) => { const r = http.request({ host: '127.0.0.1', port: PORT, path: '/ws', headers: { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==', ...headers } });
+    r.on('upgrade', (x, s) => { s.destroy(); res(101); }); r.on('response', (x) => { x.resume(); res(x.statusCode); }); r.on('error', () => res(0)); r.end(); });
+  const wsOwn = await wsTry({ Origin: `http://127.0.0.1:${PORT}` }), wsEvil = await wsTry({ Origin: 'http://evil.example' }), wsRebind = await wsTry({ Host: `evil.example:${PORT}`, Origin: `http://evil.example:${PORT}` }), wsLocal = await wsTry({});
+  check(wsOwn === 101 && wsEvil === 403 && wsRebind === 403 && wsLocal === 101, `the engine's WebSocket: the rig page ${wsOwn}; another site ${wsEvil}; another host name ${wsRebind}; a program on this computer (no Origin) ${wsLocal}`);
   check(ok[0] === 200 && noHdr[0] === 403 && evil[0] === 403 && rebind[0] === 403 && put[0] === 403 && dots[0] === 400 && !fs.existsSync(path.join(libDir, 'Effects', 'x.clap')),
     `the page's own request ${ok[0]}; no header ${noHdr[0]}; another site ${evil[0]}; another host name ${rebind[0]}; another site writing a plugin ${put[0]}; a path with .. ${dots[0]}`);
 

@@ -35,7 +35,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   console.log('1. The controls and meters');
   const rng = await V(`[document.getElementById('master').min, document.getElementById('master').max, document.getElementById('level').min, document.getElementById('level').max]`);
   check(rng.join() === '-60,12,-24,24', `MASTER -60..+12 dB, PATCH -24..+24 dB (${rng.join(', ')})`);
-  await slide('master', 0); await sleep(600);
+  const fresh = await V('window.__rig.state.level');
+  check(fresh === 8 && (await V(`document.getElementById('level').value`)) === '8', `a fresh rig starts at PATCH +8 dB (the cab's normalisation made 0 dB quiet): ${fresh}`);
+  await slide('master', 0); await slide('level', 0); await sleep(600);
   const p0 = await loud('patchRms'), o0 = await loud('outRms');
   const txt = await V(`[document.getElementById('lvPatch').textContent, document.getElementById('lvOut').textContent]`);
   check(p0 > -60 && Math.abs(o0 - p0) < 1 && /rms · .* pk/.test(txt[0]), `the default rig at master 0: patch ${p0.toFixed(1)}, output ${o0.toFixed(1)} dB RMS (“${txt[0]}” / “${txt[1]}”)`);
@@ -57,11 +59,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(lv > -9 && Math.abs(after - target) < 1.5, `from -9 dB, Level set the patch to ${lv} dB: it now plays at ${after.toFixed(1)} dB RMS (target ${target})`);
   check(Math.abs(outAfter - target) < 1.5, `and at master 0 dB the output is there too: ${outAfter.toFixed(1)} dB RMS`);
   const ed = await V(`!document.getElementById('presetEdited').hidden`);
-  check(ed, 'the preset shows edited (the level is part of it)');
+  check(ed === (lv !== 8), `the preset shows edited when its level changed (the level is part of it): level ${lv} dB, edited ${ed}`);
   await page.screenshot({ path: path.join(shots, 'shot-levels.png') });
 
   console.log('3. Pushed into the limiter, the meter says so');
-  await slide('level', 24); await slide('master', 12); await sleep(1500);
+  await slide('level', 24); await slide('master', 12);
+  await page.waitForFunction(() => window.__rig.levels.reading().limit > 3 && document.getElementById('lvOut').className === 'clip', null, { timeout: 8000 }).catch(() => {});   // on a loud note (the reading falls back between them)
   const r = await V('window.__rig.levels.reading()'), cls = await V(`document.getElementById('lvOut').className`);
   check(r.limit > 3 && r.outPk <= 0 && cls === 'clip' && /limiting/.test(await V(`document.getElementById('lvOut').textContent`)), `+24 / +12 dB: limiting ${r.limit.toFixed(1)} dB, output peaks ${r.outPk.toFixed(1)} dBFS, shown in red`);
 

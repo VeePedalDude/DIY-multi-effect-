@@ -14,8 +14,12 @@ const NOTES = {};                         // optional focus-panel note per modul
 const MODDATA = {};                       // per-module UI data shared between panels and screens (e.g. MODDATA.cab.irResp)
 function screen(id, fn) { SCREENS[id] = fn; }
 
+// The PATCH level a fresh rig and a blank preset start at (dB): every cab IR is normalised well under the
+// dry signal, so at 0 dB the starting rig (gate, amp, cab) plays about 9 dB quieter than it should; +8 dB
+// is what Level picks for it. Presets carry their own level, so older ones aren't changed.
+const NEW_LEVEL = 8;
 const state = {
-  carrying: null, focus: null, view: 'stage', bpm: 120, master: -12, level: 0,
+  carrying: null, focus: null, view: 'stage', bpm: 120, master: -12, level: NEW_LEVEL,
   conns: { 'amp.input': 'env', 'holo.feedback': 'lfo', 'holo.halo': 'orbit', 'tess.fold': 'heart' },
   bypass: {}, scenes: {},
   inputs: {},                             // CONTROLLER instance id -> its hardware binding (12-inputs-core.js)

@@ -33,6 +33,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   check(m.outPk > 0.01 && m.outPk <= 0.98, `engine output (peak ${(20 * Math.log10(m.outPk)).toFixed(1)} dBFS at master -12 dB)`);
   const nan = await page.evaluate(() => window.__rig.nanResets());
   check(nan === 0, `no NaN resets (${nan})`);
+  await page.waitForFunction(() => window.__rig.meters.load > 0, null, { timeout: 5000 }).catch(() => {});   // one packet can read 0 (the worklet's clock is coarse)
+  m = await page.evaluate(() => window.__rig.meters);
   check(m.load > 0 && m.load < 0.5, `DSP load reported ${(m.load * 100).toFixed(1)}% of the audio thread`);
   const info = await page.evaluate(() => ({ sr: window.__rig.ctx.sampleRate, base: window.__rig.ctx.baseLatency, hidden: document.getElementById('startOverlay').hidden }));
   check(info.hidden, `start overlay closed; context ${info.sr} Hz, base latency ${(info.base * 1000).toFixed(1)} ms`);
@@ -107,7 +109,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   st = await page.evaluate(() => ({ focus: window.__rig.state.focus, carrying: window.__rig.state.carrying }));
   check(st.focus === 'src:env' && st.carrying === 'env', 'clicking an orb opens that source and picks up a cable');
   await page.keyboard.press('Escape'); await page.mouse.click(lbl.x, lbl.y); await sleep(400);
-  const crossings = () => page.evaluate(async () => { let n = 0, last = window.__rig.src('lfo'); for (let i = 0; i < 40; i++) { await new Promise((r) => setTimeout(r, 50)); const v = window.__rig.src('lfo'); if ((v >= 0) !== (last >= 0)) n++; last = v; } return n; });
+  // one reading per meter packet from the engine (~31 a second, none missed however slowly the page draws: a timer here missed them without a GPU)
+  const crossings = () => page.evaluate(() => new Promise((res) => { let n = 0, last = window.__rig.src('lfo'); const port = window.__rig.node.port;
+    const h = () => { const v = window.__rig.src('lfo'); if ((v >= 0) !== (last >= 0)) n++; last = v; };
+    port.addEventListener('message', h); setTimeout(() => { port.removeEventListener('message', h); res(n); }, 2000); }));
   const slow = await crossings();
   await page.$eval('[data-spid="lfo.rate"]', (el) => { el.value = '0'; el.dispatchEvent(new Event('input', { bubbles: true })); });
   await sleep(300);

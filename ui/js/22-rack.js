@@ -51,8 +51,8 @@ function rackRefused(line, status) {
   logLine(`couldn't add ${id}: ${status === -3 ? 'the rack is full' : status === -2 ? 'that id is taken or not allowed' : 'unknown source type'}`, true);
 }
 // When audio starts the engine has a fresh rack (one of each type, ids = types): make it the page's.
-function syncRack() {
-  const fresh = Object.fromEntries(DESC.sources.map((e) => [e.id, e.type]));
+function syncRack(engine) {
+  const fresh = Object.fromEntries((engine || DESC.sources).map((e) => [e.id, e.type]));
   Object.keys(fresh).forEach((id) => { if (!SRCMAP[id] || SRCMAP[id].type !== fresh[id]) rig.cmd(`src_remove ${id}`); });
   SRC.forEach((s) => { if (fresh[s.id] !== s.type) rig.cmd(`src_add ${s.type} ${s.id}`); });
 }

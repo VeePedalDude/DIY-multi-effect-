@@ -52,13 +52,15 @@ async function applyPreset(json, label) {
       if (!m.asset) continue;
       const ref = r.assets[m.id];
       if (!ref) { if (state.assets[m.id]) clearAsset(m); continue; }
-      const found = await library.core.findRef(ref);
+      if (assetOnEngine(m, ref)) continue;                // the same file as the preset before: nothing to load
+      const byName = (library.entries[ref.kind] || []).find((x) => x.name === ref.name);       // the usual case, without reading the folder again
+      const found = byName && (!ref.hash || (await assetHash(ref.kind, ref.name)) === ref.hash) ? byName : await library.core.findRef(ref);
       if (found) { await selectAsset(m, found.name); if (found.name !== ref.name) r.warnings.push(`${m.id}: ${ref.name} was found renamed as ${found.name}`); }
       else {                                    // keep the reference so re-saving doesn't lose it; play built-in meanwhile
         r.warnings.push(`${m.id}: ${ref.kind}/${ref.name} isn't in the library; using built-in until you add it`);
         if (rig.node) rig.node.port.postMessage({ type: 'asset_clear', inst: m.inst });
         state.assets[m.id] = { kind: ref.kind, name: ref.name, size: ref.size, hash: ref.hash, missing: true };
-        const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null; d.irDecay = null; d.namMeta = null; d.engineNote = "";
+        const d = MODDATA[m.id] || (MODDATA[m.id] = {}); d.assetName = null; d.irResp = null; d.irDecay = null; d.namMeta = null; d.engineNote = ""; d.pushKey = d.onEngine = null;
         assetStatus[m.id] = ' · missing from library (kept in the preset)';
       }
     }
@@ -67,7 +69,32 @@ async function applyPreset(json, label) {
 }
 
 // ---- the board
-const BLANK_PRESET = () => ({ format: 'rig-preset', version: PRESET_VERSION, name: '',
+// Preset files as read, kept by library entry, and the files they name made ready (assetPrepared), so a
+// footswitch has nothing to read: warmScene() does both for every preset of the scene you're on, in the
+// background, after the board loads, a scene change and a save.
+const presetFiles = new Map();                       // file name -> { key, json }
+async function presetJson(file) {
+  const e = (library.entries.presets || []).find((x) => x.name === file), c = presetFiles.get(file);
+  if (c && e && c.key === e.key) return c.json;
+  const json = JSON.parse(await (await library.core.file('presets', file)).text());
+  if (e) presetFiles.set(file, { key: e.key, json });
+  return json;
+}
+let warming = 0;
+rig.afterSend.push(() => warmScene());              // audio just started (or restarted)
+async function warmScene() {
+  const run = ++warming, sc = curScene(); if (!sc || !rig.node || !rig.ctx) return;      // files are decoded with the audio context
+  for (const q of sc.presets) {
+    try {
+      const json = board.work[q.id] ? board.work[q.id].json : q.file ? await presetJson(q.file) : null;
+      for (const c of (json && json.chain) || []) {
+        if (run !== warming) return;                 // a newer call took over
+        if (c.asset && MTYPES[c.type] && MTYPES[c.type].asset && MTYPES[c.type].asset.ready && (library.entries[c.asset.kind] || []).some((x) => x.name === c.asset.name)) await assetPrepared(c.asset.kind, c.asset.name);
+      }
+    } catch (e) { /* a preset that can't be read says so when it's pressed */ }
+  }
+}
+const BLANK_PRESET = () => ({ format: 'rig-preset', version: PRESET_VERSION, name: '', level: NEW_LEVEL,
   chain: [{ id: 'gate', type: 'gate' }, { id: 'amp', type: 'amp' }, { id: 'cab', type: 'cab' }], sources: [], mods: [] });
 const board = { switching: null, scenes: [], s: 0, p: 0, work: {}, base: null, savedName: '', renaming: null, armed: null, armT: 0, ready: false };
 rig.board = board;
@@ -121,7 +148,7 @@ async function putSlotOn(first) {
   if (w) { r = await applyPresetHeld(w.json, q.name || 'preset'); board.base = w.base; board.savedName = w.savedName; $('presetName').value = w.json.name || ''; }
   else if (q.file) {
     let json = null;
-    try { json = JSON.parse(await (await library.core.file('presets', q.file)).text()); } catch (e) { boardNote(`couldn't read presets/${q.file}: ${e.message}`, true); }
+    try { json = await presetJson(q.file); } catch (e) { boardNote(`couldn't read presets/${q.file}: ${e.message}`, true); }
     if (json) { r = await applyPresetHeld(json, q.file); board.savedName = q.name; $('presetName').value = q.name; board.base = presetSig(); }
   } else {
     r = await applyPresetHeld(BLANK_PRESET(), 'blank', () => { MODS.forEach((m) => m.params.forEach((q) => { q.v = q.def; })); state.bypass = {}; sendAll(); update(); });   // knobs a file doesn't list keep their value; blank means defaults
@@ -129,7 +156,7 @@ async function putSlotOn(first) {
   }
   if (r && r.warnings && r.warnings.length) { r.warnings.forEach((x) => logLine('preset: ' + x, true)); boardNote(`${q.name || 'preset'}: ${r.warnings[0]}${r.warnings.length > 1 ? ' (rest in Engine log)' : ''}`, true); }
   if (!first) writeBoard();
-  renderBoard(); renderTree();
+  renderBoard(); renderTree(); warmScene();
 }
 // SAVE: the preset you're on, under the name in the box.
 async function saveCurrent() {
@@ -143,7 +170,8 @@ async function saveCurrent() {
     q.file = file; q.name = name; $('presetName').value = name;
     delete board.work[q.id]; board.base = presetSig(); board.savedName = name;
     renderBoard();                                      // its footswitch shows the name now, not after the library is read again
-    await writeBoard(); await refreshLibrary();
+    presetFiles.delete(file);
+    await writeBoard(); await refreshLibrary(); warmScene();
     boardNote(`saved “${name}” (presets/${file})`);
   } catch (e) { boardNote(`couldn't save: ${e.message}`, true); }
   renderBoard(); renderTree();

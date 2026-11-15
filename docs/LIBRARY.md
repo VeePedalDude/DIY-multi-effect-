@@ -135,7 +135,8 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
 
 - **Changing preset while you play** fades the output out (10 ms), puts the new preset on and loads its files
   while it's silent (every effect is reset, so no tail of the old preset rings into the new one), lets the
-  knobs settle (80 ms) and fades back in (20 ms): about 0.2 s of silence, longer while a NAM capture or IR loads.
+  knobs land on their new values (10 ms) and fades back in (20 ms): about 0.1 s of silence. The files the
+  scene's presets name are read ahead, and a file the next preset shares with this one isn't loaded again.
 - **Each preset has its own level** (`level`, dB, -24..+24: the PATCH control and **Level**); the MASTER is
   the rig's, not the preset's. Format 4 files' `master` becomes their level when they load.
 - **Matched by name, not position:** modules by `id`, knobs by `symbol`. Reordering or adding

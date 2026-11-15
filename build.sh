@@ -64,6 +64,7 @@ node tests/ui/library.test.mjs
 node tests/ui/preset.test.mjs
 node tests/ui/inputs.test.mjs
 node tests/ui/skin.test.mjs
+node tests/ui/chords.test.mjs
 node tests/ui/chordbook.test.mjs
 node tests/ui/scales.test.mjs
 echo "== native vs WebAssembly parity"

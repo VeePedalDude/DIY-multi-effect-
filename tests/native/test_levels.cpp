@@ -43,7 +43,7 @@ TEST("180 hold: a preset change fades out, resets the modules while silent, and 
   double gap = 0; for (int i = silentAt; i < releaseAt; i++) gap = fmax(gap, fabs(out[i]));
   CHECK(silentAt > 0 && silentAt - holdAt <= 0.012f * SR, "silent %.1f ms after hold 1 (fade 10 ms)", (silentAt - holdAt) * 1000.f / SR);
   CHECK(gap == 0.0, "nothing at all comes out while it's held (peak %.2g), even with the hot amp and +18 dB set meanwhile", gap);
-  CHECK(backAt > 0 && fabsf((backAt - releaseAt) * 1000.f / SR - 100.f) < 6.f, "back to full level %.1f ms after hold 0 (80 ms settle + 20 ms fade)", (backAt - releaseAt) * 1000.f / SR);
+  CHECK(backAt > 0 && fabsf((backAt - releaseAt) * 1000.f / SR - 30.f) < 6.f, "back to full level %.1f ms after hold 0 (10 ms settle + 20 ms fade)", (backAt - releaseAt) * 1000.f / SR);
   double step = 0; for (int i = releaseAt + 1; i < backAt; i++) step = fmax(step, fabs(out[i] - out[i - 1]));
   double steady = 0; for (int i = backAt + 4800; i < backAt + 48000 && i < (int)out.size(); i++) steady = fmax(steady, fabs(out[i] - out[i - 1]));
   CHECK(step <= steady, "the fade back in steps no more than the new preset's own playing (%.3f vs %.3f)", step, steady);

@@ -85,7 +85,7 @@ struct Iir3 {
 struct StepSmooth {
   float y = 0, a = 1;
   void init(float sr, float ms, float v) { a = 1.f - expf(-(float)EQ_STEP / (0.001f * ms * sr)); y = v; }
-  float next(float t) { y += a * (t - y); return y; }
+  float next(float t) { y += (g_snapSmoothing ? 1.f : a) * (t - y); return y; }
 };
 
 } // namespace rig

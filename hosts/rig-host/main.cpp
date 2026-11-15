@@ -768,8 +768,15 @@ static int run(int argc, char** argv) {
   printf("  library: %s%s\n", library.root.c_str(), libOk ? "" : " (can't create it: the page keeps its library in the browser)"); fflush(stdout);
   // The page's library requests. Only this page may make them: a custom header (other sites can't send one
   // without a CORS preflight, which is never answered), and its own address (no DNS rebinding).
+  // The WebSocket (every engine command) is the page's alone too: a browser always sends a WebSocket's
+  // Origin and no site can forge it, so it must be this host's own address; no Origin at all is a program
+  // on this computer, not a web page.
   char hostA[64], hostB[64]; snprintf(hostA, sizeof hostA, "127.0.0.1:%d", h.o.port); snprintf(hostB, sizeof hostB, "localhost:%d", h.o.port);
   const bool loopback = h.o.listen == "127.0.0.1" || h.o.listen == "localhost";
+  auto wsOk = [&](const std::string& hdr) {
+    const std::string hostH = net::header(hdr, "host"), origin = net::header(hdr, "origin");
+    return !(loopback && hostH != hostA && hostH != hostB) && (origin.empty() || origin == "http://" + hostH);
+  };
   auto libHttp = [&](const std::string& method, const std::string& path, const std::string& body, const std::string& hdr) -> std::string {
     auto resp = [](int code, const std::string& b, const std::string& extra = "") {
       const char* what = code == 200 ? "OK" : code == 400 ? "Bad Request" : code == 403 ? "Forbidden" : code == 404 ? "Not Found" : "Internal Server Error";
@@ -844,7 +851,7 @@ static int run(int argc, char** argv) {
         if (!drop) {
           c.in.append(buf, (size_t)k);
           if (!c.ws) {
-            const int st = net::httpHandle(c, page, libHttp);
+            const int st = net::httpHandle(c, page, libHttp, wsOk);
             if (st == 1) drop = true;
             else if (st == 2) {                                // a page connected: who we are, the engine's description, then a snapshot
               net::wsSend(c, hostInfo(h, a));

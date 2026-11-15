@@ -157,7 +157,8 @@ inline std::string pctDecode(const std::string& s) {
 }
 // Read and answer the HTTP request in c.in. Returns: 0 need more bytes, 1 page or 404 sent (close), 2 now a WebSocket.
 // Requests for /lib/... (the library folder, library.h) go to onLib(method, path, body, lowerHeaders) -> the whole response.
-template <class F> int httpHandle(Client& c, const std::string& page, F&& onLib) {
+// wsOk(lowerHeaders): whether this WebSocket request may connect (the rig's own page only); refused with 403.
+template <class F, class W> int httpHandle(Client& c, const std::string& page, F&& onLib, W&& wsOk) {
   const size_t end = c.in.find("\r\n\r\n"); if (end == std::string::npos) return c.in.size() > 16384 ? 1 : 0;
   std::string lower = c.in.substr(0, end); for (char& ch : lower) ch = (char)tolower((unsigned char)ch);
   const size_t clen = (size_t)strtoull(header(lower, "content-length").c_str(), nullptr, 10);
@@ -173,6 +174,7 @@ template <class F> int httpHandle(Client& c, const std::string& page, F&& onLib)
   }
   std::string path = get ? line.substr(4, line.find(' ', 4) - 4) : "";
   if (get && upgrade && path == "/ws") {
+    if (!wsOk(lower)) { const std::string no = "HTTP/1.1 403 Forbidden\r\nContent-Length: 21\r\nConnection: close\r\n\r\nnot from the rig page"; sendAll(c.s, no.data(), no.size()); return 1; }
     const size_t k = lower.find("sec-websocket-key:"); if (k == std::string::npos) return 1;
     size_t a = k + 18; while (a < req.size() && req[a] == ' ') a++; const size_t b = req.find("\r\n", a);
     const std::string key = req.substr(a, (b == std::string::npos ? req.size() : b) - a);

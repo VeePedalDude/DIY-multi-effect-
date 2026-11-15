@@ -20,7 +20,7 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `mod_disconnect <inst> <symbol>` | unpatch |
 | `set_bpm <30..300>` | tempo for synced effects and the LFO |
 | `master <-60..12>` | master gain in dB (the rig's, not saved in presets) |
-| `hold <0\|1>` | a preset change: `1` fades the output out (10 ms) and, once silent, resets every module; `0` waits 80 ms (knobs settle) and fades back in (20 ms). Released by itself after 3 s |
+| `hold <0\|1>` | a preset change: `1` fades the output out (10 ms) and, once silent, resets every module; `0` waits 10 ms (every knob smoother jumps to its new value meanwhile) and fades back in (20 ms). Released by itself after 3 s |
 | `patch_level <-24..24>` | the patch's output level in dB, before the master (saved in each preset) |
 | `src_set <source> <symbol> <0..1>` | set a modulation source's knob (`src_set lfo rate 0.25`) |
 | `src_add <type> [id]` | add a source to the modulation rack (`src_add lfo lfo2`). Without an id the engine picks the next free one (`lfo2`, `lfo3`...) |

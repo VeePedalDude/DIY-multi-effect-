@@ -1,0 +1,5 @@
+body{box-sizing:border-box;padding:10px;display:flex;flex-direction:column;gap:8px;font:600 13px/1 var(--display)}
+.qrow{display:flex;align-items:center;gap:6px}
+.qname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;color:var(--fg)}
+.qsub{color:var(--muted);font:400 11px/1 var(--mono)}
+#fx{flex-wrap:wrap;overflow:auto}

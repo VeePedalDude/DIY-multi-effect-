@@ -4,7 +4,15 @@
   'use strict';
   const handlers = {}, send = (m) => parent.postMessage(Object.assign({ rigview: 1 }, m), '*');
   const emit = (ev, d) => (handlers[ev] || []).forEach((f) => { try { f(d); } catch (e) { console.error(e); } });
-  const rig = { card: {}, skin: {}, settings: {},
+  const cmd = (name, args) => send({ type: 'cmd', name, args });
+  const rig = { card: {}, skin: {}, settings: {}, permissions: [],
+    can(p) { return rig.permissions.indexOf(p) >= 0; },
+    // each needs its permission (the manifest asks, the player allows); without it the page ignores the call
+    setParam(module, symbol, value) { cmd('param', { module, symbol, value }); },             // params: value 0..1
+    bypass(module, on) { cmd('bypass', { module, on: !!on }); },                              // chain
+    addEffect(effect) { cmd('add', { effect }); }, removeEffect(module) { cmd('remove', { module }); },   // chain
+    preset(scene, preset) { cmd('preset', { scene, preset }); },                              // presets
+    setTempo(bpm) { cmd('tempo', { bpm }); },                                                 // tempo
     on(ev, fn) { (handlers[ev] = handlers[ev] || []).push(fn); },
     save(obj) { rig.settings = obj; send({ type: 'save', data: JSON.stringify(obj) }); },
     ready() { send({ type: 'ready' }); } };
@@ -13,7 +21,8 @@
   addEventListener('message', (e) => {
     if (e.source !== parent) return;
     const m = e.data; if (!m || m.rigview !== 1) return;
-    if (m.type === 'init') { Object.assign(rig.card, m.card); rig.skin = m.skin; rig.settings = m.settings || {}; vars(m.vars); emit('init'); }
+    if (m.type === 'init') { Object.assign(rig.card, m.card); rig.skin = m.skin; rig.settings = m.settings || {}; rig.permissions = m.permissions || []; vars(m.vars); emit('init'); }
+    else if (m.type === 'permissions') { rig.permissions = m.list || []; emit('permissions'); }
     else if (m.type === 'layout') { Object.assign(rig.card, m.card); emit('layout'); }
     else if (m.type === 'skin') { rig.skin = m.skin; vars(m.vars); emit('skin'); }
     else if (m.type === 'show' || m.type === 'hide') emit(m.type);

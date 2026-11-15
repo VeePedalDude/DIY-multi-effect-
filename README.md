@@ -150,7 +150,7 @@ It stops at the first failure. Steps: third-party objects (cached) → native te
 each kind of file costs in WebAssembly) → `dist/rig-test.html` → syntax checks.
 
 Browser tests (need `playwright-core` and three.js r128 locally):
-`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs`, `viz.cjs`, `chart.cjs` and `views.cjs`.
+`PLAYWRIGHT_CORE=... THREE_JS=... node tests/browser/browser.cjs`, `blocked.cjs`, `library.cjs`, `skins.cjs`, `tuner.cjs`, `rack.cjs`, `chain.cjs`, `geo.cjs`, `seq.cjs`, `controllers.cjs`, `polyv.cjs`, `viz.cjs`, `chart.cjs` and `views.cjs`, `viewctl.cjs`.
 
 ## Current effects and sources
 
@@ -249,11 +249,15 @@ The picks are remembered in the browser. Skins colour it (the `chart` section).
 
 A **view** is a screen that comes as a `.rigview` file: put it in the library's **Views** folder (or drop it
 on the page) and it becomes a tab in the top bar, with one card like the Chord Chart's. Its code runs
-sandboxed: it can't reach the page, your files, this browser's storage or the network. Views don't ship
-with the rig; see [docs/VIEWS.md](docs/VIEWS.md) to write one.
+sandboxed: it can't reach the page, your files, this browser's storage or the network. A view can also be
+a small panel docked on the stage, and can change the rig (knobs, presets, tempo, effects) only through
+permissions it names and you allow the first time it opens. Views don't ship with the rig; see
+[docs/VIEWS.md](docs/VIEWS.md) to write one.
 
 The **Scale Atlas** is the first, built from `views/scale-atlas/` into `dist/views/scale-atlas.rigview`.
 With it in the library, **Scale Atlas** in the top bar (or **S**) puts a scale on the fretboard.
+**Quick Controls** (`dist/views/quick-controls.rigview`, **Q**) is the docked example: previous / next
+preset, tempo, and a bypass switch per effect, above the pedalboard.
 - **The left:** key, scale (the major modes, harmonic and melodic minor, Phrygian dominant,
   Hungarian minor, major and minor pentatonic, blues, Hirajōshi, whole tone, both diminished scales), an
   **Exotic** menu of 37 rarer scales (double harmonic, enigmatic, Persian, Neapolitan, Prometheus, the

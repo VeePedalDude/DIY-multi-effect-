@@ -14,7 +14,10 @@ if not re.fullmatch(r'[a-z0-9-]{1,40}', m.get('id', '')): fail('manifest: id mus
 if not isinstance(m.get('tab'), str) or not m['tab'].strip() or len(m['tab']) > 24: fail('manifest: tab must be 1-24 characters')
 if m['id'] != src.name: fail(f'manifest: id "{m["id"]}" should match the folder name')
 for f in m.get('feeds', []):
-    if f not in ('notes', 'sources', 'levels'): fail(f'manifest: no feed called "{f}"')
+    if f not in ('notes', 'sources', 'levels', 'chain', 'presets', 'tempo'): fail(f'manifest: no feed called "{f}"')
+for q in m.get('permissions', []):
+    if q not in ('params', 'presets', 'tempo', 'chain'): fail(f'manifest: no permission called "{q}"')
+if m.get('place', 'tab') not in ('tab', 'dock'): fail('manifest: place must be "tab" or "dock"')
 if not (src / 'view.js').exists(): fail('no view.js')
 out = root / 'dist/views' / f'{m["id"]}.rigview'; out.parent.mkdir(parents=True, exist_ok=True)
 names = ['manifest.json', 'view.js'] + (['view.css'] if (src / 'view.css').exists() else [])

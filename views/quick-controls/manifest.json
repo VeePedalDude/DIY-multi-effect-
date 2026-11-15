@@ -1,0 +1,15 @@
+{
+  "format": "rigview",
+  "formatVersion": 1,
+  "id": "quick-controls",
+  "name": "Quick Controls",
+  "tab": "Quick",
+  "key": "q",
+  "version": "1.0.0",
+  "author": "RIG/01",
+  "description": "A small panel on the stage: previous / next preset, tempo, and a bypass switch for each effect.",
+  "place": "dock",
+  "dock": { "w": 300, "h": 168 },
+  "feeds": ["presets", "tempo", "chain"],
+  "permissions": ["presets", "tempo", "chain"]
+}

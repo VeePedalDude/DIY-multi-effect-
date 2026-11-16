@@ -119,3 +119,22 @@ TEST("181 plugins: a preset change (hold) resets a plugin where it stands: no he
   float pk = 0; run(100); for (int i = 0; i < 64; i++) pk = fmaxf(pk, fabsf(e.outL[i]));
   CHECK(std::isfinite(pk), "it plays on");
 }
+
+TEST("183 plugins: after a preset change a plugin's knob smoothers start on the new preset, as built-in effects' do") {
+  // A plugin is its own binary with its own copy of g_snapSmoothing (dsp.h), which the engine can't set;
+  // the SDK (sdk/rigfx.h) sets it for the 10 ms after a reset. TREMOLO resets its smoothers to 50% at 3 Hz.
+  const std::string path = unpack("trem", "-183");
+  if (rig_plugin_load(path.c_str()) < 0) { CHECK(false, "trem loads: %s", rig_plugin_status()); return; }
+  Engine e; e.init(SR); const int m = e.addModule("trem", nullptr, -1, false);
+  if (m < 0) { CHECK(false, "trem in the chain"); return; }
+  auto run = [&](int blocks) { for (int b = 0; b < blocks; b++) { for (int i = 0; i < 64; i++) e.inBuf[i] = 0.1f; e.process(64); } };
+  e.base[m][0] = 0.2f; e.base[m][1] = 0.9f; run(400);
+  e.hold(true); run(30); e.base[m][0] = 0.9f; e.base[m][1] = 0.f; e.hold(false);   // DEPTH 90%, RATE 0.5 Hz, SINE
+  double worst = 0; float g[4];
+  for (int b = 0; b < 47; b++) {                 // 62.7 ms: the gain should follow 1 - 0.45 (1 + sin(2 pi 0.5 t)) from the reset
+    run(1); e.mods[m]->meters(g);
+    const double t = (b + 1) * 64 / (double)SR, want = 1 - 0.45 * (1 + sin(2 * M_PI * 0.5 * t));
+    worst = fmax(worst, fabs(20 * log10(g[0] / want)));
+  }
+  CHECK(worst < 0.05, "TREMOLO's gain is the new preset's from the reset on (worst %.2f dB off in 63 ms)", worst);
+}

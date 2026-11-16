@@ -91,7 +91,7 @@ struct Hyped : Module {
   }
   void process(const float* inL, const float*, float* oL, float* oR, int n, const float* e, const Context&) override {
     // Block-rate smoothing (about 20 ms) of the four pots; the macros follow the knob directly.
-    const float a = 1.f - expf(-(float)n / (0.020f * sr));
+    const float a = g_snapSmoothing ? 1.f : 1.f - expf(-(float)n / (0.020f * sr));   // a preset change lands at once (dsp.h)
     for (int k = 0; k < 4; k++) sm[k] += a * (clamp01(e[k]) - sm[k]);
     const float k6[6] = {sm[0], sm[1], sm[2], sm[3], clamp01(e[5]), clamp01(e[6])};
     wantMode = HYPED_PARAMS[4].nearestStop(map(4, e[4]));

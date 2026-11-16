@@ -154,6 +154,9 @@ struct Module {
    your effect (`trem`, `trem2`), and they must not affect each other.
 3. **Smooth every knob that would click** when it jumps. Use `OnePole` at 20–30 ms per sample, or a
    per-16-sample smoother. Modulation can move any knob every block (128 samples, about 2.7 ms).
+   Use `OnePole` (or `StepSmooth`), not a smoother of your own: at a preset change the rig resets the
+   effect and, for the next 10 ms of silence, those land on the new knob values at once (the SDK sets
+   `g_snapSmoothing` after `reset()`), so the new preset doesn't sweep in from the old one.
 4. **Output stays finite and reasonable on any input and any knob setting.** The conformance test:
    - feeds full-scale noise, quiet noise and silence;
    - tries knobs at their defaults, all at 0, all at 1, and random settings;

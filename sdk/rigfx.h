@@ -70,6 +70,7 @@ struct Plugin {
   const clap_host_t* host;
   T fx;
   float sr = 48000.f, bpm = 120.f, out = 0.f;
+  int snap = 0;                          // samples left in which knob smoothers land at once (after a reset)
   float norm[rig::MAXPAR] = {0};
   float meterv[4] = {0};
   std::string json;
@@ -98,6 +99,10 @@ struct Plugin {
   static void reset(const clap_plugin_t* p) {
     Plugin* s = self(p);
     if constexpr (SOURCE) s->fx.init(s->sr); else s->fx.reset();
+    // The rig resets every effect at a preset change, then plays 10 ms of silence before fading in, and in
+    // that time every knob smoother jumps to the new preset (g_snapSmoothing, engine/core/dsp.h). This
+    // binary has its own copy of that flag, which the rig can't set, so it sets it here for those 10 ms.
+    s->snap = (int)(0.010f * s->sr);
   }
   void events(const clap_input_events_t* in) {
     if (!in) return;
@@ -135,6 +140,7 @@ struct Plugin {
     return CLAP_PROCESS_CONTINUE;
   }
   void run(const float* a, const float* b, float* x, float* y, int n) {
+    rig::g_snapSmoothing = snap > 0; snap = snap > n ? snap - n : 0;
     if constexpr (SOURCE) {
       rig::SourceContext c{a, n, sr, n / sr, bpm, norm};
       out = fx.update(c);
@@ -145,6 +151,7 @@ struct Plugin {
       rig::Context ctx; ctx.sr = sr; ctx.bpm = bpm;
       fx.process(a, b, x ? x : tmp, y, n, norm, ctx);
     }
+    rig::g_snapSmoothing = false;
     fx.meters(meterv);
   }
   static const void* get_extension(const clap_plugin_t*, const char* id);

@@ -90,3 +90,16 @@ TEST("169 hyped: ENGINE: 2x FAST matches 2x REF; what each costs per 128-sample 
   printf("      per 128-sample block (2.67 ms at 48 kHz): 2x REF %.2f ms (%.0f%%), 2x FAST %.2f ms (%.0f%%), 1x FAST %.2f ms (%.0f%%)\n",
          ms[0], 100 * ms[0] / 2.667, ms[1], 100 * ms[1] / 2.667, ms[2], 100 * ms[2] / 2.667);
 }
+
+TEST("182 hyped: across a preset change GAIN, BASS, TREBLE and LEVEL are on the new preset when it fades back in") {
+  // the engine's other knobs land on their new value in the 10 ms of silence after a preset change
+  // (g_snapSmoothing); HYPED FUZZ smooths its pots per block, so it has to follow the same flag
+  Engine e; e.init(SR); const int m = addHyped(e); e.base[m][3] = 0.15f;
+  float t = 0;
+  auto rms = [&](int blocks) { double s = 0; for (int b = 0; b < blocks; b++) { for (int i = 0; i < 64; i++) e.inBuf[i] = 0.2f * sinf((t += 1) * 2.f * PI_F * 196.f / SR); e.process(64); for (int i = 0; i < 64; i++) s += e.outL[i] * e.outL[i]; } return sqrt(s / (blocks * 64)); };
+  rms(400); e.hold(true); rms(20); e.base[m][3] = 0.85f; e.hold(false);
+  rms(23);                                         // 10 ms settle + 20 ms fade-in
+  const double first = rms(4); rms(300); const double settled = rms(40);
+  const double db = 20 * log10(first / settled);
+  CHECK(fabs(db) < 0.5, "LEVEL 1.5 -> 8.5: the first 5 ms after the fade-in are %.2f dB from where it settles", db);
+}

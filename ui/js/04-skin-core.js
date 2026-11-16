@@ -240,8 +240,6 @@ async function readSkinPacket(bytes) {
 
 // The skin in use (fully merged); 57-skins.js replaces it when the viewer picks another.
 let SKIN = mergeSkin(DEFAULT_SKIN, {});
-// Colour of a source's orb, cable and label: the skin's colour for its id, else the next fallback.
-function sourceColor(id, i) { return SKIN.sources[id] || SKIN.sourceFallback[i % Math.max(1, SKIN.sourceFallback.length)] || SKIN.ui.accent; }
 // Blend two #rgb / #rrggbb colours (t = 0 gives a). Other colour forms come back as a, unchanged.
 function mixColor(a, b, t) {
   const hex = (c) => { const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(c).trim()); if (!m) return null; const h = m[1].length === 3 ? m[1].replace(/./g, '$&$&') : m[1]; return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)); };

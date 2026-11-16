@@ -99,7 +99,6 @@ const BLANK_PRESET = () => ({ format: 'rig-preset', version: PRESET_VERSION, nam
 const board = { switching: null, scenes: [], s: 0, p: 0, work: {}, base: null, savedName: '', renaming: null, armed: null, armT: 0, ready: false };
 rig.board = board;
 const uid = () => 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-const escHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const curScene = () => board.scenes[board.s];
 const curSlot = () => curScene() && curScene().presets[board.p];
 const presetSig = () => { const p = buildPreset(''); delete p.saved; delete p.name; return JSON.stringify(p); };

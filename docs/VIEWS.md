@@ -71,7 +71,7 @@ Shared in every view's frame:
 - the page's card styles (`.cchip` buttons, `.crow` rows, `.cfoot` footers, `select`, `.btn`, `.mono`) and
   the skin's CSS variables (`var(--accent)`, `var(--raise)`...), so a view's controls look like the rig's;
 - the theory kit: `15-chordbook.js` (`chordSpell`, `chordVoicings`, `CB_TUNINGS`, `cbPc`, `cbNote`...) and
-  `16-scales.js` (`scaleSpell`, `scaleChords`, `SC_SCALES`, `SC_EXOTIC`), as globals.
+  `ui/views/scales.js` (`scaleSpell`, `scaleChords`, `SC_SCALES`, `SC_EXOTIC`), as globals.
 
 ## The `rig` object
 

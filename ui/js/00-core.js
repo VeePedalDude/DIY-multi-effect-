@@ -5,6 +5,7 @@ let ACC = '#4FE3F0';                      // face-screen accent; set by the acti
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const $ = (id) => document.getElementById(id);
+const escHtml = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');   // text for innerHTML and attributes
 const DEPTH = 0.22;                       // modulation swing per patch, +/- in normalised units
 
 

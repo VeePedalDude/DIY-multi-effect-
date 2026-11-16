@@ -9,8 +9,8 @@ rig-host adds two of its own: `host_input riff|interface` (the built-in test rif
 message, and `{type:'asset_clear', inst}`; the host sends `host`, `describe`, `rack`, `chain`, `resp`,
 `asset`, `meters` and `latency` messages (`ui/js/31-host.js` reads them).
 
-One text line per command. The browser sends them to the worklet; the Linux host will
-accept the same lines over a WebSocket. Modeled on mod-host.
+One text line per command. The browser sends them to the worklet; rig-host accepts the same lines
+over its WebSocket. Modeled on mod-host.
 
 | Command | Meaning |
 |---|---|
@@ -35,19 +35,18 @@ accept the same lines over a WebSocket. Modeled on mod-host.
 | `listen <0\|1>` | find the notes being played on the dry input (the Visualizer's keyboard; the page sends it while that view is up) |
 | `plugin_remove <id>` | retire a plugin type whose file was removed: it leaves the Add lists and can't be added; instances already in the rig keep running (loading a plugin with an id already taken by a plugin type replaces it the same way) |
 | `input_channel <0\|1>` | browser only: which interface input to use |
-| `asset_load <inst> <kind>/<file>` | load a library file into a module's slot (`asset_load cab ir/V30 SM57.wav`) |
-| `asset_clear <inst>` | back to the module's built-in (e.g. the built-in cab) |
 | `fx_add <type> [id] [position]` | add an effect to the chain (`fx_add holo holo2 0`: a second HOLOGRAM, first in the chain). Without an id the engine picks the next free one; without a position it goes at the end. It fades in over 10 ms |
 | `fx_remove <inst>` | take an effect out of the chain: it fades out over 10 ms, then is freed; patches to it go with it |
 | `fx_move <inst> <position>` | move an effect (0 = first). The sound dips for 10 ms either side of the swap, so nothing clicks or gets recorded into a delay |
 
 `<inst>` is the module's id (`holo`, `holo2`) or its position in the chain (`3`; positions change
 when the chain does, so hosts should use ids). Module ids follow the same rules as source ids, and
-the two never clash. A fresh engine's chain is one of each type in registry order, ids = type ids.
+the two never clash. A fresh engine's chain is `engine/modules/default_chain.txt`, ids = type ids.
 `<source>` is the id of an instance in
 the modulation rack (`lfo`, `lfo2`, or one chosen with `src_add`: `[a-z][a-z0-9_]*`, up to 15
-characters, never a module's id). A fresh engine's rack holds one of each type, ids = type ids.
-Symbols and types come from the engine's description; the current set:
+characters, never a module's id). A fresh engine's rack is `engine/sources/default_rack.txt`, ids =
+type ids. Symbols and types come from the engine's description (`rig_describe()`, the authority if this
+list and it ever disagree); the current set:
 
 | fresh position | type (= id) | symbols |
 |---|---|---|
@@ -61,6 +60,7 @@ Types in the library but not a fresh chain (add them with `fx_add`):
 
 | type | symbols |
 |---|---|
+| hyped | gain, bass, treble, level, mode, octave, bite, engine (meters: drive, solver) |
 | tilt | tilt, pivot, level |
 | bax | bass, treble, bfreq, tfreq, level |
 | geq | b100, b200, b400, b800, b1k6, b3k2, b6k4, level |
@@ -97,10 +97,11 @@ name; a whole-number knob without a unit (WAVE, SYNC, POLAR) is a selector the e
 | seq | knobs: rate (step length, note values 1/32 – 4 bars), gate (% of the step), prob, swing, fill (EUCLID hits), shift (rotate the pattern, steps), slew (VALUE glide, ms). Settings: steps (1–32), pattern (GRID / EUCLID), dir (FORWARD, REVERSE, PING-PONG, RANDOM), resync (OFF, 1–16 bars), seed, offset (ms), out (GATE, TRIGGER, ENVELOPE, VELOCITY, VALUE, STEP), polar, retrig, attack, decay. Table, a row per step: on, vel, prob, ratchet (1–4), gate (% x GATE), value (−100..+100 %). `ext seq 0` stops, `1` plays on, `2` back to step 1. Meters: `step`, `fired` |
 | geo | knobs: rate (beats per step, note-value stops), gate (% of each step), prob, curve (HYPERBOLIC: 0 = Euclidean), warp, timing (UNIFORM → ANGULAR → GEODESIC, a blend), phase (degrees of the cycle), depth (3D). Settings: shape (POLYGON, STAR, WARPED, HYPERBOLIC, TETRAHEDRON, CUBE, OCTAHEDRON, DODECAHEDRON, ICOSAHEDRON), verts (3–32), skip, rot, cycles (ONE / ALL when skip and verts share a factor), dir (FORWARD, REVERSE, PING-PONG, RANDOM), length (AUTO or beats), swing, offset (ms), seed, out (GATE, TRIGGER, ENVELOPE, VELOCITY, PHASE, VERTEX), polar, smooth, retrig, attack, decay, accent, tilt and trail (the 3D view only). Table, a row per vertex: on, prob, vel, accent, gate. `ext geo 0` stops, `1` plays on, `2` goes back to the start. Meters: `step`, `fired` |
 
-In the browser the page reads the file from the library and sends it to the engine (a binary
-message: a `.nam` file's text as-is, or an IR decoded to the `RIR1` header plus float samples,
-see `engine/core/nam.h`); the engine log shows the same `asset_load` line. On the Linux host the
-text line is the whole command, and the host reads the file from its library folder.
+Files (a NAM capture, an IR) don't go through the text protocol. The page reads the file from the library
+and sends it whole: to the worklet as `{type:'asset', inst, data, ref}`, to rig-host as an `asset`
+message followed by the bytes (above), and `asset_clear` goes back to the module's built-in. The data is
+a `.nam` file's text as-is, or an IR decoded to the `RIR1` header plus float samples
+(`engine/core/nam.h`); both end in the C API's `rig_asset_buf` / `rig_asset_commit` / `rig_asset_clear`.
 
 ## The modulation rack
 
@@ -123,9 +124,9 @@ Up to 12 effect instances (`maxModules` in the description), any mix of types, i
 by slot (`eff`, `mod`).
 
 Replies: `resp <status>`. 0 means OK; negative numbers follow mod-host:
-−1 bad instance (or, for `asset_load`, a file the module refused; for `src_add` / `fx_add`, an unknown type),
+−1 bad instance (or, for a file, one the module refused; for `src_add` / `fx_add`, an unknown type),
 −2 id taken or not allowed, −3 rack or chain full, −103 bad symbol, −207 value
-out of range, −902 unknown command. `asset_load` replies also carry the engine's status line:
+out of range, −902 unknown command. The `asset` reply to a file also carries the engine's status line:
 what loaded (`WaveNet · 48 kHz · levelled`, `stereo · 3.00 s`) or why it was refused.
 
 Under the text protocol, hosts use the C API in `engine/api/rig_api.cpp`. Modules by slot (`rig_chain()`

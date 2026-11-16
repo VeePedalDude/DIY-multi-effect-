@@ -1,7 +1,7 @@
 // tests/ui/load.mjs - load selected ui/js files into a sandbox (no browser) for unit tests.
 import fs from 'fs';
 import vm from 'vm';
-const FILES = ['00-core.js', '04-skin-core.js', '10-model.js', '12-inputs-core.js', '14-chords.js', '15-chordbook.js', '16-scales.js', '52-vfs.js', '53-assets.js', '54-library-core.js', '72-preset-format.js'];
+const FILES = ['00-core.js', '04-skin-core.js', '10-model.js', '12-inputs-core.js', '14-chords.js', '15-chordbook.js', '../views/scales.js', '52-vfs.js', '53-assets.js', '54-library-core.js', '72-preset-format.js'];
 const EXPORTS = ['state', 'DEPTH', 'MODS', 'PARAMS', 'SRCMAP', 'loadModel', 'extOf', 'kindForName', 'parseWavInfo', 'parseNamMeta', 'metaLine',
   'matchesQuery', 'uniqueName', 'safeFileName', 'fnv1a', 'KvDir', 'memStore', 'LibraryCore', 'buildPreset', 'readPreset', 'currentSnapshot',
   'PRESET_VERSION', 'PRESET_RENAMES', 'DEFAULT_SKIN', 'CLASSIC_SKIN', 'readSkinJson', 'mergeSkin', 'tileStyle', 'tileNameFor', 'skinFiles',

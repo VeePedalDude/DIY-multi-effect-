@@ -96,13 +96,10 @@ async function pluginMeta(name, bytes) {
   } catch (e) { return { error: e.message }; }
 }
 
-// A .rigview's manifest for the library (docs/VIEWS.md; 66-views.js reads the whole bundle when it's opened).
+// A .rigview's manifest for the library (docs/VIEWS.md), with the same checks as opening it (readRigview, 66-views.js).
 async function viewMeta(bytes) {
   try {
-    const files = await unzip(bytes), m = files.get('manifest.json');
-    if (!m) return { error: 'no manifest.json inside' };
-    const j = JSON.parse(new TextDecoder().decode(m));
-    if (j.format !== 'rigview' || !/^[a-z0-9-]{1,40}$/.test(j.id || '') || !files.has('view.js')) return { error: 'not a RIG view bundle' };
+    const j = (await readRigview(bytes)).manifest;
     return { id: j.id, name: j.name || j.tab, tab: j.tab, author: j.author || '', version: j.version || '', description: j.description || '' };
   } catch (e) { return { error: e.message }; }
 }

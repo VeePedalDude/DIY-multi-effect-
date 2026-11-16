@@ -120,6 +120,3 @@ async function savedFolderHandle() {
 async function rememberFolderHandle(h) {
   try { const db = await idbOpen(); await idbReq(db, 'handles', 'readwrite', (s) => s.put(h, 'root')); } catch (e) { /* folder still works this session */ }
 }
-async function forgetFolderHandle() {
-  try { const db = await idbOpen(); await idbReq(db, 'handles', 'readwrite', (s) => s.delete('root')); } catch (e) { /* nothing to forget */ }
-}

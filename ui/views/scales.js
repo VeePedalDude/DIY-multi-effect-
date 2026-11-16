@@ -1,4 +1,4 @@
-// 16-scales.js - scales for views (part of the theory kit every view's frame gets, docs/VIEWS.md; the Scale
+// ui/views/scales.js - scales for views (part of the theory kit every view's frame gets, docs/VIEWS.md; the Scale
 // Atlas view, views/scale-atlas/, puts SC_SCALES on its buttons and SC_EXOTIC in its Exotic menu). scaleSpell() spells a scale from a key
 // (degrees from the root's letter, as 15-chordbook.js spells chords); scaleChords() lists, for each note
 // of the scale as a root, the chords whose notes all lie in the scale: triads first, then sevenths, then

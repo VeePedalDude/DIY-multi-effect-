@@ -165,11 +165,11 @@ Presets are `.rig.json` files in `presets/`. They are versioned and built to kee
   `mod-rack.v3.rig.json` (version 3) and `fx-chain.v4.rig.json` (version 4) are hand-written. The build fails if any ever stops loading
   cleanly, so a change that would break existing presets can't slip through.
 
-## On the iMac
+## On rig-host
 
-The Linux host will use the same folder layout on disk (for example `~/RIG Library`). Files can
-be added over the network or from a USB stick, and the host loads them with
-`asset_load <inst> <kind>/<file name>`.
+rig-host (Windows and Linux) keeps the library as a real folder, `Documents/RIG01` (or `--library DIR`),
+with the same subfolders, and serves it to the page; the page loads files from it as in the browser
+(`hosts/rig-host/library.h`).
 
 ## Tags, favorites and notes
 

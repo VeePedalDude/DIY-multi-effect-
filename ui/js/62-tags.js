@@ -51,11 +51,10 @@ function passesTags(scope, item) {
 function chipsHtml(scope, items, max = 14) {
   const f = tagFilter(scope), counts = tagCounts(items).slice(0, max);
   for (const t of f.tags) if (!counts.some(([x]) => x === t)) counts.push([t, 0]);          // a chosen tag stays visible
-  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   const favN = items.filter((i) => i.fav).length;
   return `<div class="chips" data-chip-scope="${scope}" role="group" aria-label="Filter by tag">
     <button class="btn mini chip" data-chip-fav="${scope}" aria-pressed="${f.fav}" title="Favorites only">★ ${favN}</button>
-    ${counts.map(([t, n]) => `<button class="btn mini chip" data-chip="${esc(t)}" data-chip-in="${scope}" aria-pressed="${f.tags.has(t)}">${esc(t)} <small>${n}</small></button>`).join('')}
+    ${counts.map(([t, n]) => `<button class="btn mini chip" data-chip="${escHtml(t)}" data-chip-in="${scope}" aria-pressed="${f.tags.has(t)}">${escHtml(t)} <small>${n}</small></button>`).join('')}
   </div>`;
 }
 const starHtml = (on, attr, label) => `<button class="star" ${attr} aria-pressed="${on}" aria-label="${on ? 'Remove from' : 'Add to'} favorites: ${label.replace(/"/g, '&quot;')}" title="Favorite">${on ? '★' : '☆'}</button>`;

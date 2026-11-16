@@ -22,7 +22,7 @@ assets_js = "const UI_ASSETS = {" + ",".join(f"'{k}':'{v}'" for k, v in assets.i
 # what every view's frame gets (66-views.js, docs/VIEWS.md): the runtime, then the theory kit as plain scripts
 import json
 viewkit = json.dumps({'runtime': (ui / 'views/runtime.js').read_text(),
-                      'theory': (ui / 'js/15-chordbook.js').read_text() + '\n' + (ui / 'js/16-scales.js').read_text()})
+                      'theory': (ui / 'js/15-chordbook.js').read_text() + '\n' + (ui / 'views/scales.js').read_text()})
 assets_js += "const UI_VIEWKIT = " + viewkit.replace('</', '<\\/') + ";\n"
 app = "(function () {\n'use strict';\n" + assets_js + "\n".join(f"// ===== {p.relative_to(root)} =====\n{p.read_text()}" for p in parts) + "\n})();\n"
 worklet = (ui / 'worklet/wclap-host.js').read_text() + '\n' + (ui / 'worklet/engine-worklet.js').read_text()   # the WebCLAP host first: the engine uses it

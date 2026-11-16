@@ -1,4 +1,4 @@
-// tests/ui/scales.test.mjs - the Scale Atlas's music (16-scales.js): spelling and the chords that fit.
+// tests/ui/scales.test.mjs - the Scale Atlas's music (ui/views/scales.js): spelling and the chords that fit.
 import { loadUi, check, done } from './load.mjs';
 const u = await loadUi();
 const K = (n) => ({ letter: 'CDEFGAB'.indexOf(n[0]), acc: n.includes('b') ? -1 : n.includes('#') ? 1 : 0 });

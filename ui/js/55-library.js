@@ -180,11 +180,10 @@ function renderPluginList() {
   const el = $('libPlugins'); if (!el) return;
   const list = library.entries.plugins || [];
   if (!list.length) { el.innerHTML = `No plugins yet: put <span class="mono">.rigfx</span> bundles in the library\u2019s ${library.backend === 'host' ? '<span class="mono">Effects</span> or <span class="mono">Mod Sources</span> folder' : '<span class="mono">plugins</span> folder'}, or use Load effect file in Add an effect (docs/PLUGINS.md).`; return; }
-  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   el.innerHTML = list.map((e) => {
     const m = e.meta || {}, r = plugins.results[e.name];
     const what = m.error ? `not usable: ${m.error}` : m.native ? `native CLAP (${m.native}): the rig-host runs it` : `${m.name || ''} · ${m.kind || ''}${m.author ? ' · ' + m.author : ''}`;
     const state = r ? (r.status >= 0 ? ' · loaded' : ` · not loaded: ${r.note}`) : '';
-    return `<div><b>${esc(e.name)}</b> <span class="muted">${esc(what + state)}</span></div>`;
+    return `<div><b>${escHtml(e.name)}</b> <span class="muted">${escHtml(what + state)}</span></div>`;
   }).join('');
 }

@@ -155,6 +155,5 @@ const targetLabel = (pid) => { const k = knobOf(pid); return k ? `${ownerName(k)
 const effOf = (p) => meters && p.mod.slot !== null ? meters.m[LAYOUT.eff + p.mod.slot * DESC.maxpar + p.pi] : p.v;
 const srcVal = (s) => meters && s && s.slot !== null ? meters.m[LAYOUT.src + s.slot] : 0;
 const srcEff = (q) => meters && q.src.slot !== null ? meters.m[LAYOUT.seff + q.src.slot * DESC.maxpar + q.pi] : q.v;   // a source knob after cross-modulation
-const knobEff = (k) => (k.mod ? effOf(k) : srcEff(k));
 function modMeter(m, name, fallback) { const k = m.meterNames.indexOf(name); return meters && k >= 0 && m.slot !== null ? meters.m[LAYOUT.mod + m.slot * LAYOUT.perMod + k] : fallback; }
 function srcMeter(s, name, fallback) { const k = s.meterNames.indexOf(name); return meters && k >= 0 && s.slot !== null ? meters.m[LAYOUT.srcm + s.slot * LAYOUT.perSrc + k] : fallback; }

@@ -21,8 +21,7 @@
 // ("holo", "holo2"); every change to the chain is answered with a {type:'chain'} message.
 // File slots arrive as {type:'asset', inst, data, ref} messages (binary: a .nam file's text, or an
 // IR as RIR1 header + float samples, see engine/core/nam.h) and are answered with the engine's
-// status line; the Linux host takes the text form `asset_load <inst> <kind>/<file name>` and reads
-// the file from its library folder.
+// status line (rig-host gets the same file over its WebSocket: ui/js/31-host.js).
 // <inst> is the module id ("holo") or its position in the chain (0 = first).
 // Replies: resp <status>  (0 ok, negatives follow mod-host error numbers; src_add: -1 unknown type,
 // -2 id taken or not allowed, -3 rack full; fx_add the same, for the chain)

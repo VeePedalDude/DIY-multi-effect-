@@ -4,12 +4,11 @@
 // MOMENTARY or TOGGLE. A bar shows the control live (from the device) and the source's value (from the
 // engine). Devices and LEARN live in 60-controllers.js.
 SRCVIEW.ctrl = (() => {
-  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
   function body(s) {
     const b = state.inputs[s.id], learning = INPUTS.learning === s.id, here = inputPresent(b);
     let h = `<div class="prow"><b style="letter-spacing:.08em">INPUT</b><span class="mono" id="inVal" style="font-size:12px"></span></div>`;
     if (learning) h += `<p class="note" style="color:var(--fg)">Listening: move a stick, the throttle or a hat, press a button, or turn a MIDI knob or fader…</p>`;
-    else if (b) h += `<p class="note" id="inBound"><b style="color:var(--fg)">${esc(describeBinding(b))}</b>${here ? '' : ' · <span class="warnline">waiting for it to be plugged in</span>'}</p>`;
+    else if (b) h += `<p class="note" id="inBound"><b style="color:var(--fg)">${escHtml(describeBinding(b))}</b>${here ? '' : ' · <span class="warnline">waiting for it to be plugged in</span>'}</p>`;
     else h += `<p class="note">Not bound. Press LEARN, then move the control you want on a gamepad, joystick, flight stick or MIDI controller.</p>`;
     h += `<div class="row"><button class="btn mini${learning ? ' on' : ''}" data-in="learn" aria-pressed="${learning}">${learning ? 'CANCEL' : 'LEARN'}</button>`;
     if (b) {
@@ -19,10 +18,10 @@ SRCVIEW.ctrl = (() => {
       h += `<button class="btn mini" data-in="unbind">UNBIND</button>`;
     }
     h += `</div><div class="inbar" aria-hidden="true"><i id="inRaw"></i><b id="inOut"></b></div>`;
-    const pads = INPUTS.pads.map((p) => esc(p.id.replace(/\s*\(.*?Vendor.*?\)\s*/i, ' ').trim()));
+    const pads = INPUTS.pads.map((p) => escHtml(p.id.replace(/\s*\(.*?Vendor.*?\)\s*/i, ' ').trim()));
     h += `<p class="note" style="font-size:12px">Gamepads and joysticks: ${pads.length ? pads.join(', ') : 'none yet (press a button on one to wake it)'}.<br>MIDI: `;
-    if (INPUTS.midi) { const m = midiNames(); h += m.length ? m.map(esc).join(', ') : 'on, no inputs connected'; }
-    else h += INPUTS.midiNote ? `<span class="warnline">${esc(INPUTS.midiNote)}</span>` : `off <button class="btn mini" data-in="midi" style="margin-left:6px">ENABLE MIDI</button>`;
+    if (INPUTS.midi) { const m = midiNames(); h += m.length ? m.map(escHtml).join(', ') : 'on, no inputs connected'; }
+    else h += INPUTS.midiNote ? `<span class="warnline">${escHtml(INPUTS.midiNote)}</span>` : `off <button class="btn mini" data-in="midi" style="margin-left:6px">ENABLE MIDI</button>`;
     return h + `</p>`;
   }
   const sig = (s) => JSON.stringify([state.inputs[s.id], INPUTS.learning === s.id, INPUTS.pads.map((p) => p.id), INPUTS.midiState, INPUTS.midiNote, INPUTS.midi ? midiNames() : null]);

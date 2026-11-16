@@ -49,7 +49,7 @@ async function syncViewsNow() {
   for (const e of library.entries.views || []) if (e.meta && e.meta.error) logLine(`view ${e.name}: not usable: ${e.meta.error}`, true);
 }
 function addView(b, e) {
-  const m = b.manifest, id = m.id, esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const m = b.manifest, id = m.id;
   const taken = new Set([...views.list.values()].map((v) => v.letter).filter(Boolean)), k = String(m.key || '').toLowerCase();
   const letter = /^[a-z]$/.test(k) && !VIEW_RESERVED.includes(k) && !taken.has(k) ? k : '';
   const btn = document.createElement('button');
@@ -59,7 +59,7 @@ function addView(b, e) {
   btn.onclick = () => (dock ? viewDock(views.list.get(id), !views.list.get(id).docked) : setView('view:' + id));
   const seg = $('vChart').parentNode, after = [...seg.querySelectorAll('[data-view]')].find((x) => x.textContent.localeCompare(m.tab) > 0);
   seg.insertBefore(btn, after || null);
-  const el = document.createElement('section'), frameHtml = `<iframe class="vframe" title="${esc(m.name || m.tab)}" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>`;
+  const el = document.createElement('section'), frameHtml = `<iframe class="vframe" title="${escHtml(m.name || m.tab)}" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>`;
   el.hidden = true; el.id = 'view-' + id; el.setAttribute('aria-label', m.name || m.tab);
   const size = (k) => { const [lo, hi, def] = VIEW_DOCK[k], n = Number(m.dock && m.dock[k]); return isFinite(n) && n > 0 ? clamp(Math.round(n), lo, hi) : def; };
   if (dock) { el.className = 'vdock'; el.style.width = size('w') + 'px'; el.style.height = size('h') + 'px'; el.innerHTML = frameHtml; $('vdocks').appendChild(el); }
